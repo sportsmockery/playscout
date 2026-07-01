@@ -3,7 +3,7 @@ import { getTeamById, getRecentAnalysis, getTeamTendencies } from '@/lib/db/quer
 import type { PositionAnalysisResult } from '@/lib/db/types';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ArrowLeft, Brain, Zap, Shield, TrendingUp, AlertTriangle, ArrowRight } from 'lucide-react';
+import { ArrowLeft, Brain, Zap, Shield, TrendingUp, AlertTriangle, ArrowRight, BookOpen } from 'lucide-react';
 
 type AnalysisWithPlayer = PositionAnalysisResult & {
   players: { first_name: string; last_name: string; primary_position: string } | null
@@ -51,6 +51,15 @@ const MODULES = [
     bg: 'bg-orange-50',
     desc: 'Turnovers, penalties, missed assignments, and blown coverages.',
     href: (id: string) => `/teams/${id}/intelligence#mistakeiq`,
+  },
+  {
+    name: 'PlaybookIQ',
+    label: 'Playbook Analysis',
+    icon: BookOpen,
+    color: 'text-indigo-600',
+    bg: 'bg-indigo-50',
+    desc: 'Upload your playbook. Get strengths, weaknesses, upgrade recommendations, and an install plan.',
+    href: (id: string) => `/teams/${id}/modules/playbookiq`,
   },
 ];
 

@@ -62,3 +62,51 @@ export interface TeamMemory {
   id: string; team_id: string; memory_type?: string; title?: string
   content?: string; source?: string; confidence?: number; created_at: string
 }
+
+export interface Playbook {
+  id: string
+  team_id: string
+  uploaded_by?: string | null
+  title: string
+  file_type: 'pdf' | 'pptx' | 'docx' | 'image'
+  storage_path?: string | null
+  page_count?: number | null
+  extracted_text?: string | null
+  created_at: string
+}
+
+export interface PlaybookAnalysis {
+  id: string
+  playbook_id: string
+  team_id: string
+  overall_score?: number | null
+  complexity_score?: number | null
+  age_appropriate?: boolean | null
+  strengths?: string[] | null
+  weaknesses?: string[] | null
+  qbiq_notes?: string | null
+  oliq_notes?: string | null
+  teamiq_notes?: string | null
+  mistakeiq_notes?: string | null
+  upgrade_recommendations?: PlaybookRecommendation[] | null
+  plays_to_keep?: string[] | null
+  plays_to_remove?: string[] | null
+  install_order?: PlaybookInstallStep[] | null
+  summary?: string | null
+  model_provider?: string | null
+  model_name?: string | null
+  created_at: string
+}
+
+export interface PlaybookRecommendation {
+  title: string
+  reason: string
+  priority: 'high' | 'medium' | 'low'
+  module: 'QBIQ' | 'OLIQ' | 'TeamIQ' | 'MistakeIQ' | 'General'
+}
+
+export interface PlaybookInstallStep {
+  week: number
+  play: string
+  reason: string
+}

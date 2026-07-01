@@ -15,6 +15,7 @@ import {
   Zap,
   TrendingUp,
   AlertTriangle,
+  BookOpen,
 } from 'lucide-react';
 
 interface NavItem {
@@ -41,6 +42,7 @@ const MODULE_ITEMS: NavItem[] = [
   { label: 'OLIQ', href: '/intelligence/oliq', icon: Shield },
   { label: 'TeamIQ', href: '/intelligence/teamiq', icon: TrendingUp },
   { label: 'MistakeIQ', href: '/intelligence/mistakeiq', icon: AlertTriangle },
+  { label: 'PlaybookIQ', href: '/intelligence/playbookiq', icon: BookOpen },
 ];
 
 interface SidebarProps {

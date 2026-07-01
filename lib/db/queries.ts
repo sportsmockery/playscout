@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import type { Team, Player, Video, PositionAnalysisResult, TeamTendency, MistakeEvent } from './types'
+import type { Team, Player, Video, PositionAnalysisResult, TeamTendency, MistakeEvent, Playbook, PlaybookAnalysis } from './types'
 
 // Alias for server component compatibility
 export const createServerClient = createClient
@@ -98,4 +98,24 @@ export async function getUserOrganization(userId: string) {
     .eq('user_id', userId)
     .single()
   return data
+}
+
+export async function getPlaybooksByTeam(teamId: string): Promise<Playbook[]> {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('playbooks')
+    .select('*')
+    .eq('team_id', teamId)
+    .order('created_at', { ascending: false })
+  return data ?? []
+}
+
+export async function getPlaybookAnalyses(playbookId: string): Promise<PlaybookAnalysis[]> {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('playbook_analyses')
+    .select('*')
+    .eq('playbook_id', playbookId)
+    .order('created_at', { ascending: false })
+  return data ?? []
 }

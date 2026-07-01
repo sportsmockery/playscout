@@ -1,0 +1,455 @@
+'use client';
+
+import { useEffect, useRef, useState } from 'react';
+import {
+  BookOpen,
+  Upload,
+  AlertCircle,
+  ChevronDown,
+  FileText,
+} from 'lucide-react';
+import { createClient as createBrowserClient } from '@/lib/supabase/client';
+import type { Playbook, PlaybookAnalysis } from '@/lib/db/types';
+
+interface Props {
+  teamId: string;
+  teamName: string;
+  ageGroup?: string;
+  offensiveStyle?: string;
+  defensiveStyle?: string;
+  existingPlaybooks: Playbook[];
+}
+
+const ACCEPTED_TYPES =
+  'application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png';
+
+const LOADING_STAGES = ['Reading playbook...', 'Consulting the IQ modules...', 'Writing report...'];
+
+const MODULE_CARDS: Array<{ key: keyof PlaybookAnalysis; label: string }> = [
+  { key: 'qbiq_notes', label: 'QBIQ Notes' },
+  { key: 'oliq_notes', label: 'OLIQ Notes' },
+  { key: 'teamiq_notes', label: 'TeamIQ Notes' },
+  { key: 'mistakeiq_notes', label: 'MistakeIQ Notes' },
+];
+
+const PRIORITY_STYLES: Record<string, string> = {
+  high: 'bg-red-50 text-red-700 border-red-200',
+  medium: 'bg-amber-50 text-amber-700 border-amber-200',
+  low: 'bg-[var(--brand-bg)] text-[var(--brand-muted)] border-[var(--brand-border)]',
+};
+
+function ScoreRing({
+  score,
+  label,
+  invert = false,
+}: {
+  score: number;
+  label: string;
+  invert?: boolean;
+}) {
+  const good = invert ? score <= 40 : score >= 80;
+  const warn = invert ? score > 40 && score <= 60 : score >= 60 && score < 80;
+  const color = good ? '#10b981' : warn ? '#f59e0b' : '#ef4444';
+
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <div className="relative w-20 h-20 flex-shrink-0">
+        <svg viewBox="0 0 100 100" className="w-full h-full" style={{ transform: 'rotate(-90deg)' }}>
+          <circle cx="50" cy="50" r="42" fill="none" stroke="var(--brand-border)" strokeWidth="8" />
+          <circle
+            cx="50" cy="50" r="42" fill="none"
+            stroke={color}
+            strokeWidth="8"
+            strokeLinecap="round"
+            strokeDasharray={`${2 * Math.PI * 42}`}
+            strokeDashoffset={`${2 * Math.PI * 42 * (1 - score / 100)}`}
+          />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span className="text-xl font-bold text-[var(--brand-navy)]">{score}</span>
+        </div>
+      </div>
+      <span className="text-xs font-medium text-[var(--brand-muted)] text-center">{label}</span>
+    </div>
+  );
+}
+
+function ModuleCard({ label, notes }: { label: string; notes?: string | null }) {
+  const [open, setOpen] = useState(true);
+  if (!notes) return null;
+
+  return (
+    <div className="glass-card p-4">
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between text-left"
+      >
+        <h4 className="font-bold text-[var(--brand-navy)] text-sm uppercase tracking-wide">{label}</h4>
+        <ChevronDown
+          size={16}
+          className={`text-[var(--brand-muted)] transition-transform ${open ? 'rotate-180' : ''}`}
+        />
+      </button>
+      {open && <p className="text-sm text-[var(--brand-ink)] mt-2 leading-relaxed">{notes}</p>}
+    </div>
+  );
+}
+
+export default function PlaybookIQClient({
+  teamId,
+  teamName,
+  ageGroup,
+  offensiveStyle,
+  defensiveStyle,
+  existingPlaybooks,
+}: Props) {
+  const [file, setFile] = useState<File | null>(null);
+  const [title, setTitle] = useState('');
+  const [playbooks, setPlaybooks] = useState<Playbook[]>(existingPlaybooks);
+  const [activePlaybook, setActivePlaybook] = useState<Playbook | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [loadingStage, setLoadingStage] = useState(0);
+  const [result, setResult] = useState<PlaybookAnalysis | null>(null);
+  const [error, setError] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const supabase = createBrowserClient();
+
+  useEffect(() => {
+    if (!loading) return;
+    const interval = setInterval(() => {
+      setLoadingStage((s) => Math.min(s + 1, LOADING_STAGES.length - 1));
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [loading]);
+
+  async function handleUploadAndAnalyze() {
+    if (!file) return;
+    setLoading(true);
+    setLoadingStage(0);
+    setError('');
+    setResult(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('teamId', teamId);
+      formData.append('title', title || file.name);
+
+      const uploadRes = await fetch('/api/playbookiq/upload', { method: 'POST', body: formData });
+      if (!uploadRes.ok) throw new Error(await uploadRes.text());
+      const { playbook } = await uploadRes.json();
+
+      setPlaybooks((prev) => [playbook, ...prev]);
+      setActivePlaybook(playbook);
+
+      const analyzeRes = await fetch('/api/playbookiq/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          playbookId: playbook.id,
+          teamId,
+          teamName,
+          ageGroup,
+          offensiveStyle,
+          defensiveStyle,
+        }),
+      });
+      if (!analyzeRes.ok) throw new Error(await analyzeRes.text());
+      const { analysis } = await analyzeRes.json();
+      setResult(analysis);
+      setFile(null);
+      setTitle('');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Upload or analysis failed');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadPastPlaybook(playbook: Playbook) {
+    setActivePlaybook(playbook);
+    setError('');
+    setResult(null);
+    setLoading(true);
+    try {
+      const { data, error: fetchErr } = await supabase
+        .from('playbook_analyses')
+        .select('*')
+        .eq('playbook_id', playbook.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (fetchErr) throw new Error(fetchErr.message);
+      setResult(data ?? null);
+      if (!data) setError('No analysis found for this playbook yet.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not load analysis');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const inputClass =
+    'w-full px-3 py-2.5 rounded-lg border border-[var(--brand-border)] bg-white text-[var(--brand-ink)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--brand-navy)] focus:border-transparent transition-all placeholder:text-[var(--brand-muted)]';
+
+  return (
+    <div className="grid lg:grid-cols-3 gap-6">
+      {/* Config panel */}
+      <div className="lg:col-span-1 space-y-5">
+        <div className="glass-card p-5">
+          <h2 className="font-bold text-[var(--brand-navy)] mb-4 text-sm uppercase tracking-wide">
+            Upload Playbook
+          </h2>
+
+          <div className="space-y-4">
+            <div>
+              <label
+                htmlFor="playbook-file"
+                className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-[var(--brand-border)] rounded-lg py-8 px-4 text-center cursor-pointer hover:border-[var(--brand-navy)] hover:bg-[var(--brand-navy)]/5 transition-all"
+              >
+                <Upload size={22} className="text-[var(--brand-muted)]" />
+                <span className="text-sm text-[var(--brand-muted)]">
+                  {file ? file.name : 'PDF, PPTX, DOCX, or image'}
+                </span>
+                <input
+                  id="playbook-file"
+                  ref={fileInputRef}
+                  type="file"
+                  accept={ACCEPTED_TYPES}
+                  onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                  className="hidden"
+                />
+              </label>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-[var(--brand-ink)] mb-1.5">
+                Title (optional)
+              </label>
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder={file?.name ?? 'e.g. 2026 Offense Playbook'}
+                className={inputClass}
+              />
+            </div>
+
+            <button
+              onClick={handleUploadAndAnalyze}
+              disabled={loading || !file}
+              className="w-full flex items-center justify-center gap-2 bg-[var(--brand-navy)] text-white font-semibold py-3 rounded-lg hover:bg-[var(--brand-navy-dark)] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {loading ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Analyzing...
+                </>
+              ) : (
+                <>
+                  <BookOpen size={16} />
+                  Analyze Playbook
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {playbooks.length > 0 && (
+          <div className="glass-card p-5">
+            <h2 className="font-bold text-[var(--brand-navy)] mb-3 text-sm uppercase tracking-wide">
+              Past Playbooks
+            </h2>
+            <ul className="space-y-1">
+              {playbooks.map((p) => (
+                <li key={p.id}>
+                  <button
+                    onClick={() => loadPastPlaybook(p)}
+                    className={`w-full flex items-center gap-2.5 text-left text-sm py-2 px-2 rounded-lg transition-colors ${
+                      activePlaybook?.id === p.id
+                        ? 'bg-[var(--brand-navy)]/10 text-[var(--brand-navy)]'
+                        : 'hover:bg-[var(--brand-bg)] text-[var(--brand-ink)]'
+                    }`}
+                  >
+                    <FileText size={14} className="flex-shrink-0 text-[var(--brand-muted)]" />
+                    <span className="truncate flex-1">{p.title}</span>
+                    <span className="text-xs text-[var(--brand-muted)] flex-shrink-0">
+                      {new Date(p.created_at).toLocaleDateString()}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+
+      {/* Results panel */}
+      <div className="lg:col-span-2">
+        {error && (
+          <div className="glass-card p-5 border border-red-200 bg-red-50 flex items-start gap-3 mb-5">
+            <AlertCircle size={18} className="text-red-500 flex-shrink-0 mt-0.5" />
+            <p className="text-sm text-red-700">{error}</p>
+          </div>
+        )}
+
+        {loading && !result && (
+          <div className="glass-card p-10 text-center">
+            <div className="w-16 h-16 rounded-full bg-indigo-100 flex items-center justify-center mx-auto mb-4">
+              <BookOpen size={28} className="text-indigo-600 animate-pulse" />
+            </div>
+            <p className="font-semibold text-[var(--brand-navy)] mb-1">Running PlaybookIQ</p>
+            <p className="text-sm text-[var(--brand-muted)]">{LOADING_STAGES[loadingStage]}</p>
+          </div>
+        )}
+
+        {result && !loading && (
+          <div className="space-y-5">
+            {/* Scores */}
+            <div className="glass-card p-6">
+              <div className="flex flex-wrap items-center gap-8">
+                <ScoreRing score={result.overall_score ?? 0} label="Overall" />
+                <ScoreRing score={result.complexity_score ?? 0} label="Complexity" invert />
+                <div>
+                  <span
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold ${
+                      result.age_appropriate
+                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                        : 'bg-red-50 text-red-700 border border-red-200'
+                    }`}
+                  >
+                    {result.age_appropriate ? 'Age Appropriate' : 'Not Age Appropriate'}
+                  </span>
+                  {result.summary && (
+                    <p className="text-sm text-[var(--brand-ink)] mt-3 leading-relaxed max-w-md">
+                      {result.summary}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Strengths / Weaknesses */}
+            <div className="grid md:grid-cols-2 gap-5">
+              <div className="glass-card p-5">
+                <h3 className="font-bold text-emerald-600 mb-3 text-sm uppercase tracking-wide">Strengths</h3>
+                <ul className="space-y-2">
+                  {(result.strengths ?? []).map((s, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm text-[var(--brand-ink)]">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0 mt-1.5" />
+                      {s}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="glass-card p-5">
+                <h3 className="font-bold text-red-500 mb-3 text-sm uppercase tracking-wide">Weaknesses</h3>
+                <ul className="space-y-2">
+                  {(result.weaknesses ?? []).map((w, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm text-[var(--brand-ink)]">
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-400 flex-shrink-0 mt-1.5" />
+                      {w}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
+            {/* IQ Module opinions */}
+            <div className="grid md:grid-cols-2 gap-4">
+              {MODULE_CARDS.map(({ key, label }) => (
+                <ModuleCard key={key} label={label} notes={result[key] as string | null} />
+              ))}
+            </div>
+
+            {/* Upgrade recommendations */}
+            {(result.upgrade_recommendations ?? []).length > 0 && (
+              <div className="glass-card p-5">
+                <h3 className="font-bold text-[var(--brand-navy)] mb-3 text-sm uppercase tracking-wide">
+                  Upgrade Recommendations
+                </h3>
+                <div className="space-y-2">
+                  {(result.upgrade_recommendations ?? []).map((rec, i) => (
+                    <div key={i} className="flex items-start gap-3 p-3 bg-[var(--brand-bg)] rounded-lg">
+                      <span
+                        className={`text-xs font-semibold px-2 py-0.5 rounded-full border flex-shrink-0 ${PRIORITY_STYLES[rec.priority] ?? PRIORITY_STYLES.low}`}
+                      >
+                        {rec.priority}
+                      </span>
+                      <div>
+                        <p className="text-sm font-semibold text-[var(--brand-ink)]">
+                          {rec.title} <span className="text-xs font-normal text-[var(--brand-muted)]">· {rec.module}</span>
+                        </p>
+                        <p className="text-xs text-[var(--brand-muted)] mt-0.5">{rec.reason}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Plays to keep / remove */}
+            {((result.plays_to_keep ?? []).length > 0 || (result.plays_to_remove ?? []).length > 0) && (
+              <div className="glass-card p-5">
+                <h3 className="font-bold text-[var(--brand-navy)] mb-3 text-sm uppercase tracking-wide">Play Menu</h3>
+                <div className="flex flex-wrap gap-2">
+                  {(result.plays_to_keep ?? []).map((p, i) => (
+                    <span
+                      key={`keep-${i}`}
+                      className="text-xs font-medium px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200"
+                    >
+                      {p}
+                    </span>
+                  ))}
+                  {(result.plays_to_remove ?? []).map((p, i) => (
+                    <span
+                      key={`remove-${i}`}
+                      className="text-xs font-medium px-2.5 py-1 rounded-full bg-red-50 text-red-700 border border-red-200 line-through"
+                    >
+                      {p}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Install order */}
+            {(result.install_order ?? []).length > 0 && (
+              <div className="glass-card p-5">
+                <h3 className="font-bold text-[var(--brand-navy)] mb-3 text-sm uppercase tracking-wide">
+                  Install Order
+                </h3>
+                <div className="space-y-3">
+                  {(result.install_order ?? []).map((step, i) => (
+                    <div key={i} className="flex items-start gap-3 p-3 bg-[var(--brand-bg)] rounded-lg">
+                      <span className="w-6 h-6 rounded-full bg-[var(--brand-navy)] text-white text-xs flex items-center justify-center font-bold flex-shrink-0">
+                        {step.week}
+                      </span>
+                      <div>
+                        <p className="text-sm font-semibold text-[var(--brand-ink)]">{step.play}</p>
+                        <p className="text-xs text-[var(--brand-muted)]">{step.reason}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {!result && !loading && !error && (
+          <div className="glass-card p-16 text-center">
+            <div className="w-16 h-16 rounded-full bg-[var(--brand-navy)]/10 flex items-center justify-center mx-auto mb-4">
+              <BookOpen size={28} className="text-[var(--brand-navy)]" />
+            </div>
+            <h3 className="font-bold text-[var(--brand-navy)] text-lg mb-2">PlaybookIQ Ready</h3>
+            <p className="text-[var(--brand-muted)] text-sm">
+              Upload a playbook to get strengths, weaknesses, upgrade recommendations, and an install plan.
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
