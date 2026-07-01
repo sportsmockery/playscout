@@ -1,8 +1,10 @@
+import 'server-only'
 import { spawn } from 'node:child_process'
 import { promises as fs, existsSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import ffmpegStatic from 'ffmpeg-static'
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const ffmpegStatic: string | null = require('ffmpeg-static')
 
 export const FRAME_COUNT = 16
 export const TARGET_WIDTH = 768
