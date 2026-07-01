@@ -863,3 +863,81 @@ Get it: https://supabase.com/dashboard/project/rapuqqztreaefzysetju/settings/api
 
 ## Future Modules
 RBIQ, WRIQ, DLIQ, LBIQ, DBIQ, SCOUTIQ, PRACTICEIQ
+
+---
+
+## PlayScoutIQ — Two-System Intelligence Architecture
+
+### System B — VideoIQ Engine (evidence layer)
+Breaks video into frames. Analyzes football. Saves structured results to DB. Never converses.
+
+### System A — PlayScoutIQ Assistant (intelligence layer)
+Reads System B's output. Converses with coaches. Never watches video. Only reasons over proven evidence.
+
+**A never invents. A only interprets what B already proved.**
+
+### Model Routing
+
+| Job | Provider | Model |
+|---|---|---|
+| Frame analysis (System B) | Google | `gemini-2.5-pro` |
+| Assignment grading (System B) | Google | `gemini-2.5-pro` |
+| Quick coach Q&A (System A) | Anthropic | `claude-sonnet-4-5` |
+| Deep trend analysis (System A) | Anthropic | `claude-opus-4` |
+| Practice plan generation (System A) | Anthropic | `claude-opus-4` |
+| Game strategy (System A) | Anthropic | `claude-opus-4` |
+| Football rules / scheme knowledge (System A) | Perplexity | `sonar-pro` |
+| Memory embeddings (bridge) | OpenAI | `text-embedding-3-small` |
+
+### New Files Required
+```
+app/api/playscoutiq/chat/route.ts         # SSE streaming chat (System A)
+app/api/intelligence/analyze/route.ts     # Frame analysis router (System B)
+components/intelligence/PlayScoutIQ.tsx   # Chat panel component
+lib/intelligence/playscoutiq-prompt.ts    # Dynamic system prompt builder
+lib/intelligence/memory.ts               # saveToTeamMemory + getRelevantMemory (RAG)
+lib/ai/playscoutiq-router.ts             # Job type → model routing
+supabase/migrations/005_pgvector.sql     # pgvector + match_team_memory RPC
+```
+
+### Key Implementation Rules
+- System A receives: recent analysis results, team tendencies, recent mistakes, top 5 RAG memory matches, last 10 chat messages
+- System A must always cite source: "Based on X plays analyzed..." or "The film showed..."
+- System A must say "I don't have enough film evidence" when context is insufficient
+- Stream all System A responses via SSE (never block waiting for full response)
+- Memory embeddings run after every System B save (async, non-blocking)
+- pgvector similarity threshold: 0.75, top 5 matches per query
+
+### PlayScoutIQ Chat Component Behavior
+- Floating panel or right sidebar — never blocks film analysis UI
+- Show suggested starter questions when no messages exist (generated from available data)
+- Gold (#d2c600) accent on assistant messages
+- Navy (#485995) header
+- "Based on X plays" citation chips on evidence-backed claims
+- Quick action buttons: "Generate practice plan", "What to fix this week", "Scout opponent"
+
+Full spec: see `PLAYSCOUTIQ_SPEC.md`
+
+---
+
+## Football Knowledge Base
+
+Full reference: `FOOTBALL_KNOWLEDGE_BASE.md`
+
+### When to use it
+- **System B (VideoIQ / Gemini)**: Reference rubrics, age-band standards, position fundamentals, and prohibited drill list when building module prompts
+- **System A (PlayScoutIQ / Claude)**: Reference tendency library, correction tree, coaching framework, and knowledge object structure when answering coach questions
+- **Perplexity sonar-pro**: Use when a coach asks a rules, scheme, or football-knowledge question that falls outside the team's film data — cite source tier from authority hierarchy
+
+### Hard constraints (enforce always)
+- Never recommend Oklahoma drill, Bull in the Ring, or board collision drills
+- Always filter recommendations through age_band before output
+- Always check game_type (flag ≠ tackle) before any contact or scheme recommendation
+- Surface concussion protocol on any report of head contact
+- Surface EAP prompt at start of each new season setup
+- Default to smaller play menus and more reps — never reward scheme depth over fundamentals
+
+### Key files
+- `FOOTBALL_KNOWLEDGE_BASE.md` — full knowledge base with drills, schemes, safety, tendencies, glossary
+- `PLAYSCOUTIQ_SPEC.md` — System A + System B architecture, API routes, RAG memory, model routing
+- `CLAUDE.md` — this file — master build instructions
