@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { ThemeProvider } from 'next-themes'
 import { Toaster } from '@/components/ui/sonner'
@@ -11,6 +11,11 @@ export const metadata: Metadata = {
   title: { default: 'PlayScout', template: '%s | PlayScout' },
   description: 'PlayScout — your AI-powered scouting platform',
   metadataBase: new URL('https://playscout.ai'),
+  manifest: '/site.webmanifest',
+}
+
+export const viewport: Viewport = {
+  themeColor: '#485995',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

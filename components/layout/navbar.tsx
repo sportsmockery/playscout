@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { motion } from 'framer-motion'
 
 export function Navbar() {
@@ -13,6 +14,7 @@ export function Navbar() {
     >
       <div className="container mx-auto flex h-16 items-center justify-between px-4">
         <Link href="/" className="flex items-center gap-2 font-bold text-xl tracking-tight">
+          <Image src="/logo.svg" alt="PlayScout" width={32} height={35} priority />
           <span className="text-primary">Play</span>Scout
         </Link>
         <nav className="flex items-center gap-6 text-sm font-medium text-muted-foreground">
