@@ -3,6 +3,7 @@ import { Footer } from '@/components/layout/footer'
 import { Hero } from '@/components/marketing/hero'
 import { TrustBar } from '@/components/marketing/trust-bar'
 import { FeatureGrid } from '@/components/marketing/feature-grid'
+import { IntelligenceModules } from '@/components/marketing/intelligence-modules'
 import { PhilosophySection } from '@/components/marketing/philosophy-section'
 import { AgeLevelTabs } from '@/components/marketing/age-level-tabs'
 import { OffenseDefenseTabs } from '@/components/marketing/offense-defense-tabs'
@@ -20,6 +21,7 @@ export default function HomePage() {
         <Hero />
         <TrustBar />
         <FeatureGrid />
+        <IntelligenceModules />
         <PhilosophySection />
         <AgeLevelTabs />
         <OffenseDefenseTabs />

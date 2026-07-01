@@ -10,6 +10,7 @@ const spaceGrotesk = Space_Grotesk({
   variable: '--font-space-grotesk',
   subsets: ['latin'],
   display: 'swap',
+  weight: ['300', '400', '500', '600', '700'],
 })
 
 const SITE_URL = 'https://playscout.ai'
@@ -20,6 +21,16 @@ const DESCRIPTION =
 export const metadata: Metadata = {
   title: { default: TITLE, template: '%s | PlayScout' },
   description: DESCRIPTION,
+  keywords: [
+    'youth football coaching',
+    'AI film analysis',
+    'football scouting',
+    'practice planning',
+    'player development',
+    'PlayScout',
+  ],
+  authors: [{ name: 'PlayScout' }],
+  creator: 'PlayScout',
   metadataBase: new URL(SITE_URL),
   alternates: {
     canonical: '/',
@@ -51,6 +62,8 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: '#485995',
+  width: 'device-width',
+  initialScale: 1,
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
