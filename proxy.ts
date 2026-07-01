@@ -1,8 +1,35 @@
-import { type NextRequest } from 'next/server'
+import { NextResponse, type NextRequest } from 'next/server'
 import { updateSession } from '@/lib/supabase/middleware'
 
+const PROTECTED_PREFIXES = ['/dashboard', '/teams', '/film', '/intelligence', '/settings']
+const GUEST_ONLY_PREFIXES = ['/login', '/register']
+
 export async function proxy(request: NextRequest) {
-  return await updateSession(request)
+  const { response, user } = await updateSession(request)
+  const { pathname } = request.nextUrl
+
+  const isProtected = PROTECTED_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+  )
+  const isGuestOnly = GUEST_ONLY_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+  )
+
+  if (isProtected && !user) {
+    const redirectUrl = request.nextUrl.clone()
+    redirectUrl.pathname = '/login'
+    redirectUrl.searchParams.set('redirectTo', pathname)
+    return NextResponse.redirect(redirectUrl)
+  }
+
+  if (isGuestOnly && user) {
+    const redirectUrl = request.nextUrl.clone()
+    redirectUrl.pathname = '/dashboard'
+    redirectUrl.search = ''
+    return NextResponse.redirect(redirectUrl)
+  }
+
+  return response
 }
 
 export const config = {

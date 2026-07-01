@@ -1,0 +1,57 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { analyzePosition } from '@/lib/intelligence/analyze-position'
+import { saveToTeamMemory } from '@/lib/intelligence/memory'
+import { PositionAnalysisInputSchema } from '@/lib/intelligence/schemas'
+import { createClient } from '@/lib/supabase/server'
+
+export const runtime = 'nodejs'
+export const maxDuration = 300
+
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json()
+    const input = PositionAnalysisInputSchema.parse(body)
+
+    const result = await analyzePosition(input)
+
+    // Save to DB
+    const supabase = await createClient()
+    const { data: saved, error } = await supabase
+      .from('position_analysis_results')
+      .insert({
+        team_id: input.teamId,
+        player_id: input.playerId ?? null,
+        video_id: input.videoId ?? null,
+        play_sequence_id: input.playSequenceId ?? null,
+        module_key: input.moduleKey,
+        overall_score: result.overall_score,
+        position_scores: result.position_scores,
+        reasoning: result.reasoning,
+        strengths: result.strengths,
+        weaknesses: result.weaknesses,
+        drills: result.drills,
+        summary: result.summary,
+        frames_analyzed: result.framesAnalyzed,
+        evidence: { frames: result.evidence_frames, confidence: result.confidence },
+        model_provider: 'google',
+        model_name: result.model,
+      })
+      .select()
+      .single()
+
+    if (error) console.error('DB save error:', error)
+
+    // Save to team memory (async, non-blocking)
+    saveToTeamMemory(input.teamId, result, {
+      moduleKey: input.moduleKey,
+      playerName: input.player?.name,
+      videoTitle: undefined,
+      playLabel: input.playSequence?.coach_label,
+    }).catch(console.error)
+
+    return NextResponse.json({ result, analysisId: saved?.id })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Analysis failed'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
