@@ -816,7 +816,7 @@ VIDEO_PROCESSING_SECRET=      # Shared secret between app and worker
 WORKER_ID=playscout-worker-001
 
 # Vercel
-VERCEL_PROJECT_ID=prj_5DrdC9KQumQTH6BGruiBMADwKtTd
+VERCEL_PROJECT_ID=prj_6z7NumR6q2aUsjZkqooMHdYCBwB4
 VERCEL_ORG_ID=team_tyYugyFj05x63r5t9jwqFWq3
 ```
 
@@ -824,20 +824,55 @@ VERCEL_ORG_ID=team_tyYugyFj05x63r5t9jwqFWq3
 
 ## Deployment Rules
 
-- Push to `main` → Vercel auto-deploys production
+- **No GitHub → Vercel git integration is connected.** Pushing to `main` does **not** trigger a Vercel deploy by itself. Production deploys must be triggered explicitly — either `vercel --prod` from the repo root, or by connecting the Git integration in the Vercel dashboard (Project → Settings → Git). Confirm which is true before assuming a push went live.
+- `npm run build-deploy` (`git add -A && git commit -m 'deploy' && git push origin main`) only commits/pushes — it does **not** deploy on its own until Git integration exists. Until then, follow it with `vercel --prod`.
 - Feature branches → PR → merge to `main`
-- **Never** run `vercel --prod` directly without confirming project is `playscout`
-- Scope: `chris-burhans-projects` on Vercel
+- **Never** run `vercel --prod` directly without confirming project is `playscout` (scope `chris-burhans-projects`, project ID `prj_6z7NumR6q2aUsjZkqooMHdYCBwB4`)
+- The repo must be linked locally before CLI deploys work: `vercel link --yes --project playscout --scope chris-burhans-projects` (creates gitignored `.vercel/project.json`)
+- **Framework Preset must be `nextjs`.** The dashboard's Framework Preset was found set to `"Other"` (likely from how the project was first created), which makes Vercel serve only the `public/` folder as static output and 404 every actual app route. `vercel.json` at repo root now pins `{"framework": "nextjs"}` to force correct behavior regardless of dashboard state — do not remove it without confirming the dashboard preset is fixed to Next.js.
+- Vercel project env vars are separate from `.env.local` and must be pushed explicitly: `vercel env add <NAME> <production|preview|development>` (reads value from stdin, prompts per environment — non-interactive shells should pipe the value in and pass the environment as one call per target). Preview environment additions may require selecting "Add to all Preview branches" — rerun the suggested command if it errors asking to disambiguate.
+- At minimum, `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` must exist in the Vercel project (used by `lib/supabase/client.ts`, `server.ts`, and `proxy.ts`). A blank/missing `NEXT_PUBLIC_SUPABASE_ANON_KEY` causes every route to 500 in production, because `proxy.ts` runs `createServerClient` on nearly every request via its matcher.
+- There is an orphaned duplicate project `playscout-scaffold` in the same Vercel scope (from an early accidental deploy under the pre-rename package name). Do not deploy to it; the real project is `playscout`. Safe to delete once confirmed unused, but ask before deleting.
 - Workers run on Railway (not Vercel) — use `VIDEO_PROCESSING_SECRET` to authenticate worker→app calls
 - Use `apply_migration` for all DB schema changes — never raw DDL in production
 
 ---
 
+## Next.js 16 Proxy Convention (not `middleware.ts`)
+
+This project is on Next.js 16, which deprecates the `middleware.ts` file convention in favor of `proxy.ts`. Key differences:
+- File must be named `proxy.ts` at the repo root (not `middleware.ts`); the exported function must be named `proxy` (not `middleware`).
+- Proxy always runs on the **Node.js runtime**, never Edge — do not add `export const config = { runtime: ... }`, Next throws a build error since runtime isn't configurable for proxy files.
+- `matcher` in `export const config` still works the same as it did for middleware.
+- The Supabase session-refresh helper lives at `lib/supabase/middleware.ts` (filename unchanged, it's just a regular helper module, not a special Next.js file) and is imported by `proxy.ts`.
+- Symptom if this convention isn't followed: Vercel's Edge Function bundler cannot statically resolve `@/` path aliases inside an Edge-targeted middleware bundle and hard-fails the deploy with "referencing unsupported modules." Migrating to `proxy.ts` (Node.js runtime) resolves this because the unresolved-alias/Edge-only-module restrictions no longer apply.
+- Reference: https://nextjs.org/docs/messages/middleware-to-proxy
+
+---
+
 ## MCP Connector
 
-Config in `.claude/mcp_config.json`. Auto-connects in Claude Code.
-Requires `SUPABASE_SERVICE_ROLE_KEY` in your shell environment.
-Get it: https://supabase.com/dashboard/project/rapuqqztreaefzysetju/settings/api
+Supabase MCP is registered as a **project-scoped HTTP MCP server** in `.mcp.json` (committed, no secrets in it):
+```json
+{
+  "mcpServers": {
+    "supabase": {
+      "type": "http",
+      "url": "https://mcp.supabase.com/mcp?project_ref=rapuqqztreaefzysetju"
+    }
+  }
+}
+```
+Added via: `claude mcp add --scope project --transport http supabase "https://mcp.supabase.com/mcp?project_ref=rapuqqztreaefzysetju"`. This auto-connects in Claude Code for anyone with this repo checked out; it may prompt for OAuth/authorization on first tool use in a session. (Note: this superseded an earlier plan to use `.claude/mcp_config.json` + `SUPABASE_SERVICE_ROLE_KEY` in the shell — the HTTP MCP connector is what's actually wired up.)
+
+---
+
+## GitHub
+
+- Remote: `https://github.com/sportsmockery/playscout.git` (origin), default branch `main`.
+- Git user configured in this environment: `sportsmockery`.
+- Multiple sessions/agents may push to `main` concurrently on this project — always `git fetch` + merge (not force-push) if `git push` is rejected as non-fast-forward. Don't assume you have the latest `main` before starting work that touches shared files like `CLAUDE.md`.
+- No branch protection / required PR reviews are known to be configured — direct pushes to `main` currently work.
 
 ---
 
