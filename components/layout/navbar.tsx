@@ -69,10 +69,10 @@ export function Navbar() {
       animate={{ y: 0, opacity: 1 }}
       transition={{ duration: 0.4 }}
       className={cn(
-        'sticky top-0 z-50 w-full border-b transition-all duration-300',
+        'sticky top-0 z-50 w-full border-b bg-gradient-to-r transition-all duration-300',
         scrolled
-          ? 'border-black/10 bg-background/90 shadow-sm backdrop-blur-2xl'
-          : 'border-black/5 bg-background/70 backdrop-blur-xl'
+          ? 'border-black/10 from-playscout-primary/[0.09] via-background/95 to-playscout-primary/[0.05] shadow-sm backdrop-blur-2xl'
+          : 'border-black/5 from-playscout-primary/[0.06] via-background/80 to-playscout-primary/[0.03] backdrop-blur-xl'
       )}
     >
       <div className="container mx-auto flex h-16 items-center justify-between px-4">
