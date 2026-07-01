@@ -20,14 +20,48 @@ interface Props {
   fullPage?: boolean;
 }
 
-const STARTER_QUESTIONS = [
-  'What are the best drills to improve QB pocket presence?',
-  'How do I teach Cover 2 recognition to youth players?',
-  'What should our OL focus on against a 3-4 defense?',
-  'How many contact reps are safe for a 12U practice?',
+// Starter questions span the full range of what youth coaches actually ask.
+// Rotated randomly so coaches see different suggestions each session.
+const ALL_STARTER_QUESTIONS = [
+  // Scheme & strategy
+  'What offensive schemes exploit a 5-3 defense at 10U?',
+  'What base defense should I run for a 10U team?',
+  'How do I stop a team that runs jet sweep every play?',
+  'What plays work best when the other team has a dominant DT?',
+  'How do I attack a 6-2 defense with a spread formation?',
+  'When should I blitz vs. drop into coverage at youth level?',
+  // Practice planning
+  'Build me a 90-minute practice plan for Tuesday',
+  'We only have 60 minutes today — what do I cut?',
+  'How do I structure the first practice of the season?',
+  'How many plays should I install per week at 10U?',
+  // Player development
+  'How do I teach a 10-year-old QB to throw a spiral?',
+  'My running back keeps fumbling — what drill fixes it?',
+  'How do I teach safe tackling technique to beginners?',
+  'What footwork drills are best for youth offensive linemen?',
+  // Game day
+  'What halftime adjustments do I make if we\'re getting gashed on the edge?',
+  'We\'re down two scores with 4 minutes left — what do I do?',
+  'How do I manage the clock at the end of the first half?',
+  // Scouting
   'What tendencies should I look for in opponent film?',
-  'Build me a 90-minute practice plan for skill development',
+  'We\'re playing a Wing-T team next week — what do I need to know?',
+  'How do I build a simple scouting report for my staff?',
+  // Safety & rules
+  'How many contact practices can we have per week at 10U?',
+  'What drills are prohibited at youth level?',
+  'What do I do if a player takes a hit to the head?',
+  // Roster & culture
+  'Playing time is causing parent problems — how do I handle it?',
+  'I have a dominant athlete — where should I play him?',
+  'How do I keep kids motivated when we\'re on a losing streak?',
 ];
+
+// Pick 4 random starters per session
+const STARTER_QUESTIONS = ALL_STARTER_QUESTIONS
+  .sort(() => Math.random() - 0.5)
+  .slice(0, 4);
 
 function generateId() {
   return Math.random().toString(36).slice(2, 9);
@@ -192,7 +226,7 @@ export default function PlayScoutIQ({ teamId, teamName, ageGroup, recentAnalysis
               Coaching strategy, film analysis, player development, practice planning — I&apos;m here.
             </p>
             <div className="grid grid-cols-1 gap-2 w-full max-w-sm">
-              {STARTER_QUESTIONS.slice(0, 3).map((q) => (
+              {STARTER_QUESTIONS.map((q) => (
                 <button
                   key={q}
                   onClick={() => sendMessage(q)}
