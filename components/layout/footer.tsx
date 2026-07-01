@@ -20,14 +20,15 @@ const FOOTER_LINKS = {
 
 export function Footer() {
   return (
-    <footer className="border-t border-black/5 bg-white/50">
+    <footer className="border-t border-white/10 bg-[#0a1628]">
       <div className="container mx-auto grid gap-10 px-4 py-14 md:grid-cols-[1.5fr_repeat(3,1fr)]">
         <div>
-          <div className="mb-3 flex items-center gap-2 font-bold text-lg">
+          <div className="mb-3 flex items-center gap-2 text-lg font-bold">
             <Image src="/logo.svg" alt="PlayScout" width={26} height={28} />
-            <span className="text-playscout-primary">Play</span>Scout
+            <span className="text-playscout-gold">Play</span>
+            <span className="text-white">Scout</span>
           </div>
-          <p className="max-w-xs text-sm text-muted-foreground">
+          <p className="max-w-xs text-sm text-white/55">
             Evidence first. Football interpretation second. Coaching recommendation third.
             Team memory forever. Built for 6U–14U youth football.
           </p>
@@ -35,13 +36,13 @@ export function Footer() {
 
         {Object.entries(FOOTER_LINKS).map(([section, links]) => (
           <div key={section}>
-            <h3 className="mb-3 text-sm font-semibold text-playscout-ink">{section}</h3>
+            <h3 className="mb-3 text-sm font-semibold text-playscout-gold-light">{section}</h3>
             <ul className="space-y-2">
               {links.map((link) => (
                 <li key={link.href}>
                   <Link
                     href={link.href}
-                    className="text-sm text-muted-foreground transition-colors hover:text-playscout-primary"
+                    className="text-sm text-white/55 transition-colors hover:text-white"
                   >
                     {link.label}
                   </Link>
@@ -51,7 +52,7 @@ export function Footer() {
           </div>
         ))}
       </div>
-      <div className="border-t border-black/5 py-6 text-center text-xs text-muted-foreground">
+      <div className="border-t border-white/10 py-6 text-center text-xs text-white/40">
         © {new Date().getFullYear()} PlayScout. Built for coaches who put players first.
       </div>
     </footer>

@@ -4,26 +4,29 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* PlayScout Brand Tokens */
-  --brand-navy: #485995;
-  --brand-navy-dark: #374880;
-  --brand-navy-light: #5a6ba8;
-  --brand-gold: #d2c600;
-  --brand-gold-dark: #b8ad00;
-  --brand-gold-light: #e8da00;
-  --brand-bg: #f8f4f4;
+  /* PlayScout Brand Tokens — deep navy / elegant gold / light gray */
+  --brand-navy: #0f172a;
+  --brand-navy-dark: #0a1628;
+  --brand-navy-light: #1e293b;
+  --brand-gold: #c9a227;
+  --brand-gold-dark: #a6841c;
+  --brand-gold-light: #e8d5a3;
+  --brand-bg: #f8fafc;
+  --brand-bg-alt: #f1f5f9;
   --brand-surface: #ffffff;
-  --brand-ink: #111827;
-  --brand-muted: #6b7280;
+  --brand-ink: #0f172a;
+  --brand-muted: #475569;
   --brand-secondary: #c7c7c7;
-  --brand-border: #e5e7eb;
-  --brand-border-strong: #d1d5db;
+  --brand-border: #e2e8f0;
+  --brand-border-strong: #cbd5e1;
 
   /* PlayScout aliases (matches CLAUDE.md naming: playscout.primary/gold/etc) */
   --playscout-primary: var(--brand-navy);
   --playscout-secondary: var(--brand-secondary);
   --playscout-background: var(--brand-bg);
+  --playscout-bg-alt: var(--brand-bg-alt);
   --playscout-gold: var(--brand-gold);
+  --playscout-gold-light: var(--brand-gold-light);
   --playscout-ink: var(--brand-ink);
   --playscout-muted: var(--brand-muted);
 
@@ -36,17 +39,17 @@
   --popover-foreground: var(--brand-ink);
   --primary: var(--brand-navy);
   --primary-foreground: #ffffff;
-  --secondary: #f3f4f6;
+  --secondary: #f1f5f9;
   --secondary-foreground: var(--brand-ink);
-  --muted: #f9fafb;
+  --muted: #f8fafc;
   --muted-foreground: var(--brand-muted);
   --accent: var(--brand-gold);
-  --accent-foreground: var(--brand-ink);
+  --accent-foreground: var(--brand-navy-dark);
   --destructive: #ef4444;
   --destructive-foreground: #ffffff;
   --border: var(--brand-border);
   --input: var(--brand-border);
-  --ring: var(--brand-navy);
+  --ring: var(--brand-gold);
   --radius: 0.75rem;
 
   /* Sidebar */
@@ -76,7 +79,7 @@
   --accent-foreground: #111827;
   --border: rgba(255, 255, 255, 0.08);
   --input: rgba(255, 255, 255, 0.08);
-  --ring: var(--brand-navy-light);
+  --ring: var(--brand-gold);
 }
 
 @theme inline {
@@ -107,7 +110,9 @@
   --color-playscout-primary: var(--playscout-primary);
   --color-playscout-secondary: var(--playscout-secondary);
   --color-playscout-background: var(--playscout-background);
+  --color-playscout-bg-alt: var(--playscout-bg-alt);
   --color-playscout-gold: var(--playscout-gold);
+  --color-playscout-gold-light: var(--playscout-gold-light);
   --color-playscout-ink: var(--playscout-ink);
   --color-playscout-muted: var(--playscout-muted);
 
@@ -138,24 +143,41 @@ body {
   background: color-mix(in srgb, var(--color-primary) 20%, transparent);
 }
 
-/* ─── Glass card ─────────────────────────────────────────────────── */
+/* ─── Glass card (premium light surface, gold accent on hover) ──────── */
 .glass-card {
-  background: rgba(255, 255, 255, 0.72);
-  backdrop-filter: blur(16px) saturate(180%);
-  -webkit-backdrop-filter: blur(16px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.45);
+  position: relative;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(12px) saturate(160%);
+  -webkit-backdrop-filter: blur(12px) saturate(160%);
+  border: 1px solid rgba(15, 23, 42, 0.07);
   border-radius: var(--radius);
   box-shadow:
-    0 4px 6px -1px rgba(72, 89, 149, 0.06),
-    0 2px 4px -2px rgba(72, 89, 149, 0.04);
-  transition: box-shadow 0.2s ease, transform 0.2s ease;
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 1px 3px rgba(15, 23, 42, 0.06);
+  transition: box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--brand-gold), var(--brand-gold-light));
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .glass-card:hover {
   box-shadow:
-    0 10px 25px -3px rgba(72, 89, 149, 0.12),
-    0 4px 6px -4px rgba(72, 89, 149, 0.08);
-  transform: translateY(-1px);
+    0 20px 40px -14px rgba(15, 23, 42, 0.2),
+    0 8px 20px -10px rgba(201, 162, 39, 0.18);
+  transform: translateY(-6px);
+}
+
+.glass-card:hover::before {
+  transform: scaleX(1);
 }
 
 .dark .glass-card {
@@ -165,11 +187,25 @@ body {
 
 /* ─── Gold glow ──────────────────────────────────────────────────── */
 .gold-glow {
-  box-shadow: 0 0 20px rgba(210, 198, 0, 0.35), 0 0 40px rgba(210, 198, 0, 0.15);
+  box-shadow: 0 0 20px rgba(201, 162, 39, 0.3), 0 0 44px rgba(201, 162, 39, 0.14);
 }
 
 .gold-glow-text {
-  text-shadow: 0 0 20px rgba(210, 198, 0, 0.6);
+  text-shadow: 0 0 20px rgba(201, 162, 39, 0.55);
+}
+
+/* ─── Gold CTA hover glow (buttons) ──────────────────────────────── */
+.gold-cta-glow {
+  transition: box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1), transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.gold-cta-glow:hover {
+  box-shadow: 0 10px 28px -8px rgba(201, 162, 39, 0.5), 0 0 0 1px rgba(201, 162, 39, 0.25);
+  transform: translateY(-1px) scale(1.02);
+}
+
+.gold-cta-glow:active {
+  transform: translateY(0) scale(0.99);
 }
 
 /* ─── Navy gradient hero (used by authenticated app surfaces) ───────── */
@@ -177,15 +213,38 @@ body {
   background: linear-gradient(135deg, #485995 0%, #374880 40%, #2c3a6e 100%);
 }
 
+/* ─── Deep navy hero gradient (marketing homepage hero) ──────────────── */
+/* Includes the faint field-line texture baked in as the top layer — do not pair
+   with .field-lines on the same element, both set background-image and the
+   later one in source order wins outright rather than layering. */
+.hero-dark-gradient {
+  background:
+    repeating-linear-gradient(
+      90deg,
+      rgba(201, 162, 39, 0.07) 0px,
+      rgba(201, 162, 39, 0.07) 1px,
+      transparent 1px,
+      transparent 80px
+    ),
+    radial-gradient(ellipse 80% 60% at 50% -10%, rgba(201, 162, 39, 0.16), transparent 60%),
+    radial-gradient(ellipse 60% 50% at 90% 100%, rgba(201, 162, 39, 0.08), transparent 55%),
+    linear-gradient(160deg, var(--brand-navy-dark) 0%, var(--brand-navy) 55%, #142035 100%);
+}
+
 /* ─── Faint field-line texture (marketing hero only) ────────────────── */
 .field-lines {
   background-image: repeating-linear-gradient(
     90deg,
-    rgba(72, 89, 149, 0.06) 0px,
-    rgba(72, 89, 149, 0.06) 1px,
+    rgba(201, 162, 39, 0.07) 0px,
+    rgba(201, 162, 39, 0.07) 1px,
     transparent 1px,
     transparent 80px
   );
+}
+
+/* ─── Gold connector (How It Works timeline) ─────────────────────────── */
+.connector-gold {
+  background: linear-gradient(180deg, var(--brand-gold) 0%, rgba(201, 162, 39, 0.15) 100%);
 }
 
 /* ─── Stat card ──────────────────────────────────────────────────── */
@@ -345,6 +404,6 @@ body {
 
 /* ─── Focus ring ─────────────────────────────────────────────────── */
 :focus-visible {
-  outline: 2px solid var(--brand-navy);
+  outline: 2px solid var(--brand-gold);
   outline-offset: 2px;
 }

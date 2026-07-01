@@ -20,12 +20,12 @@ export default function HomePage() {
       <main className="flex-1">
         <Hero />
         <TrustBar />
+        <FilmAnalysisSteps />
         <FeatureGrid />
         <IntelligenceModules />
         <PhilosophySection />
         <AgeLevelTabs />
         <OffenseDefenseTabs />
-        <FilmAnalysisSteps />
         <PracticeGameDay />
         <DemoTeaser />
         <FinalCta />

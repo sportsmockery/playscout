@@ -15,7 +15,7 @@ const ICONS: Record<IntelligenceModule['icon'], LucideIcon> = {
 
 export function IntelligenceModules() {
   return (
-    <section className="py-24">
+    <section id="modules" className="bg-playscout-bg-alt py-20 md:py-24">
       <div className="container mx-auto px-4">
         <SectionHeading
           eyebrow="Intelligence Modules"
@@ -37,13 +37,17 @@ export function IntelligenceModules() {
               <motion.div
                 key={mod.key}
                 variants={fadeInUp}
-                whileHover={{ y: -4 }}
-                transition={{ duration: 0.25 }}
-                className="glass-card flex flex-col gap-4 rounded-2xl p-7 transition-shadow hover:shadow-lg hover:shadow-playscout-primary/10"
+                whileHover={{ y: -6 }}
+                transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+                className="glass-card group flex flex-col gap-4 rounded-2xl p-7"
               >
-                <div className="flex size-12 items-center justify-center rounded-xl bg-playscout-primary/10 text-playscout-primary">
+                <motion.div
+                  whileHover={{ scale: 1.1, rotate: -4 }}
+                  transition={{ duration: 0.25 }}
+                  className="flex size-12 items-center justify-center rounded-xl bg-playscout-gold/10 text-playscout-gold transition-colors group-hover:bg-playscout-gold group-hover:text-playscout-primary"
+                >
                   <Icon className="size-6" />
-                </div>
+                </motion.div>
                 <div className="flex items-baseline gap-2">
                   <h3 className="text-xl font-bold text-playscout-ink">{mod.name}</h3>
                   <span className="text-sm font-medium text-muted-foreground">{mod.tagline}</span>

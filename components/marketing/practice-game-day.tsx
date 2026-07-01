@@ -11,7 +11,7 @@ import {
 
 export function PracticeGameDay() {
   return (
-    <section className="bg-white/40 py-24">
+    <section className="bg-white py-20 md:py-24">
       <div className="container mx-auto px-4">
         <SectionHeading
           eyebrow="Practice & Game Day"

@@ -14,7 +14,7 @@ import {
 } from 'lucide-react'
 import { FEATURES, type Feature } from '@/lib/content/features'
 import { SectionHeading } from '@/components/marketing/section-heading'
-import { fadeInUp, staggerContainer, viewportOnce, cardHover } from '@/lib/motion'
+import { fadeInUp, staggerContainer, viewportOnce, cardHover, iconHover } from '@/lib/motion'
 
 const ICONS: Record<Feature['icon'], LucideIcon> = {
   Film,
@@ -55,9 +55,8 @@ export function FeatureGrid() {
                 className="glass-card group relative flex h-full flex-col gap-4 overflow-hidden rounded-2xl p-6"
               >
                 <motion.div
-                  variants={{ rest: { scale: 1 }, hover: { scale: 1.1 } }}
-                  transition={{ duration: 0.25 }}
-                  className="flex size-11 items-center justify-center rounded-xl bg-playscout-primary/10 text-playscout-primary transition-colors group-hover:bg-playscout-primary group-hover:text-white"
+                  variants={iconHover}
+                  className="flex size-11 items-center justify-center rounded-xl bg-playscout-gold/10 text-playscout-gold transition-colors group-hover:bg-playscout-gold group-hover:text-playscout-primary"
                 >
                   <Icon className="size-5" />
                 </motion.div>
@@ -67,7 +66,7 @@ export function FeatureGrid() {
                 <motion.span
                   variants={{ rest: { scaleX: 0 }, hover: { scaleX: 1 } }}
                   transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-                  className="absolute inset-x-0 bottom-0 h-[3px] origin-left bg-gradient-to-r from-playscout-primary to-playscout-gold"
+                  className="absolute inset-x-0 bottom-0 h-[3px] origin-left bg-gradient-to-r from-playscout-gold to-playscout-gold-light"
                 />
               </motion.div>
             </motion.div>

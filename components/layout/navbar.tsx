@@ -5,9 +5,11 @@ import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import { motion } from 'framer-motion'
-import { Menu } from 'lucide-react'
+import { Menu, MessageCircle, ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { SPRING_SNAPPY } from '@/lib/motion'
+import { AskPlayScoutModal } from '@/components/marketing/ask-playscout-modal'
 import {
   Sheet,
   SheetContent,
@@ -18,8 +20,9 @@ import {
 
 const NAV_LINKS = [
   { href: '/#features', label: 'Features', id: 'features' },
-  { href: '/#philosophy', label: 'Philosophy', id: 'philosophy' },
+  { href: '/#modules', label: 'Intelligence Modules', id: 'modules' },
   { href: '/#how-it-works', label: 'How It Works', id: 'how-it-works' },
+  { href: '/#philosophy', label: 'Philosophy', id: 'philosophy' },
   { href: '/demo', label: 'Demo', id: null },
 ]
 
@@ -64,113 +67,146 @@ export function Navbar() {
   }, [])
 
   return (
-    <motion.header
-      initial={{ y: -20, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      transition={{ duration: 0.4 }}
-      className={cn(
-        'sticky top-0 z-50 w-full border-b bg-gradient-to-r transition-all duration-300',
-        scrolled
-          ? 'border-black/10 from-playscout-primary/[0.09] via-background/95 to-playscout-primary/[0.05] shadow-sm backdrop-blur-2xl'
-          : 'border-black/5 from-playscout-primary/[0.06] via-background/80 to-playscout-primary/[0.03] backdrop-blur-xl'
-      )}
-    >
-      <div className="container mx-auto flex h-16 items-center justify-between px-4">
-        <Link href="/" className="flex items-center gap-2 font-bold text-xl tracking-tight">
-          <motion.span
-            initial={{ opacity: 0, scale: 0.7 }}
-            animate={{ opacity: 1, scale: [0.7, 1.12, 1] }}
-            transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
-          >
-            <Image src="/logo.svg" alt="PlayScout" width={32} height={35} priority />
-          </motion.span>
-          <span className="text-primary">Play</span>Scout
-        </Link>
-
-        <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-muted-foreground">
-          {NAV_LINKS.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className={cn(
-                'relative py-1 transition-colors hover:text-foreground',
-                link.id && activeSection === link.id && 'text-foreground'
-              )}
+    <>
+      <motion.header
+        initial={{ y: -20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.4 }}
+        className={cn(
+          'fixed inset-x-0 top-0 z-50 w-full border-b border-white/10 bg-[#0a1628]/85 backdrop-blur-xl transition-shadow duration-300',
+          scrolled && 'shadow-lg shadow-black/20'
+        )}
+      >
+        <div className="container mx-auto flex h-16 items-center justify-between px-4">
+          <Link href="/" className="flex items-center gap-2 text-xl font-bold tracking-tight">
+            <motion.span
+              initial={{ opacity: 0, scale: 0.7 }}
+              animate={{ opacity: 1, scale: [0.7, 1.12, 1] }}
+              transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
             >
-              {link.label}
-              {link.id && activeSection === link.id && (
-                <motion.span
-                  layoutId="nav-underline"
-                  className="absolute inset-x-0 -bottom-1.5 h-0.5 rounded-full bg-playscout-gold"
-                  transition={{ type: 'spring', stiffness: 380, damping: 32 }}
-                />
-              )}
-            </Link>
-          ))}
-        </nav>
+              <Image src="/logo.svg" alt="PlayScout" width={32} height={35} priority />
+            </motion.span>
+            <span className="text-playscout-gold">Play</span>
+            <span className="text-white">Scout</span>
+          </Link>
 
-        <div className="hidden md:flex items-center gap-2">
-          <Button variant="ghost" size="sm" nativeButton={false} render={<Link href="/login">Login</Link>} />
-          <Button variant="outline" size="sm" nativeButton={false} render={<Link href="/demo">Watch Demo</Link>} />
-          <Button
-            size="sm"
-            nativeButton={false}
-            className="bg-playscout-primary text-white transition-all hover:-translate-y-0.5 hover:bg-playscout-primary/90 hover:shadow-md hover:shadow-playscout-primary/30"
-            render={<Link href="/register">Start Free Trial</Link>}
-          />
-        </div>
+          <nav className="hidden items-center gap-7 text-sm font-medium text-white/65 md:flex">
+            {NAV_LINKS.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className={cn(
+                  'relative py-1 transition-colors hover:text-white',
+                  link.id && activeSection === link.id && 'text-white'
+                )}
+              >
+                {link.label}
+                {link.id && activeSection === link.id && (
+                  <motion.span
+                    layoutId="nav-underline"
+                    className="absolute inset-x-0 -bottom-1.5 h-0.5 rounded-full bg-playscout-gold"
+                    transition={SPRING_SNAPPY}
+                  />
+                )}
+              </Link>
+            ))}
+          </nav>
 
-        <Sheet open={open} onOpenChange={setOpen}>
-          <SheetTrigger
-            className="md:hidden"
-            render={
-              <Button variant="ghost" size="icon" aria-label="Open menu">
-                <Menu className="size-5" />
-              </Button>
-            }
-          />
-          <SheetContent side="right" className="w-72 glass-card border-l">
-            <SheetHeader>
-              <SheetTitle className="flex items-center gap-2 text-left">
-                <Image src="/logo.svg" alt="PlayScout" width={26} height={28} />
-                PlayScout
-              </SheetTitle>
-            </SheetHeader>
-            <nav className="flex flex-col gap-1 px-4">
-              {NAV_LINKS.map((link) => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  onClick={() => setOpen(false)}
-                  className="rounded-lg px-3 py-2.5 text-sm font-medium text-foreground hover:bg-black/5 transition-colors"
+          <div className="hidden items-center gap-2 md:flex">
+            <Button
+              variant="ghost"
+              size="sm"
+              nativeButton={false}
+              className="text-white/70 hover:bg-white/10 hover:text-white"
+              render={<Link href="/login">Login</Link>}
+            />
+            <AskPlayScoutModal
+              trigger={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 border-white/20 bg-transparent text-white hover:border-white/40 hover:bg-white/10"
                 >
-                  {link.label}
+                  <MessageCircle className="size-3.5" />
+                  Ask PlayScout
+                </Button>
+              }
+            />
+            <Button
+              size="sm"
+              nativeButton={false}
+              className="gold-cta-glow group gap-1.5 bg-playscout-gold text-playscout-primary hover:bg-playscout-gold"
+              render={
+                <Link href="/demo">
+                  Launch Interactive Demo
+                  <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />
                 </Link>
-              ))}
-            </nav>
-            <div className="mt-4 flex flex-col gap-2 px-4">
-              <Button
-                variant="outline"
-                nativeButton={false}
-                render={
-                  <Link href="/login" onClick={() => setOpen(false)}>
-                    Login
+              }
+            />
+          </div>
+
+          <Sheet open={open} onOpenChange={setOpen}>
+            <SheetTrigger
+              className="md:hidden"
+              render={
+                <Button variant="ghost" size="icon" aria-label="Open menu" className="text-white hover:bg-white/10">
+                  <Menu className="size-5" />
+                </Button>
+              }
+            />
+            <SheetContent side="right" className="w-72 glass-card border-l">
+              <SheetHeader>
+                <SheetTitle className="flex items-center gap-2 text-left">
+                  <Image src="/logo.svg" alt="PlayScout" width={26} height={28} />
+                  PlayScout
+                </SheetTitle>
+              </SheetHeader>
+              <nav className="flex flex-col gap-1 px-4">
+                {NAV_LINKS.map((link) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    onClick={() => setOpen(false)}
+                    className="rounded-lg px-3 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-black/5"
+                  >
+                    {link.label}
                   </Link>
-                }
-              />
-              <Button
-                nativeButton={false}
-                className="bg-playscout-primary text-white hover:bg-playscout-primary/90"
-                render={
-                  <Link href="/register" onClick={() => setOpen(false)}>
-                    Start Free Trial
-                  </Link>
-                }
-              />
-            </div>
-          </SheetContent>
-        </Sheet>
-      </div>
-    </motion.header>
+                ))}
+              </nav>
+              <div className="mt-4 flex flex-col gap-2 px-4">
+                <AskPlayScoutModal
+                  trigger={
+                    <Button variant="outline" onClick={() => setOpen(false)} className="gap-1.5">
+                      <MessageCircle className="size-4" />
+                      Ask PlayScout
+                    </Button>
+                  }
+                />
+                <Button
+                  nativeButton={false}
+                  className="gold-cta-glow bg-playscout-gold text-playscout-primary hover:bg-playscout-gold"
+                  render={
+                    <Link href="/demo" onClick={() => setOpen(false)}>
+                      Launch Interactive Demo
+                    </Link>
+                  }
+                />
+                <Button
+                  variant="outline"
+                  nativeButton={false}
+                  render={
+                    <Link href="/login" onClick={() => setOpen(false)}>
+                      Login
+                    </Link>
+                  }
+                />
+              </div>
+            </SheetContent>
+          </Sheet>
+        </div>
+      </motion.header>
+      {/* Spacer to offset the fixed header height */}
+      <div aria-hidden className="h-16" />
+    </>
   )
 }
