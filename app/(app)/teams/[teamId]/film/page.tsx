@@ -88,7 +88,7 @@ export default async function FilmPage({
                     Processing
                   </div>
                 )}
-                {video.status === 'analysis_complete' || video.processing_status === 'completed' && (
+                {(video.status === 'analysis_complete' || video.processing_status === 'completed') && (
                   <div className="absolute top-2 right-2 bg-emerald-500 text-white text-xs font-semibold px-2 py-0.5 rounded-full">
                     Ready
                   </div>
