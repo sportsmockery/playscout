@@ -154,7 +154,10 @@ export function Navbar() {
                 </Button>
               }
             />
-            <SheetContent side="right" className="w-72 glass-card border-l">
+            <SheetContent
+              side="right"
+              className="w-72 border-l border-white/40 bg-white/90 backdrop-blur-xl backdrop-saturate-150"
+            >
               <SheetHeader>
                 <SheetTitle className="flex items-center gap-2 text-left">
                   <Image src="/logo.svg" alt="PlayScout" width={26} height={28} />
