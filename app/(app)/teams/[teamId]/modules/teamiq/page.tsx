@@ -57,7 +57,8 @@ export default async function TeamIQPage({
         ageGroup={team.age_group ?? undefined}
         offensiveStyle={team.offensive_style ?? undefined}
         defensiveStyle={team.defensive_style ?? undefined}
-        jerseyColor={team.jersey_color ?? undefined}
+        homeJerseyColor={team.home_jersey_color ?? undefined}
+        awayJerseyColor={team.away_jersey_color ?? undefined}
         videos={readyVideos}
         pastAnalyses={teamAnalyses}
       />

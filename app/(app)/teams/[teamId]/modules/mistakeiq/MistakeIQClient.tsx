@@ -8,7 +8,8 @@ interface Props {
   teamId: string;
   teamName: string;
   ageGroup?: string;
-  jerseyColor?: string;
+  homeJerseyColor?: string;
+  awayJerseyColor?: string;
   videos: Video[];
   pastAnalyses: PositionAnalysisResult[];
 }
@@ -38,12 +39,28 @@ const DIMENSIONS: Array<[keyof MistakeIQResult['position_scores'], string]> = [
   ['ball_security', 'Ball Security'],
 ];
 
-export default function MistakeIQClient({ teamId, teamName, ageGroup, jerseyColor, videos, pastAnalyses }: Props) {
+type JerseyChoice = 'home' | 'away' | 'unknown';
+
+export default function MistakeIQClient({
+  teamId,
+  teamName,
+  ageGroup,
+  homeJerseyColor,
+  awayJerseyColor,
+  videos,
+  pastAnalyses,
+}: Props) {
   const [selectedVideo, setSelectedVideo] = useState<Video | null>(videos[0] ?? null);
+  const [jerseyChoice, setJerseyChoice] = useState<JerseyChoice>(
+    homeJerseyColor ? 'home' : awayJerseyColor ? 'away' : 'unknown'
+  );
   const [coachNote, setCoachNote] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<MistakeIQResult | null>(null);
   const [error, setError] = useState('');
+
+  const resolvedJerseyColor =
+    jerseyChoice === 'home' ? homeJerseyColor : jerseyChoice === 'away' ? awayJerseyColor : undefined;
 
   async function runAnalysis() {
     if (!selectedVideo) return;
@@ -60,7 +77,7 @@ export default function MistakeIQClient({ teamId, teamName, ageGroup, jerseyColo
           teamId,
           videoId: selectedVideo.id,
           coachNote: coachNote || undefined,
-          team: { name: teamName, age_group: ageGroup, jersey_color: jerseyColor },
+          team: { name: teamName, age_group: ageGroup, jersey_color: resolvedJerseyColor },
         }),
       });
 
@@ -111,7 +128,34 @@ export default function MistakeIQClient({ teamId, teamName, ageGroup, jerseyColo
               )}
             </div>
 
-            {!jerseyColor && (
+            {homeJerseyColor || awayJerseyColor ? (
+              <div>
+                <label className="block text-xs font-medium text-[var(--brand-ink)] mb-1.5">
+                  Jersey Worn In This Clip
+                </label>
+                <div className="flex gap-2">
+                  {(['home', 'away', 'unknown'] as const).map((choice) => (
+                    <button
+                      key={choice}
+                      type="button"
+                      onClick={() => setJerseyChoice(choice)}
+                      className={`flex-1 px-2 py-2 rounded-lg border text-xs font-semibold capitalize transition-colors ${
+                        jerseyChoice === choice
+                          ? 'bg-orange-600 text-white border-orange-600'
+                          : 'bg-white text-[var(--brand-muted)] border-[var(--brand-border)] hover:border-orange-600'
+                      }`}
+                    >
+                      {choice === 'unknown' ? 'Not sure' : choice}
+                    </button>
+                  ))}
+                </div>
+                {resolvedJerseyColor && (
+                  <p className="text-xs text-[var(--brand-muted)] mt-1.5">
+                    Identifying by: {resolvedJerseyColor}
+                  </p>
+                )}
+              </div>
+            ) : (
               <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2">
                 No jersey/helmet color is set for this team, so the AI can&apos;t reliably tell your players apart from the opponent. Mention it below (e.g. &quot;we wear white jerseys, navy helmets&quot;) until a team-settings page exists to save it permanently.
               </p>

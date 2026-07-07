@@ -13,7 +13,8 @@ export interface OrganizationMember { id: string; organization_id: string; user_
 export interface Team {
   id: string; organization_id?: string; name: string; age_group?: string | null
   season?: string | null; league?: string | null; level?: string | null; state?: string | null
-  offensive_style?: string | null; defensive_style?: string | null; jersey_color?: string | null
+  offensive_style?: string | null; defensive_style?: string | null
+  home_jersey_color?: string | null; away_jersey_color?: string | null
   notes?: string | null; created_at: string
 }
 

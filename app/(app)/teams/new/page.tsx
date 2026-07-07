@@ -21,7 +21,8 @@ export default function NewTeamPage() {
   const [ageGroup, setAgeGroup] = useState('');
   const [season, setSeason] = useState(new Date().getFullYear().toString());
   const [level, setLevel] = useState('');
-  const [jerseyColor, setJerseyColor] = useState('');
+  const [homeJerseyColor, setHomeJerseyColor] = useState('');
+  const [awayJerseyColor, setAwayJerseyColor] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -76,7 +77,8 @@ export default function NewTeamPage() {
         age_group: ageGroup || null,
         season,
         level: level || null,
-        jersey_color: jerseyColor || null,
+        home_jersey_color: homeJerseyColor || null,
+        away_jersey_color: awayJerseyColor || null,
       })
       .select()
       .single();
@@ -175,21 +177,35 @@ export default function NewTeamPage() {
             </select>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-[var(--brand-ink)] mb-1.5">
-              Jersey / Helmet Colors
-            </label>
-            <input
-              type="text"
-              placeholder="e.g. 'White jerseys, navy helmets'"
-              value={jerseyColor}
-              onChange={(e) => setJerseyColor(e.target.value)}
-              className={inputClass}
-            />
-            <p className="text-xs text-[var(--brand-muted)] mt-1">
-              Helps AI analysis correctly tell your team apart from the opponent on film.
-            </p>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-[var(--brand-ink)] mb-1.5">
+                Home Jersey Colors
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. 'Blue jerseys, navy helmets'"
+                value={homeJerseyColor}
+                onChange={(e) => setHomeJerseyColor(e.target.value)}
+                className={inputClass}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-[var(--brand-ink)] mb-1.5">
+                Away Jersey Colors
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. 'White jerseys, navy helmets'"
+                value={awayJerseyColor}
+                onChange={(e) => setAwayJerseyColor(e.target.value)}
+                className={inputClass}
+              />
+            </div>
           </div>
+          <p className="text-xs text-[var(--brand-muted)] -mt-3">
+            Helps AI analysis correctly tell your team apart from the opponent on film — you&apos;ll pick which one applies per video when running a module.
+          </p>
 
           {error && (
             <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">

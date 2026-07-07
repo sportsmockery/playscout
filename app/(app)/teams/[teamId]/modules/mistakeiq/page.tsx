@@ -55,7 +55,8 @@ export default async function MistakeIQPage({
         teamId={teamId}
         teamName={team.name}
         ageGroup={team.age_group ?? undefined}
-        jerseyColor={team.jersey_color ?? undefined}
+        homeJerseyColor={team.home_jersey_color ?? undefined}
+        awayJerseyColor={team.away_jersey_color ?? undefined}
         videos={readyVideos}
         pastAnalyses={mistakeAnalyses}
       />
