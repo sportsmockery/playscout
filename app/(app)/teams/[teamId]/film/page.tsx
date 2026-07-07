@@ -65,7 +65,11 @@ export default async function FilmPage({
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {videos.map((video) => (
-            <div key={video.id} className="glass-card overflow-hidden film-card group">
+            <Link
+              key={video.id}
+              href={`/teams/${teamId}/film/${video.id}`}
+              className="glass-card overflow-hidden film-card group block"
+            >
               {/* Thumbnail */}
               <div className="aspect-video bg-[var(--brand-navy)]/10 relative flex items-center justify-center">
                 {video.thumbnail_path ? (
@@ -88,7 +92,7 @@ export default async function FilmPage({
                     Processing
                   </div>
                 )}
-                {(video.status === 'analysis_complete' || video.processing_status === 'completed') && (
+                {(video.status === 'ready_for_review' || video.status === 'analysis_complete') && (
                   <div className="absolute top-2 right-2 bg-emerald-500 text-white text-xs font-semibold px-2 py-0.5 rounded-full">
                     Ready
                   </div>
@@ -110,7 +114,7 @@ export default async function FilmPage({
                   <span>{new Date(video.created_at).toLocaleDateString()}</span>
                 </div>
               </div>
-            </div>
+            </Link>
           ))}
         </div>
       )}

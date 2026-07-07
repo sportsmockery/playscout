@@ -47,6 +47,12 @@ export async function getVideosByTeam(teamId: string): Promise<Video[]> {
   return data ?? []
 }
 
+export async function getVideoById(videoId: string): Promise<Video | null> {
+  const supabase = await createClient()
+  const { data } = await supabase.from('videos').select('*').eq('id', videoId).single()
+  return data
+}
+
 export async function getRecentAnalysis(teamId: string, limit = 10): Promise<PositionAnalysisResult[]> {
   const supabase = await createClient()
   const { data } = await supabase

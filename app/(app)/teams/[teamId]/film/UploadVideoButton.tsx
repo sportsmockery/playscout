@@ -92,6 +92,12 @@ export default function UploadVideoButton({ teamId }: Props) {
     const ext = file.name.split('.').pop() || 'mp4';
     const objectName = `${teamId}/${uploadRecord.id}.${ext}`;
 
+    // Browsers report .mov/.mp4 phone footage as video/quicktime — Chrome
+    // and Firefox refuse to play that Content-Type in a <video> tag even
+    // though the underlying H.264/AAC bitstream is fine. Store it as
+    // video/mp4 instead so playback actually works cross-browser.
+    const storageContentType = file.type === 'video/quicktime' ? 'video/mp4' : (file.type || 'video/mp4');
+
     // 2. Resumable (TUS) upload straight to Supabase Storage — never through a
     //    Next.js route. Large game film can be paused/resumed and reports real
     //    progress.
@@ -110,12 +116,12 @@ export default function UploadVideoButton({ teamId }: Props) {
 
     uppy.addFile({
       name: objectName,
-      type: file.type || 'video/mp4',
+      type: storageContentType,
       data: file,
       meta: {
         bucketName: 'videos',
         objectName,
-        contentType: file.type || 'video/mp4',
+        contentType: storageContentType,
         cacheControl: '3600',
       },
     });
