@@ -30,34 +30,39 @@ interface NavGroup {
   items: NavItem[];
 }
 
-const TOP_ITEMS: NavItem[] = [
-  { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  { label: 'Teams', href: '/teams', icon: Users },
-  { label: 'Film Library', href: '/film', icon: Film },
-  { label: 'Intelligence', href: '/intelligence', icon: Brain },
-];
-
 const MODULE_ITEMS: NavItem[] = [
-  { label: 'QBIQ', href: '/intelligence/qbiq', icon: Zap },
-  { label: 'OLIQ', href: '/intelligence/oliq', icon: Shield },
-  { label: 'TeamIQ', href: '/intelligence/teamiq', icon: TrendingUp },
-  { label: 'MistakeIQ', href: '/intelligence/mistakeiq', icon: AlertTriangle },
-  { label: 'PlaybookIQ', href: '/intelligence/playbookiq', icon: BookOpen },
+  { label: 'QBIQ', href: 'qbiq', icon: Zap },
+  { label: 'OLIQ', href: 'oliq', icon: Shield },
+  { label: 'TeamIQ', href: 'teamiq', icon: TrendingUp },
+  { label: 'MistakeIQ', href: 'mistakeiq', icon: AlertTriangle },
+  { label: 'PlaybookIQ', href: 'playbookiq', icon: BookOpen },
 ];
 
 interface SidebarProps {
   teamId?: string;
 }
 
-export default function Sidebar({ teamId }: SidebarProps) {
+export default function Sidebar({ teamId: teamIdProp }: SidebarProps) {
   const pathname = usePathname();
 
-  const teamModuleItems: NavItem[] = teamId
-    ? MODULE_ITEMS.map((item) => ({
-        ...item,
-        href: `/teams/${teamId}${item.href.replace('/intelligence', '/modules')}`,
-      }))
-    : MODULE_ITEMS;
+  // Film Library and the module pages only exist scoped to a team
+  // (/teams/[teamId]/film, /teams/[teamId]/modules/qbiq, ...) — there's no
+  // team-agnostic route for either. AppShell/layout never actually pass a
+  // teamId prop, so fall back to reading it out of the current URL.
+  const pathTeamId = pathname.match(/^\/teams\/([^/]+)/)?.[1];
+  const teamId = teamIdProp ?? pathTeamId;
+
+  const topItems: NavItem[] = [
+    { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+    { label: 'Teams', href: '/teams', icon: Users },
+    { label: 'Film Library', href: teamId ? `/teams/${teamId}/film` : '/teams', icon: Film },
+    { label: 'Intelligence', href: '/intelligence', icon: Brain },
+  ];
+
+  const teamModuleItems: NavItem[] = MODULE_ITEMS.map((item) => ({
+    ...item,
+    href: teamId ? `/teams/${teamId}/modules/${item.href}` : '/teams',
+  }));
 
   function isActive(href: string) {
     if (href === '/dashboard') return pathname === '/dashboard';
@@ -85,7 +90,7 @@ export default function Sidebar({ teamId }: SidebarProps) {
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
-        {TOP_ITEMS.map((item) => (
+        {topItems.map((item) => (
           <Link
             key={item.href}
             href={item.href}
