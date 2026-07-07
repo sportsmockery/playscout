@@ -40,17 +40,20 @@ const MODULE_ITEMS: NavItem[] = [
 
 interface SidebarProps {
   teamId?: string;
+  defaultTeamId?: string;
 }
 
-export default function Sidebar({ teamId: teamIdProp }: SidebarProps) {
+export default function Sidebar({ teamId: teamIdProp, defaultTeamId }: SidebarProps) {
   const pathname = usePathname();
 
   // Film Library and the module pages only exist scoped to a team
   // (/teams/[teamId]/film, /teams/[teamId]/modules/qbiq, ...) — there's no
-  // team-agnostic route for either. AppShell/layout never actually pass a
-  // teamId prop, so fall back to reading it out of the current URL.
+  // team-agnostic route for either. Prefer the team in the current URL;
+  // outside a team-scoped page (dashboard, /teams list), fall back to the
+  // user's most recently created team so nav is one click, not a detour
+  // through the team picker every time.
   const pathTeamId = pathname.match(/^\/teams\/([^/]+)/)?.[1];
-  const teamId = teamIdProp ?? pathTeamId;
+  const teamId = teamIdProp ?? pathTeamId ?? defaultTeamId;
 
   const topItems: NavItem[] = [
     { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },

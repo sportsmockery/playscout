@@ -9,16 +9,17 @@ import { cn } from '@/lib/utils';
 interface AppShellProps {
   children: React.ReactNode;
   teamId?: string;
+  defaultTeamId?: string;
 }
 
-export default function AppShell({ children, teamId }: AppShellProps) {
+export default function AppShell({ children, teamId, defaultTeamId }: AppShellProps) {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   return (
     <div className="flex h-screen overflow-hidden bg-[var(--brand-bg)]">
       {/* Desktop sidebar */}
       <div className="hidden lg:flex">
-        <Sidebar teamId={teamId} />
+        <Sidebar teamId={teamId} defaultTeamId={defaultTeamId} />
       </div>
 
       {/* Mobile sidebar overlay */}
@@ -34,7 +35,7 @@ export default function AppShell({ children, teamId }: AppShellProps) {
           mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >
-        <Sidebar teamId={teamId} />
+        <Sidebar teamId={teamId} defaultTeamId={defaultTeamId} />
       </div>
 
       {/* Main content */}
