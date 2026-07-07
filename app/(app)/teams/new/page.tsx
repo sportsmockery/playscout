@@ -32,14 +32,49 @@ export default function NewTeamPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { router.push('/login'); return; }
 
+    const { data: membership } = await supabase
+      .from('organization_members')
+      .select('organization_id')
+      .eq('user_id', user.id)
+      .limit(1)
+      .maybeSingle();
+
+    let organizationId = membership?.organization_id;
+
+    if (!organizationId) {
+      const { data: org, error: orgError } = await supabase
+        .from('organizations')
+        .insert({ name: `${name || 'My'} Organization`, created_by: user.id })
+        .select()
+        .single();
+
+      if (orgError) {
+        setError(orgError.message);
+        setLoading(false);
+        return;
+      }
+
+      const { error: memberError } = await supabase
+        .from('organization_members')
+        .insert({ organization_id: org.id, user_id: user.id, role: 'owner' });
+
+      if (memberError) {
+        setError(memberError.message);
+        setLoading(false);
+        return;
+      }
+
+      organizationId = org.id;
+    }
+
     const { data, error: insertError } = await supabase
       .from('teams')
       .insert({
+        organization_id: organizationId,
         name,
         age_group: ageGroup || null,
         season,
         level: level || null,
-        coach_id: user.id,
       })
       .select()
       .single();
