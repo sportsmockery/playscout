@@ -21,6 +21,7 @@ export default function NewTeamPage() {
   const [ageGroup, setAgeGroup] = useState('');
   const [season, setSeason] = useState(new Date().getFullYear().toString());
   const [level, setLevel] = useState('');
+  const [jerseyColor, setJerseyColor] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -75,6 +76,7 @@ export default function NewTeamPage() {
         age_group: ageGroup || null,
         season,
         level: level || null,
+        jersey_color: jerseyColor || null,
       })
       .select()
       .single();
@@ -171,6 +173,22 @@ export default function NewTeamPage() {
                 <option key={l} value={l}>{l}</option>
               ))}
             </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-[var(--brand-ink)] mb-1.5">
+              Jersey / Helmet Colors
+            </label>
+            <input
+              type="text"
+              placeholder="e.g. 'White jerseys, navy helmets'"
+              value={jerseyColor}
+              onChange={(e) => setJerseyColor(e.target.value)}
+              className={inputClass}
+            />
+            <p className="text-xs text-[var(--brand-muted)] mt-1">
+              Helps AI analysis correctly tell your team apart from the opponent on film.
+            </p>
           </div>
 
           {error && (

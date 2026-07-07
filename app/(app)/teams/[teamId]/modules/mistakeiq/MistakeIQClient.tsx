@@ -8,6 +8,7 @@ interface Props {
   teamId: string;
   teamName: string;
   ageGroup?: string;
+  jerseyColor?: string;
   videos: Video[];
   pastAnalyses: PositionAnalysisResult[];
 }
@@ -37,7 +38,7 @@ const DIMENSIONS: Array<[keyof MistakeIQResult['position_scores'], string]> = [
   ['ball_security', 'Ball Security'],
 ];
 
-export default function MistakeIQClient({ teamId, teamName, ageGroup, videos, pastAnalyses }: Props) {
+export default function MistakeIQClient({ teamId, teamName, ageGroup, jerseyColor, videos, pastAnalyses }: Props) {
   const [selectedVideo, setSelectedVideo] = useState<Video | null>(videos[0] ?? null);
   const [coachNote, setCoachNote] = useState('');
   const [loading, setLoading] = useState(false);
@@ -59,7 +60,7 @@ export default function MistakeIQClient({ teamId, teamName, ageGroup, videos, pa
           teamId,
           videoId: selectedVideo.id,
           coachNote: coachNote || undefined,
-          team: { name: teamName, age_group: ageGroup },
+          team: { name: teamName, age_group: ageGroup, jersey_color: jerseyColor },
         }),
       });
 
@@ -110,6 +111,12 @@ export default function MistakeIQClient({ teamId, teamName, ageGroup, videos, pa
               )}
             </div>
 
+            {!jerseyColor && (
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                No jersey/helmet color is set for this team, so the AI can&apos;t reliably tell your players apart from the opponent. Mention it below (e.g. &quot;we wear white jerseys, navy helmets&quot;) until a team-settings page exists to save it permanently.
+              </p>
+            )}
+
             <div>
               <label className="block text-xs font-medium text-[var(--brand-ink)] mb-1.5">
                 Coach Note (optional)
@@ -117,7 +124,7 @@ export default function MistakeIQClient({ teamId, teamName, ageGroup, videos, pa
               <textarea
                 value={coachNote}
                 onChange={(e) => setCoachNote(e.target.value)}
-                placeholder="e.g. 'We gave up a long TD on this drive — what happened?'"
+                placeholder="e.g. 'We wear white jerseys, navy helmets — we gave up a long TD on this drive, what happened?'"
                 rows={3}
                 className="w-full px-3 py-2.5 rounded-lg border border-[var(--brand-border)] bg-white text-[var(--brand-ink)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--brand-navy)] focus:border-transparent transition-all resize-none placeholder:text-[var(--brand-muted)]"
               />

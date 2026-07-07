@@ -4,10 +4,15 @@ import type { PositionAnalysisInput } from '../schemas'
 
 export function buildTEAMIQSystemPrompt(input: PositionAnalysisInput): string {
   const { team, playSequence, coachNote } = input
+  const jerseyContext = team?.jersey_color
+    ? `IDENTIFYING ${team.name ?? 'this team'}: they wear ${team.jersey_color}. Use this to tell them apart from the opponent in every frame.`
+    : `IDENTIFYING ${team?.name ?? 'this team'}: no jersey/helmet color was provided, and nothing else in this context identifies which players belong to them. Do not guess. If you cannot tell the two sides apart from the frames alone, say so explicitly and do not assert which side is offense/defense, or attribute any tendency to "the team" — describe only what is generically visible instead.`
+
   return `${FOOTBALL_BRAIN_SYSTEM}
 
 You are TEAMIQ — Team Intelligence.
 ${team ? `TEAM: ${team.name ?? ''} | ${team.age_group ?? ''} | Offense: ${team.offensive_style ?? 'unknown'} | Defense: ${team.defensive_style ?? 'unknown'}` : ''}
+${jerseyContext}
 ${playSequence?.coach_label ? `CONTEXT: ${playSequence.coach_label}` : ''}
 ${coachNote ? `COACH NOTE: ${coachNote}` : ''}
 

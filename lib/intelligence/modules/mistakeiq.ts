@@ -4,10 +4,15 @@ import type { PositionAnalysisInput } from '../schemas'
 
 export function buildMISTAKEIQSystemPrompt(input: PositionAnalysisInput): string {
   const { team, playSequence, coachNote } = input
+  const jerseyContext = team?.jersey_color
+    ? `IDENTIFYING ${team.name ?? 'this team'}: they wear ${team.jersey_color}. Only attribute a mistake to this team's players if you can identify them by that.`
+    : `IDENTIFYING ${team?.name ?? 'this team'}: no jersey/helmet color was provided. Do not guess which players belong to them — if you can't tell the two sides apart, say so and describe only what is generically visible instead of attributing mistakes to "the team."`
+
   return `${FOOTBALL_BRAIN_SYSTEM}
 
 You are MISTAKEIQ — Mistake Intelligence.
 ${team ? `TEAM: ${team.name ?? ''} | ${team.age_group ?? ''}` : ''}
+${jerseyContext}
 ${playSequence?.coach_label ? `PLAY: ${playSequence.coach_label}` : ''}
 ${coachNote ? `COACH NOTE: ${coachNote}` : ''}
 

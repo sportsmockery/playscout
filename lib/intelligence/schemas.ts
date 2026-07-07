@@ -27,6 +27,7 @@ export const PositionAnalysisInputSchema = z.object({
     season: z.string().optional(),
     offensive_style: z.string().optional(),
     defensive_style: z.string().optional(),
+    jersey_color: z.string().optional(),
   }).optional(),
   playSequence: z.object({
     down: z.number().optional(),

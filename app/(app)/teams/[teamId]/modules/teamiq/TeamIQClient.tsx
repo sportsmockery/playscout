@@ -10,6 +10,7 @@ interface Props {
   ageGroup?: string;
   offensiveStyle?: string;
   defensiveStyle?: string;
+  jerseyColor?: string;
   videos: Video[];
   pastAnalyses: PositionAnalysisResult[];
 }
@@ -45,6 +46,7 @@ export default function TeamIQClient({
   ageGroup,
   offensiveStyle,
   defensiveStyle,
+  jerseyColor,
   videos,
   pastAnalyses,
 }: Props) {
@@ -74,6 +76,7 @@ export default function TeamIQClient({
             age_group: ageGroup,
             offensive_style: offensiveStyle,
             defensive_style: defensiveStyle,
+            jersey_color: jerseyColor,
           },
         }),
       });
@@ -125,6 +128,12 @@ export default function TeamIQClient({
               )}
             </div>
 
+            {!jerseyColor && (
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                No jersey/helmet color is set for this team, so the AI can&apos;t reliably tell your players apart from the opponent. Mention it below (e.g. &quot;we wear white jerseys, navy helmets&quot;) until a team-settings page exists to save it permanently.
+              </p>
+            )}
+
             <div>
               <label className="block text-xs font-medium text-[var(--brand-ink)] mb-1.5">
                 Coach Note (optional)
@@ -132,7 +141,7 @@ export default function TeamIQClient({
               <textarea
                 value={coachNote}
                 onChange={(e) => setCoachNote(e.target.value)}
-                placeholder="e.g. 'This is our opponent's film — what should we prepare for?'"
+                placeholder="e.g. 'We wear white jerseys, navy helmets — this is our opponent's film, what should we prepare for?'"
                 rows={3}
                 className="w-full px-3 py-2.5 rounded-lg border border-[var(--brand-border)] bg-white text-[var(--brand-ink)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--brand-navy)] focus:border-transparent transition-all resize-none placeholder:text-[var(--brand-muted)]"
               />
