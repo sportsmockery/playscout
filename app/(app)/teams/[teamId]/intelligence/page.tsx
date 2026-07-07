@@ -41,7 +41,7 @@ const MODULES = [
     color: 'text-purple-600',
     bg: 'bg-purple-50',
     desc: 'Formation frequencies, scheme tendencies, and opponent scouting.',
-    href: (id: string) => `/teams/${id}/intelligence#teamiq`,
+    href: (id: string) => `/teams/${id}/modules/teamiq`,
   },
   {
     name: 'MistakeIQ',
@@ -50,7 +50,7 @@ const MODULES = [
     color: 'text-orange-600',
     bg: 'bg-orange-50',
     desc: 'Turnovers, penalties, missed assignments, and blown coverages.',
-    href: (id: string) => `/teams/${id}/intelligence#mistakeiq`,
+    href: (id: string) => `/teams/${id}/modules/mistakeiq`,
   },
   {
     name: 'PlaybookIQ',

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { analyzePosition } from '@/lib/intelligence/analyze-position'
 import { saveToTeamMemory } from '@/lib/intelligence/memory'
 import { PositionAnalysisInputSchema } from '@/lib/intelligence/schemas'
+import { getVideoFramesBase64 } from '@/lib/intelligence/get-frames'
 import { createClient } from '@/lib/supabase/server'
 
 export const runtime = 'nodejs'
@@ -12,7 +13,18 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const input = PositionAnalysisInputSchema.parse(body)
 
-    const result = await analyzePosition(input)
+    let frames = input.frames
+    if (!frames.length && input.videoId) {
+      frames = await getVideoFramesBase64(input.videoId)
+    }
+    if (!frames.length) {
+      return NextResponse.json(
+        { error: 'No film frames available yet. Has this video finished processing?' },
+        { status: 400 }
+      )
+    }
+
+    const result = await analyzePosition({ ...input, frames })
 
     // Save to DB
     const supabase = await createClient()

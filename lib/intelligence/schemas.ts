@@ -11,7 +11,7 @@ export const PositionAnalysisInputSchema = z.object({
   playerId: z.string().optional(),
   videoId: z.string().optional(),
   playSequenceId: z.string().optional(),
-  frames: z.array(z.string()),
+  frames: z.array(z.string()).optional().default([]),
   coachNote: z.string().optional(),
   pdf: z.object({ name: z.string().optional(), data: z.string() }).optional(),
   player: z.object({
