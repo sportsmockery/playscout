@@ -8,6 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
+    "worker": "tsx workers/process-video.ts",
+    "worker:dev": "tsx watch workers/process-video.ts",
     "build-deploy": "git add -A && git commit -m 'deploy' && git push origin main"
   },
   "dependencies": {
@@ -68,6 +70,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
     "tailwindcss": "^4",
+    "tsx": "^4.23.0",
     "typescript": "^5"
   }
 }
