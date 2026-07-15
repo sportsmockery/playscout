@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bulldogs 13U — Visual Play Diagrams</title>
+<style>
+  :root{
+    --navy:#485995; --navy-deep:#36436f; --gold:#d2c600; --gold-deep:#8f8600;
+    --ink:#141922; --muted:#5b6472; --paper:#ffffff; --bg:#e9e3df; --line:#cdd2e0;
+    --field:#f4f6fb; --field-line:#d3d9e8; --los:#485995;
+    --run:#b58a00; --route:#2b3f74; --motion:#8a93a6; --def:#c0453b;
+    --run-tag:#2f8f5b; --pass-tag:#3563b0; --rpo-tag:#8a5cc0; --shot-tag:#c8871a; --heavy-tag:#8a5a2b; --gadget-tag:#c0453b;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --ink:#e9edf6; --muted:#9aa3b7; --paper:#161c2e; --bg:#0d111d; --line:#2a3350;
+      --field:#10162a; --field-line:#232c48; --los:#8fa3df;
+      --run:#e0b23a; --route:#9db4ee; --motion:#6c7590; --def:#e0665c;
+    }
+  }
+  *{box-sizing:border-box;}
+  body{margin:0; background:var(--bg); color:var(--ink);
+    font-family:"Space Grotesk",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased; padding:22px 14px 70px;}
+  .wrap{max-width:1080px; margin:0 auto;}
+  header{background:linear-gradient(135deg,var(--navy-deep),var(--navy)); color:#fff;
+    border-radius:18px; padding:24px 26px; position:relative; overflow:hidden; box-shadow:0 14px 40px rgba(17,24,39,.16);}
+  header::after{content:""; position:absolute; right:-50px; top:-50px; width:220px; height:220px; border-radius:50%;
+    background:radial-gradient(circle,rgba(210,198,0,.26),transparent 68%);}
+  header .eye{font-size:11.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--gold); font-weight:600;}
+  header h1{margin:.25em 0 .1em; font-size:clamp(24px,4vw,36px); letter-spacing:-.02em;}
+  header p{margin:0; color:rgba(255,255,255,.86); max-width:64ch; font-size:14px;}
+
+  .legend{display:flex; flex-wrap:wrap; gap:14px 20px; background:var(--paper); border:1px solid var(--line);
+    border-radius:12px; padding:13px 16px; margin:16px 0 6px; font-size:12.5px; align-items:center;}
+  .legend b{color:var(--navy); font-size:11px; letter-spacing:.06em; text-transform:uppercase; margin-right:2px;}
+  .lg{display:inline-flex; align-items:center; gap:7px; color:var(--muted);}
+  .lg svg{display:block;}
+  .chipO{width:16px;height:16px;border-radius:50%;background:var(--navy);}
+  .chipC{width:16px;height:16px;border-radius:50%;background:var(--paper);border:2px solid var(--navy);}
+  .chipQ{width:16px;height:16px;border-radius:50%;background:var(--gold);border:1px solid var(--gold-deep);}
+
+  h2.group{font-size:15px; margin:26px 4px 2px; padding-bottom:6px; border-bottom:2px solid var(--line);}
+  .grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:16px; margin-top:14px;}
+  .card{background:var(--paper); border:1px solid var(--line); border-radius:14px; overflow:hidden;
+    box-shadow:0 10px 28px rgba(17,24,39,.08); display:flex; flex-direction:column;}
+  .card .cap{display:flex; align-items:center; gap:9px; padding:11px 13px 9px;}
+  .card .idx{width:24px;height:24px;border-radius:7px;background:var(--navy);color:#fff;display:grid;place-items:center;
+    font-size:12.5px;font-weight:700;flex:none;}
+  .card .nm{font-weight:700; font-size:14.5px; letter-spacing:-.01em; line-height:1.1;}
+  .card .kind{margin-left:auto;font-size:9.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+    padding:3px 7px;border-radius:5px;color:#fff;white-space:nowrap;}
+  .k-run{background:var(--run-tag);}.k-pass{background:var(--pass-tag);}.k-rpo{background:var(--rpo-tag);}
+  .k-shot{background:var(--shot-tag);}.k-heavy{background:var(--heavy-tag);}.k-gadget{background:var(--gadget-tag);}
+  .card .field-wrap{padding:0 10px;}
+  .card svg.field{width:100%; height:auto; display:block; background:var(--field); border-radius:9px; border:1px solid var(--field-line);}
+  .card .note{padding:9px 13px 13px; font-size:12px; color:var(--muted); line-height:1.4;}
+  .card .note b{color:var(--navy);}
+
+  .formations .card .kind{background:var(--muted);}
+
+  footer{margin-top:34px; text-align:center; color:var(--muted); font-size:12px;}
+  .bar{height:3px;width:100px;margin:0 auto 10px;border-radius:999px;background:linear-gradient(90deg,var(--navy),var(--gold));}
+
+  @media print{
+    @page{margin:9mm;}
+    body{background:#fff; padding:0;}
+    header{box-shadow:none;} .card{box-shadow:none; break-inside:avoid;}
+    .grid{grid-template-columns:repeat(2,1fr);}
+    h2.group{break-after:avoid;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eye">Tinley Bulldogs 13U · PlayScout · PlaybookIQ</div>
+    <h1>Visual Play Diagrams — v2.0</h1>
+    <p>The 15-play core, drawn up. ○ = your players, ✕ = defense. Solid arrows are pass routes, the thick gold arrow is the ball carrier, dashed = motion, and the red defender is your read/point of attack.</p>
+  </header>
+
+  <div class="legend" id="legend">
+    <b>Key</b>
+    <span class="lg"><span class="chipC"></span>Lineman</span>
+    <span class="lg"><span class="chipO"></span>Receiver / Back</span>
+    <span class="lg"><span class="chipQ"></span>QB</span>
+    <span class="lg"><svg width="34" height="12"><line x1="1" y1="6" x2="26" y2="6" stroke="var(--route)" stroke-width="2.4"/><polygon points="26,2 33,6 26,10" fill="var(--route)"/></svg>Route</span>
+    <span class="lg"><svg width="34" height="12"><line x1="1" y1="6" x2="26" y2="6" stroke="var(--run)" stroke-width="3.2"/><polygon points="26,1 33,6 26,11" fill="var(--run)"/></svg>Run / ball</span>
+    <span class="lg"><svg width="34" height="12"><line x1="1" y1="6" x2="26" y2="6" stroke="var(--motion)" stroke-width="2" stroke-dasharray="4 3"/><polygon points="26,2 33,6 26,10" fill="var(--motion)"/></svg>Motion</span>
+    <span class="lg"><svg width="30" height="12"><line x1="1" y1="6" x2="22" y2="6" stroke="var(--route)" stroke-width="2.4"/><line x1="22" y1="1" x2="22" y2="11" stroke="var(--route)" stroke-width="2.4"/></svg>Block</span>
+    <span class="lg"><svg width="18" height="14"><text x="3" y="12" fill="var(--def)" font-size="14" font-weight="700" font-family="sans-serif">✕</text></svg>Read / defender</span>
+  </div>
+
+  <div id="root"></div>
+
+  <footer>
+    <div class="bar"></div>
+    <b style="color:var(--navy);">Tinley Bulldogs 13U · Playbook v2.0</b> — diagrams by PlayScout · PlaybookIQ.<br>
+    Formations &amp; routes are a recommended install derived from your v1.0 calls — confirm spacing &amp; terminology with your staff.
+  </footer>
+</div>
+
+<script>
+// ---- field constants (SVG units; downfield = up = smaller y) ----
+const W=260, H=178, LOS=118;
+const OL = {LT:[96,124],LG:[113,124],C:[130,124],RG:[147,124],RT:[164,124]};
+
+// base skill alignments per formation
+const FORMS = {
+  trips: {QB:[130,150],RB:[112,150], r3:[247,120], r4:[213,122], r6:[187,124], r5:[17,120]},
+  tripsL:{QB:[130,150],RB:[148,150], r3:[13,120],  r4:[47,122],  r6:[73,124],  r5:[243,120]},
+  twins: {QB:[130,150],RB:[112,150], r4:[243,120], r3:[208,122], r6:[181,123], r5:[19,120]},
+  beast: {QB:[130,145],RB:[130,163], r6:[181,123], r4:[199,124], r3:[81,123],  r5:[63,124]},
+  doce:  {QB:[130,150],RB:[110,150], r4:[245,120], r3:[210,122], r5:[15,120], r6:[49,122], r8:[130,161]}
+};
+const LABEL = {QB:'QB',RB:'2',r3:'3',r4:'4',r5:'5',r6:'6',r8:'8'};
+
+function el(tag,attrs){const e=document.createElementNS('http://www.w3.org/2000/svg',tag);
+  for(const k in attrs)e.setAttribute(k,attrs[k]); return e;}
+
+function markers(svg){
+  const defs=el('defs',{});
+  const mk=(id,color,scale)=>{const m=el('marker',{id,markerWidth:6*scale,markerHeight:6*scale,refX:4.6,refY:3,orient:'auto',markerUnits:'strokeWidth'});
+    m.appendChild(el('path',{d:'M0,0 L5,3 L0,6 Z',fill:color})); defs.appendChild(m);};
+  mk('aRoute','var(--route)',1); mk('aRun','var(--run)',0.9); mk('aMot','var(--motion)',1); mk('aDef','var(--route)',1);
+  svg.appendChild(defs);
+}
+
+function drawField(svg){
+  for(let y=20;y<=100;y+=20) svg.appendChild(el('line',{x1:6,y1:y,x2:W-6,y2:y,stroke:'var(--field-line)','stroke-width':1}));
+  // hashes on LOS-ish
+  svg.appendChild(el('line',{x1:6,y1:LOS,x2:W-6,y2:LOS,stroke:'var(--los)','stroke-width':1.6,'stroke-dasharray':'2 3',opacity:.9}));
+}
+
+function poly(pts){return pts.map(p=>p.join(',')).join(' ');}
+
+function drawPath(svg,pts,type){
+  const styles={
+    route:{stroke:'var(--route)',w:2.3,dash:null,mk:'aRoute'},
+    run:{stroke:'var(--run)',w:3.2,dash:null,mk:'aRun'},
+    keep:{stroke:'var(--run)',w:2.6,dash:'5 3',mk:'aRun'},
+    motion:{stroke:'var(--motion)',w:1.9,dash:'4 3',mk:'aMot'},
+    pull:{stroke:'var(--route)',w:2.3,dash:null,mk:'aRoute'},
+    throw:{stroke:'var(--route)',w:1.4,dash:'2 3',mk:'aRoute'},
+    fake:{stroke:'var(--motion)',w:2,dash:'3 3',mk:'aMot'},
+    block:{stroke:'var(--route)',w:2.3,dash:null,mk:null}
+  };
+  const s=styles[type]||styles.route;
+  const pl=el('polyline',{points:poly(pts),fill:'none',stroke:s.stroke,'stroke-width':s.w,'stroke-linejoin':'round','stroke-linecap':'round'});
+  if(s.dash)pl.setAttribute('stroke-dasharray',s.dash);
+  if(s.mk)pl.setAttribute('marker-end','url(#'+s.mk+')');
+  svg.appendChild(pl);
+  if(type==='block'){ // perpendicular tick at end
+    const a=pts[pts.length-2],b=pts[pts.length-1];
+    const dx=b[0]-a[0],dy=b[1]-a[1],L=Math.hypot(dx,dy)||1; const nx=-dy/L*4,ny=dx/L*4;
+    svg.appendChild(el('line',{x1:b[0]-nx,y1:b[1]-ny,x2:b[0]+nx,y2:b[1]+ny,stroke:s.stroke,'stroke-width':s.w,'stroke-linecap':'round'}));
+  }
+}
+
+function player(svg,x,y,kind,label){
+  const r=6.6;
+  if(kind==='def'){
+    const t=el('text',{x,y:y+4.6,'text-anchor':'middle','font-size':13,'font-weight':700,fill:'var(--def)','font-family':'sans-serif'});
+    t.textContent='✕'; svg.appendChild(t);
+    if(label){const l=el('text',{x,y:y-8,'text-anchor':'middle','font-size':6.5,'font-weight':700,fill:'var(--def)'});l.textContent=label;svg.appendChild(l);}
+    return;
+  }
+  let fill='var(--navy)',stroke='none',tcol='#fff';
+  if(kind==='ol'){fill='var(--paper)';stroke='var(--navy)';tcol='var(--navy)';}
+  if(kind==='qb'){fill='var(--gold)';stroke='var(--gold-deep)';tcol='#141922';}
+  svg.appendChild(el('circle',{cx:x,cy:y,r,fill,stroke,'stroke-width':stroke==='none'?0:1.6}));
+  const t=el('text',{x,y:y+2.6,'text-anchor':'middle','font-size':6.6,'font-weight':700,fill:tcol,'font-family':'inherit'});
+  t.textContent=label; svg.appendChild(t);
+}
+
+function renderPlay(p){
+  const svg=el('svg',{viewBox:`0 0 ${W} ${H}`,class:'field'});
+  markers(svg); drawField(svg);
+  const F=FORMS[p.form];
+  // paths first (under players)
+  (p.paths||[]).forEach(pt=>{
+    const start = pt.who ? (F[pt.who]||OL[pt.who]) : pt.pts[0];
+    const full = pt.who ? [start, ...pt.pts] : pt.pts;
+    drawPath(svg,full,pt.type);
+  });
+  // defenders
+  (p.def||[]).forEach(d=>player(svg,d[0],d[1],'def',d[2]||''));
+  // OL
+  for(const k in OL) player(svg,OL[k][0],OL[k][1],'ol','');
+  // skill
+  for(const k in F) player(svg,F[k][0],F[k][1], k==='QB'?'qb':'skill', LABEL[k]);
+  return svg;
+}
+
+// ------- PLAY DATA -------
+const RUN='k-run',PASS='k-pass',RPO='k-rpo',SHOT='k-shot',HEAVY='k-heavy',GAD='k-gadget';
+
+const PLAYS=[
+ {g:'Run Game', items:[
+  {no:1,name:'22 Trap',kind:RUN,form:'trips',
+   note:'<b>Base run.</b> LG pulls & traps the first man past center; RB aims A-gap and cuts off the kickout.',
+   def:[[130,110],[147,110],[158,112,'DE']],
+   paths:[
+     {who:'RB',type:'run',pts:[[124,132],[140,120],[150,112],[152,58]]},
+     {who:'LG',type:'pull',pts:[[126,134],[144,126],[156,116]]},
+     {who:'QB',type:'fake',pts:[[116,150],[104,148]]}
+   ]},
+  {no:2,name:'21 / Read',kind:RUN,form:'trips',
+   note:'<b>Inside-zone read.</b> QB reads the backside DE (red): crashes → keep; sits → give inside.',
+   def:[[113,110],[130,110],[166,112,'DE→READ']],
+   paths:[
+     {who:'RB',type:'run',pts:[[120,130],[108,116],[96,56]]},
+     {who:'QB',type:'keep',pts:[[150,142],[176,120],[188,66]]}
+   ]},
+  {no:3,name:'22 Crunch',kind:RUN,form:'trips',
+   note:'<b>Power.</b> Playside down-blocks, edge kicks out, LG pulls to lead through the hole for the Mike.',
+   def:[[147,110],[176,112,'EMOL'],[150,98,'M']],
+   paths:[
+     {who:'RB',type:'run',pts:[[128,132],[148,118],[152,62]]},
+     {who:'LG',type:'pull',pts:[[130,134],[150,122],[150,100]]},
+     {who:'RT',type:'block',pts:[[176,118]]}
+   ]},
+  {no:4,name:'26 Tornado',kind:RUN,form:'trips',
+   note:'<b>Pin-and-pull perimeter.</b> Jet motion influences; pullers lead the RB to the right edge.',
+   def:[[164,112],[130,110]],
+   paths:[
+     {who:'r6',type:'motion',pts:[[150,148],[122,150]]},
+     {who:'RB',type:'run',pts:[[140,136],[182,122],[216,92]]},
+     {who:'LG',type:'pull',pts:[[132,136],[172,124],[198,108]]}
+   ]},
+  {no:5,name:'Jet Sweep',kind:RUN,form:'trips',
+   note:'<b>Tempo perimeter.</b> Backside man jets across, takes the mesh and bends off the reach blocks.',
+   def:[[130,110],[164,112]],
+   paths:[
+     {who:'r5',type:'motion',pts:[[70,140],[118,148]]},
+     {who:'RB',type:'run',pts:[[118,148],[160,138],[206,120],[236,98]]},
+     {who:'QB',type:'fake',pts:[[150,150],[172,142]]}
+   ]},
+  {no:6,name:'QB Draw',kind:RUN,form:'trips',
+   note:'<b>Change-up vs the rush.</b> Sell the drop, let the ends up-field, C climbs to the Mike; draw up the gut.',
+   def:[[113,110],[147,110],[130,98,'M']],
+   paths:[
+     {who:'QB',type:'fake',pts:[[130,158]]},
+     {who:'QB',type:'run',pts:[[130,158],[130,120],[132,58]]}
+   ]}
+ ]},
+ {g:'RPO / Constraints', items:[
+  {no:7,name:'Fake 21 · 18 Bubble',kind:RPO,form:'trips',
+   note:'<b>Zone-bubble RPO.</b> Ride the zone fake; overhang sits inside → throw the bubble; overhang widens → give.',
+   def:[[130,110],[176,108,'OLB→READ']],
+   paths:[
+     {who:'RB',type:'fake',pts:[[110,130],[98,118]]},
+     {who:'r4',type:'route',pts:[[202,130],[214,126],[238,116]]},
+     {who:'r6',type:'route',pts:[[187,60]]},
+     {who:'QB',type:'throw',pts:[[236,118]]}
+   ]},
+  {no:8,name:'Flip 28 · 6 RPO',kind:RPO,form:'trips',
+   note:'<b>Edge-run RPO (shown unflipped).</b> Run action to the edge; read the flat defender, throw #6 quick if he triggers.',
+   def:[[164,112],[178,108,'OLB→READ']],
+   paths:[
+     {who:'RB',type:'run',pts:[[150,138],[186,124],[206,110]]},
+     {who:'r6',type:'route',pts:[[177,116],[163,104]]},
+     {who:'QB',type:'throw',pts:[[164,105]]}
+   ]}
+ ]},
+ {g:'Quick Game', items:[
+  {no:9,name:'34 Arrow Hitch',kind:PASS,form:'trips',
+   note:'<b>High-low the flat.</b> #3 arrow to the flat, #4 hitch behind it, #6 clears vertical, #5 backside hot.',
+   paths:[
+     {who:'r3',type:'route',pts:[[251,114],[236,120]]},
+     {who:'r4',type:'route',pts:[[213,106],[213,110]]},
+     {who:'r6',type:'route',pts:[[187,58]]},
+     {who:'r5',type:'route',pts:[[17,104],[17,108]]}
+   ]},
+  {no:10,name:'Twins Corner Hitch',kind:PASS,form:'twins',
+   note:'<b>Corner/hitch high-low.</b> Hitch vs off coverage, corner vs press or a squatting flat defender.',
+   paths:[
+     {who:'r4',type:'route',pts:[[243,96],[258,74]]},
+     {who:'r3',type:'route',pts:[[208,104],[208,108]]},
+     {who:'r5',type:'route',pts:[[19,104],[19,108]]}
+   ]}
+ ]},
+ {g:'Shots', items:[
+  {no:11,name:'Verticals (4 verts)',kind:SHOT,form:'trips',
+   note:'<b>MOF read.</b> Outside go, slots on the seams. 1-high → hit a seam in the void; 2-high → best outside go.',
+   def:[[130,42,'FS']],
+   paths:[
+     {who:'r3',type:'route',pts:[[247,30]]},
+     {who:'r4',type:'route',pts:[[210,34]]},
+     {who:'r6',type:'route',pts:[[178,32]]},
+     {who:'r5',type:'route',pts:[[17,30]]}
+   ]},
+  {no:12,name:'Flip 5 Fade',kind:SHOT,form:'trips',
+   note:'<b>One-shot iso.</b> Press → back-shoulder fade to #5; off coverage → nothing there, check it down to the RB.',
+   def:[[24,104,'CB']],
+   paths:[
+     {who:'r5',type:'route',pts:[[13,34]]},
+     {who:'RB',type:'route',pts:[[96,138],[78,132]]}
+   ]}
+ ]},
+ {g:'Heavy', items:[
+  {no:13,name:'Beast 26',kind:HEAVY,form:'beast',
+   note:'<b>Short yardage / goal line.</b> Double-team the point defender (two ○ on one ✕), RB one cut downhill.',
+   def:[[176,112,''],[147,110]],
+   paths:[
+     {who:'RB',type:'run',pts:[[142,140],[160,122],[166,66]]},
+     {who:'RT',type:'block',pts:[[173,116]]},
+     {who:'r4',type:'block',pts:[[180,116]]}
+   ]}
+ ]},
+ {g:'Gadget (one per game)', items:[
+  {no:14,name:'Doce Cross Return',kind:GAD,form:'doce',
+   note:'<b>Double pass.</b> ① QB flips a clear <u>backward</u> pass to #8, ② #8 resets and throws the deep cross. Plus territory only.',
+   paths:[
+     {who:'QB',type:'throw',pts:[[110,152]]},
+     {who:'r4',type:'route',pts:[[220,72],[182,50]]},
+     {who:'r8',type:'throw',pts:[[178,52]]}
+   ]},
+  {no:15,name:'Doce Jet Wheel Hitch Post',kind:GAD,form:'doce',
+   note:'<b>Shot off jet.</b> Jet holds the flat, #4 wheels up the sideline, #3 hitch underneath, #5 post is the single-high alert.',
+   def:[[130,42,'FS']],
+   paths:[
+     {who:'r6',type:'motion',pts:[[120,150],[150,150]]},
+     {who:'r4',type:'route',pts:[[248,128],[250,88],[251,50]]},
+     {who:'r3',type:'route',pts:[[210,104],[210,108]]},
+     {who:'r5',type:'route',pts:[[15,72],[58,40]]}
+   ]}
+ ]}
+];
+
+// ---- render ----
+const root=document.getElementById('root');
+PLAYS.forEach(group=>{
+  const h=document.createElement('h2'); h.className='group'; h.textContent=group.g; root.appendChild(h);
+  const grid=document.createElement('div'); grid.className='grid'; root.appendChild(grid);
+  group.items.forEach(p=>{
+    const card=document.createElement('div'); card.className='card';
+    card.innerHTML=`<div class="cap"><span class="idx">${p.no}</span><span class="nm">${p.name}</span>
+      <span class="kind ${p.kind}">${({['k-run']:'Run',['k-pass']:'Quick',['k-rpo']:'RPO',['k-shot']:'Shot',['k-heavy']:'Heavy',['k-gadget']:'Gadget'})[p.kind]}</span></div>
+      <div class="field-wrap"></div><div class="note">${p.note}</div>`;
+    card.querySelector('.field-wrap').appendChild(renderPlay(p));
+    grid.appendChild(card);
+  });
+});
+</script>
+</body>
+</html>
