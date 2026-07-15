@@ -42,6 +42,14 @@ const DIMENSIONS: Array<[keyof TeamIQResult['position_scores'], string]> = [
 ];
 
 type JerseyChoice = 'home' | 'away' | 'unknown';
+type SideChoice = 'offense' | 'defense' | 'both' | 'unknown';
+
+const SIDE_OPTIONS: Array<[SideChoice, string]> = [
+  ['offense', 'Offense'],
+  ['defense', 'Defense'],
+  ['both', 'Both'],
+  ['unknown', 'Not sure'],
+];
 
 export default function TeamIQClient({
   teamId,
@@ -58,6 +66,7 @@ export default function TeamIQClient({
   const [jerseyChoice, setJerseyChoice] = useState<JerseyChoice>(
     homeJerseyColor ? 'home' : awayJerseyColor ? 'away' : 'unknown'
   );
+  const [sideChoice, setSideChoice] = useState<SideChoice>('unknown');
   const [coachNote, setCoachNote] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<TeamIQResult | null>(null);
@@ -87,6 +96,7 @@ export default function TeamIQClient({
             offensive_style: offensiveStyle,
             defensive_style: defensiveStyle,
             jersey_color: resolvedJerseyColor,
+            side_of_ball: sideChoice,
           },
         }),
       });
@@ -170,6 +180,31 @@ export default function TeamIQClient({
                 No jersey/helmet color is set for this team, so the AI can&apos;t reliably tell your players apart from the opponent. Mention it below (e.g. &quot;we wear white jerseys, navy helmets&quot;) until a team-settings page exists to save it permanently.
               </p>
             )}
+
+            <div>
+              <label className="block text-xs font-medium text-[var(--brand-ink)] mb-1.5">
+                {teamName} Is On (This Clip)
+              </label>
+              <div className="grid grid-cols-4 gap-2">
+                {SIDE_OPTIONS.map(([choice, label]) => (
+                  <button
+                    key={choice}
+                    type="button"
+                    onClick={() => setSideChoice(choice)}
+                    className={`px-2 py-2 rounded-lg border text-xs font-semibold transition-colors ${
+                      sideChoice === choice
+                        ? 'bg-[var(--brand-navy)] text-white border-[var(--brand-navy)]'
+                        : 'bg-white text-[var(--brand-muted)] border-[var(--brand-border)] hover:border-[var(--brand-navy)]'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-[var(--brand-muted)] mt-1.5">
+                Which side of the ball to grade, so the AI analyzes {teamName} and not the opponent.
+              </p>
+            </div>
 
             <div>
               <label className="block text-xs font-medium text-[var(--brand-ink)] mb-1.5">

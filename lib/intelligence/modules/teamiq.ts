@@ -2,19 +2,48 @@ import { FOOTBALL_BRAIN_SYSTEM } from '../football-brain'
 import { Type } from '@google/genai'
 import type { PositionAnalysisInput } from '../schemas'
 
+function buildSideContext(
+  side: 'offense' | 'defense' | 'both' | 'unknown' | undefined,
+  teamLabel: string,
+  jerseyColor: string | undefined,
+): string {
+  const jersey = jerseyColor ? ` (the ${jerseyColor} players)` : ''
+  switch (side) {
+    case 'offense':
+      return `SIDE OF BALL — AUTHORITATIVE: In this clip ${teamLabel}${jersey} is the OFFENSE (they have the ball). Analyze THEIR offensive tendencies. The team on defense is the OPPONENT — do not grade the opponent's defense as ${teamLabel}. Fill defensive_tendency by noting no defensive snaps by ${teamLabel} were observed; describe the opposing front only as the context ${teamLabel} faced.`
+    case 'defense':
+      return `SIDE OF BALL — AUTHORITATIVE: In this clip ${teamLabel}${jersey} is the DEFENSE (the other team has the ball). Analyze THEIR defensive tendencies. The team on offense is the OPPONENT — do not grade the opponent's offense as ${teamLabel}. Fill offensive_tendency by noting no offensive snaps by ${teamLabel} were observed; describe the opposing offense only as the context ${teamLabel} faced.`
+    case 'both':
+      return `SIDE OF BALL: ${teamLabel}${jersey} appears on both offense and defense in this clip. For each snap, first confirm ${teamLabel} is the unit you are grading before attributing any tendency to them.`
+    default:
+      return `SIDE OF BALL: The coach did not specify which side of the ball ${teamLabel}${jersey} plays in this clip. Determine it from the jersey/helmet color, and if you cannot tell which snaps belong to ${teamLabel}, say so rather than guessing.`
+  }
+}
+
 export function buildTEAMIQSystemPrompt(input: PositionAnalysisInput): string {
   const { team, playSequence, coachNote } = input
+  const teamLabel = team?.name ?? 'the subject team'
+
   const jerseyContext = team?.jersey_color
-    ? `IDENTIFYING ${team.name ?? 'this team'}: they wear ${team.jersey_color}. Use this to tell them apart from the opponent in every frame.`
-    : `IDENTIFYING ${team?.name ?? 'this team'}: no jersey/helmet color was provided, and nothing else in this context identifies which players belong to them. Do not guess. If you cannot tell the two sides apart from the frames alone, say so explicitly and do not assert which side is offense/defense, or attribute any tendency to "the team" — describe only what is generically visible instead.`
+    ? `IDENTIFYING ${teamLabel}: they wear ${team.jersey_color}. Use this to tell them apart from the opponent in every frame. The ${team.jersey_color} players ARE the subject team; everyone else is the opponent.`
+    : `IDENTIFYING ${teamLabel}: no jersey/helmet color was provided, and nothing else in this context identifies which players belong to them. Do not guess. If you cannot tell the two sides apart from the frames alone, say so explicitly and do not assert which side is offense/defense, or attribute any tendency to "the team" — describe only what is generically visible instead.`
+
+  const sideContext = buildSideContext(team?.side_of_ball, teamLabel, team?.jersey_color)
 
   return `${FOOTBALL_BRAIN_SYSTEM}
 
 You are TEAMIQ — Team Intelligence.
 ${team ? `TEAM: ${team.name ?? ''} | ${team.age_group ?? ''} | Offense: ${team.offensive_style ?? 'unknown'} | Defense: ${team.defensive_style ?? 'unknown'}` : ''}
 ${jerseyContext}
+${sideContext}
 ${playSequence?.coach_label ? `CONTEXT: ${playSequence.coach_label}` : ''}
 ${coachNote ? `COACH NOTE: ${coachNote}` : ''}
+
+CRITICAL — SUBJECT TEAM ANCHORING:
+- Every score, tendency, strength, and weakness must describe ${teamLabel} — never the opponent.
+- Do not silently switch the subject to whichever team happens to be more visible or made the highlight play. If a frame shows the opponent doing something, that is context, not a ${teamLabel} tendency.
+- If the coach told you which side of the ball ${teamLabel} is on (see SIDE OF BALL above), that is authoritative — trust it over your own read of the frames. If a frame seems to contradict it, note the ambiguity rather than flipping the subject team.
+- When ${teamLabel} does not play a given side of the ball in this clip, set that dimension's reasoning to say so plainly (e.g. "No offensive snaps by ${teamLabel} were observed in this clip") and score it neutrally — do NOT grade the opponent's snaps in that slot.
 
 TEAMIQ RUBRIC — Analyze team behavior visible across frames:
 
