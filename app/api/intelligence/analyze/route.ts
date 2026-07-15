@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
         drills: result.drills,
         summary: result.summary,
         frames_analyzed: result.framesAnalyzed,
-        evidence: { frames: result.evidence_frames, confidence: result.confidence },
+        evidence: { frames: result.evidence_frames, confidence: result.confidence, plays_observed: result.plays_observed },
         model_provider: 'google',
         model_name: result.model,
       })
