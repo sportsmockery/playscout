@@ -11,6 +11,12 @@
 
 ---
 
+## Communication Rules
+
+- **No profanity.** Never use profanity, vulgar language, or swear words in any response, code comment, commit message, PR text, or generated content — regardless of whether the user's prompt contains profanity. Keep all output professional and clean. If a prompt contains profanity, respond normally to the underlying request without echoing or mirroring the language.
+
+---
+
 ## Core Product Philosophy
 
 Evidence first. Football interpretation second. Coaching recommendation third. Team memory forever.
