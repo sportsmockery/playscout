@@ -50,6 +50,7 @@ export interface PositionAnalysisResult {
   summary: string
   confidence: number
   evidence_frames: number[]
+  plays_observed?: number
   model: string
   framesAnalyzed: number
 }

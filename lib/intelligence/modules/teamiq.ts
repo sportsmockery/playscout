@@ -59,6 +59,10 @@ For each tendency you identify:
 - State the estimated sample size visible in these frames
 - Example: "Runs right on 71% of observed snap counts. Confidence: 0.78. Sample: 14 plays."
 
+SAMPLE SIZE — report plays_observed = the number of DISTINCT snaps/plays visible across these frames (a single continuous play from snap to whistle counts as 1). This drives how the coach reads the scores:
+- If plays_observed is 1, the scores describe a single play, NOT a season tendency. Set confidence accordingly low (roughly ≤ 0.4), and make each reasoning string say the read is based on one play.
+- Never inflate plays_observed to make the sample look bigger than the frames support.
+
 Never invent tendencies not visible in the frames.
 Return ONLY the JSON schema. No preamble.`
 }
@@ -90,7 +94,8 @@ export const TEAMIQ_RESPONSE_SCHEMA = {
     drills: { type: Type.ARRAY, items: { type: Type.STRING } },
     summary: { type: Type.STRING },
     confidence: { type: Type.NUMBER },
+    plays_observed: { type: Type.INTEGER },
     evidence_frames: { type: Type.ARRAY, items: { type: Type.INTEGER } },
   },
-  required: ['overall_score', 'position_scores', 'reasoning', 'strengths', 'weaknesses', 'drills', 'summary', 'confidence', 'evidence_frames'],
+  required: ['overall_score', 'position_scores', 'reasoning', 'strengths', 'weaknesses', 'drills', 'summary', 'confidence', 'plays_observed', 'evidence_frames'],
 }

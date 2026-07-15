@@ -33,6 +33,7 @@ interface TeamIQResult {
   drills: string[];
   summary: string;
   confidence: number;
+  plays_observed?: number;
 }
 
 const DIMENSIONS: Array<[keyof TeamIQResult['position_scores'], string]> = [
@@ -306,6 +307,14 @@ export default function TeamIQClient({
                 <div>
                   <h2 className="text-xl font-bold text-[var(--brand-navy)]">Team Intelligence Score</h2>
                   <p className="text-sm text-[var(--brand-muted)] mt-1">{teamName}</p>
+                  <div className="flex flex-wrap items-center gap-2 mt-2">
+                    <span className="inline-flex items-center rounded-full bg-[var(--brand-bg)] border border-[var(--brand-border)] px-2 py-0.5 text-xs font-medium text-[var(--brand-ink)]">
+                      Sample: {result.plays_observed ?? '—'} {result.plays_observed === 1 ? 'play' : 'plays'}
+                    </span>
+                    <span className="inline-flex items-center rounded-full bg-[var(--brand-bg)] border border-[var(--brand-border)] px-2 py-0.5 text-xs font-medium text-[var(--brand-ink)]">
+                      Confidence: {Math.round((result.confidence ?? 0) * 100)}%
+                    </span>
+                  </div>
                   <div className="grid grid-cols-1 gap-1 mt-3">
                     {DIMENSIONS.map(([key, label]) => (
                       <div key={key} className="text-xs">
@@ -316,6 +325,17 @@ export default function TeamIQClient({
                   </div>
                 </div>
               </div>
+
+              {((result.plays_observed ?? 0) <= 1 || (result.confidence ?? 1) < 0.5) && (
+                <div className="mt-4 flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 p-3">
+                  <AlertCircle size={16} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-amber-800 leading-relaxed">
+                    {result.plays_observed === 1
+                      ? 'This score reflects a single play, not a season tendency. Treat it as a one-snap read — run more film for a reliable team grade.'
+                      : 'Low-confidence read from limited film. Scores may not reflect true tendencies yet — analyze more plays to firm them up.'}
+                  </p>
+                </div>
+              )}
             </div>
 
             {result.summary && (
