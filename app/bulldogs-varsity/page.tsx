@@ -42,11 +42,40 @@ interface Play {
   kind: string
   form: string
   note: string
-  def?: [number, number, string?][]
+  read?: { id: string; label: string } // which of the 11 defenders is the read / point of attack
   paths?: PlayPath[]
 }
 
 const poly = (pts: Pt[]) => pts.map((p) => p.join(',')).join(' ')
+
+/** Full 11-man base defense (4-3 look), corners aligned to the widest receivers. */
+function buildDefense(form: string, read?: { id: string; label: string }) {
+  const F = FORMS[form]
+  const rx = Object.keys(F)
+    .filter((k) => k[0] === 'r')
+    .map((k) => F[k][0])
+  const minx = Math.max(12, Math.min(...rx))
+  const maxx = Math.min(248, Math.max(...rx))
+  const base: [string, number, number][] = [
+    ['DE_L', 90, 110],
+    ['DT_L', 119, 110],
+    ['DT_R', 141, 110],
+    ['DE_R', 172, 110],
+    ['LB_W', 106, 99],
+    ['LB_M', 130, 99],
+    ['LB_S', 154, 99],
+    ['CB_L', minx, 106],
+    ['CB_R', maxx, 106],
+    ['S_L', 102, 62],
+    ['S_R', 158, 62],
+  ]
+  return base.map(([id, x, y]) => ({
+    x,
+    y,
+    hl: !!read && read.id === id,
+    label: read && read.id === id ? read.label : '',
+  }))
+}
 
 function markersDefs() {
   const mk = (id: string, color: string, scale: number) =>
@@ -90,12 +119,14 @@ function pathStr(pts: Pt[], type: PathT) {
   return out
 }
 
+function defenderStr(x: number, y: number, label: string, hl: boolean) {
+  const col = hl ? 'var(--bv-def)' : 'var(--bv-dline)'
+  let s = `<text x="${x}" y="${y + 4.6}" text-anchor="middle" font-size="${hl ? 13.5 : 12}" font-weight="700" fill="${col}" font-family="sans-serif">✕</text>`
+  if (label) s += `<text x="${x}" y="${y - 7.5}" text-anchor="middle" font-size="6.5" font-weight="700" fill="${col}">${label}</text>`
+  return s
+}
+
 function playerStr(x: number, y: number, kind: string, label: string) {
-  if (kind === 'def') {
-    let s = `<text x="${x}" y="${y + 4.6}" text-anchor="middle" font-size="13" font-weight="700" fill="var(--bv-def)" font-family="sans-serif">✕</text>`
-    if (label) s += `<text x="${x}" y="${y - 8}" text-anchor="middle" font-size="6.5" font-weight="700" fill="var(--bv-def)">${label}</text>`
-    return s
-  }
   let fill = 'var(--bv-navy)',
     stroke = 'none',
     tcol = '#fff'
@@ -118,12 +149,13 @@ function playerStr(x: number, y: number, kind: string, label: string) {
 function renderPlaySVG(p: Play) {
   const F = FORMS[p.form]
   let inner = markersDefs() + fieldLines()
+  // defense (under routes so the ball paths read on top)
+  for (const d of buildDefense(p.form, p.read)) inner += defenderStr(d.x, d.y, d.label, d.hl)
   for (const pt of p.paths || []) {
     const start = pt.who ? F[pt.who] || OL[pt.who] : pt.pts[0]
     const full = pt.who ? [start, ...pt.pts] : pt.pts
     inner += pathStr(full, pt.type)
   }
-  for (const d of p.def || []) inner += playerStr(d[0], d[1], 'def', d[2] || '')
   for (const k in OL) inner += playerStr(OL[k][0], OL[k][1], 'ol', '')
   for (const k in F) inner += playerStr(F[k][0], F[k][1], k === 'QB' ? 'qb' : 'skill', LABEL[k])
   return `<svg viewBox="0 0 ${W} ${H}" class="bv-field" role="img" aria-label="${p.name} diagram">${inner}</svg>`
@@ -142,46 +174,46 @@ const PLAYS: { g: string; items: Play[] }[] = [
   {
     g: 'Run Game',
     items: [
-      { no: 1, name: '22 Trap', kind: 'k-run', form: 'trips', note: '<b>Base run.</b> LG pulls & traps the first man past center; RB aims A-gap and cuts off the kickout.', def: [[130, 110, ''], [147, 110, ''], [158, 112, 'DE']], paths: [{ who: 'RB', type: 'run', pts: [[124, 132], [140, 120], [150, 112], [152, 58]] }, { who: 'LG', type: 'pull', pts: [[126, 134], [144, 126], [156, 116]] }, { who: 'QB', type: 'fake', pts: [[116, 150], [104, 148]] }] },
-      { no: 2, name: '21 / Read', kind: 'k-run', form: 'trips', note: '<b>Inside-zone read.</b> QB reads the backside DE (red): crashes → keep; sits → give inside.', def: [[113, 110, ''], [130, 110, ''], [166, 112, 'DE→READ']], paths: [{ who: 'RB', type: 'run', pts: [[120, 130], [108, 116], [96, 56]] }, { who: 'QB', type: 'keep', pts: [[150, 142], [176, 120], [188, 66]] }] },
-      { no: 3, name: '22 Crunch', kind: 'k-run', form: 'trips', note: '<b>Power.</b> Playside down-blocks, edge kicks out, LG pulls to lead through the hole for the Mike.', def: [[147, 110, ''], [176, 112, 'EMOL'], [150, 98, 'M']], paths: [{ who: 'RB', type: 'run', pts: [[128, 132], [148, 118], [152, 62]] }, { who: 'LG', type: 'pull', pts: [[130, 134], [150, 122], [150, 100]] }, { who: 'RT', type: 'block', pts: [[176, 118]] }] },
-      { no: 4, name: '26 Tornado', kind: 'k-run', form: 'trips', note: '<b>Pin-and-pull perimeter.</b> Jet motion influences; pullers lead the RB to the right edge.', def: [[164, 112, ''], [130, 110, '']], paths: [{ who: 'r6', type: 'motion', pts: [[150, 148], [122, 150]] }, { who: 'RB', type: 'run', pts: [[140, 136], [182, 122], [216, 92]] }, { who: 'LG', type: 'pull', pts: [[132, 136], [172, 124], [198, 108]] }] },
-      { no: 5, name: 'Jet Sweep', kind: 'k-run', form: 'trips', note: '<b>Tempo perimeter.</b> Backside man jets across, takes the mesh and bends off the reach blocks.', def: [[130, 110, ''], [164, 112, '']], paths: [{ who: 'r5', type: 'motion', pts: [[70, 140], [118, 148]] }, { who: 'RB', type: 'run', pts: [[118, 148], [160, 138], [206, 120], [236, 98]] }, { who: 'QB', type: 'fake', pts: [[150, 150], [172, 142]] }] },
-      { no: 6, name: 'QB Draw', kind: 'k-run', form: 'trips', note: '<b>Change-up vs the rush.</b> Sell the drop, let the ends up-field, C climbs to the Mike; draw up the gut.', def: [[113, 110, ''], [147, 110, ''], [130, 98, 'M']], paths: [{ who: 'QB', type: 'fake', pts: [[130, 158]] }, { who: 'QB', type: 'run', pts: [[130, 158], [130, 120], [132, 58]] }] },
+      { no: 1, name: '22 Trap', kind: 'k-run', form: 'trips', note: '<b>Base run.</b> LG pulls & traps the first man past center; RB aims A-gap and cuts off the kickout.', read: { id: 'DE_R', label: 'TRAP' }, paths: [{ who: 'RB', type: 'run', pts: [[124, 132], [140, 120], [150, 112], [152, 58]] }, { who: 'LG', type: 'pull', pts: [[126, 134], [144, 126], [166, 114]] }, { who: 'QB', type: 'fake', pts: [[116, 150], [104, 148]] }] },
+      { no: 2, name: '21 / Read', kind: 'k-run', form: 'trips', note: '<b>Inside-zone read.</b> QB reads the backside DE (red): crashes → keep; sits → give inside.', read: { id: 'DE_R', label: 'READ' }, paths: [{ who: 'RB', type: 'run', pts: [[120, 130], [108, 116], [96, 56]] }, { who: 'QB', type: 'keep', pts: [[150, 142], [178, 118], [190, 66]] }] },
+      { no: 3, name: '22 Crunch', kind: 'k-run', form: 'trips', note: '<b>Power.</b> Playside down-blocks, edge kicks out, LG pulls to lead through the hole for the Mike.', read: { id: 'DE_R', label: 'EMOL' }, paths: [{ who: 'RB', type: 'run', pts: [[128, 132], [148, 118], [152, 62]] }, { who: 'LG', type: 'pull', pts: [[130, 134], [150, 122], [150, 104]] }, { who: 'RT', type: 'block', pts: [[172, 114]] }] },
+      { no: 4, name: '26 Tornado', kind: 'k-run', form: 'trips', note: '<b>Pin-and-pull perimeter.</b> Jet motion influences; pullers lead the RB to the right edge.', read: { id: 'DE_R', label: 'PIN' }, paths: [{ who: 'r6', type: 'motion', pts: [[150, 148], [122, 150]] }, { who: 'RB', type: 'run', pts: [[140, 136], [182, 120], [216, 92]] }, { who: 'LG', type: 'pull', pts: [[132, 136], [172, 122], [198, 106]] }] },
+      { no: 5, name: 'Jet Sweep', kind: 'k-run', form: 'trips', note: '<b>Tempo perimeter.</b> Backside man jets across, takes the mesh and bends off the reach blocks.', paths: [{ who: 'r5', type: 'motion', pts: [[70, 140], [118, 148]] }, { who: 'RB', type: 'run', pts: [[118, 148], [160, 136], [206, 118], [236, 96]] }, { who: 'QB', type: 'fake', pts: [[150, 150], [172, 142]] }] },
+      { no: 6, name: 'QB Draw', kind: 'k-run', form: 'trips', note: '<b>Change-up vs the rush.</b> Sell the drop, let the ends up-field, C climbs to the Mike; draw up the gut.', read: { id: 'LB_M', label: 'M' }, paths: [{ who: 'QB', type: 'fake', pts: [[130, 158]] }, { who: 'QB', type: 'run', pts: [[130, 158], [130, 118], [132, 56]] }] },
     ],
   },
   {
     g: 'RPO / Constraints',
     items: [
-      { no: 7, name: 'Fake 21 · 18 Bubble', kind: 'k-rpo', form: 'trips', note: '<b>Zone-bubble RPO.</b> Ride the zone fake; overhang sits inside → throw the bubble; overhang widens → give.', def: [[130, 110, ''], [176, 108, 'OLB→READ']], paths: [{ who: 'RB', type: 'fake', pts: [[110, 130], [98, 118]] }, { who: 'r4', type: 'route', pts: [[202, 130], [214, 126], [238, 116]] }, { who: 'r6', type: 'route', pts: [[187, 60]] }, { who: 'QB', type: 'throw', pts: [[236, 118]] }] },
-      { no: 8, name: 'Flip 28 · 6 RPO', kind: 'k-rpo', form: 'trips', note: '<b>Edge-run RPO (shown unflipped).</b> Run action to the edge; read the flat defender, throw #6 quick if he triggers.', def: [[164, 112, ''], [178, 108, 'OLB→READ']], paths: [{ who: 'RB', type: 'run', pts: [[150, 138], [186, 124], [206, 110]] }, { who: 'r6', type: 'route', pts: [[177, 116], [163, 104]] }, { who: 'QB', type: 'throw', pts: [[164, 105]] }] },
+      { no: 7, name: 'Fake 21 · 18 Bubble', kind: 'k-rpo', form: 'trips', note: '<b>Zone-bubble RPO.</b> Ride the zone fake; overhang sits inside → throw the bubble; overhang widens → give.', read: { id: 'LB_S', label: 'READ' }, paths: [{ who: 'RB', type: 'fake', pts: [[110, 130], [98, 118]] }, { who: 'r4', type: 'route', pts: [[202, 130], [214, 126], [238, 114]] }, { who: 'r6', type: 'route', pts: [[187, 58]] }, { who: 'QB', type: 'throw', pts: [[236, 116]] }] },
+      { no: 8, name: 'Flip 28 · 6 RPO', kind: 'k-rpo', form: 'trips', note: '<b>Edge-run RPO (shown unflipped).</b> Run action to the edge; read the flat defender, throw #6 quick if he triggers.', read: { id: 'LB_S', label: 'READ' }, paths: [{ who: 'RB', type: 'run', pts: [[150, 138], [186, 122], [206, 108]] }, { who: 'r6', type: 'route', pts: [[177, 114], [163, 103]] }, { who: 'QB', type: 'throw', pts: [[164, 104]] }] },
     ],
   },
   {
     g: 'Quick Game',
     items: [
-      { no: 9, name: '34 Arrow Hitch', kind: 'k-pass', form: 'trips', note: '<b>High-low the flat.</b> #3 arrow to the flat, #4 hitch behind it, #6 clears vertical, #5 backside hot.', paths: [{ who: 'r3', type: 'route', pts: [[251, 114], [236, 120]] }, { who: 'r4', type: 'route', pts: [[213, 106], [213, 110]] }, { who: 'r6', type: 'route', pts: [[187, 58]] }, { who: 'r5', type: 'route', pts: [[17, 104], [17, 108]] }] },
-      { no: 10, name: 'Twins Corner Hitch', kind: 'k-pass', form: 'twins', note: '<b>Corner/hitch high-low.</b> Hitch vs off coverage, corner vs press or a squatting flat defender.', paths: [{ who: 'r4', type: 'route', pts: [[243, 96], [258, 74]] }, { who: 'r3', type: 'route', pts: [[208, 104], [208, 108]] }, { who: 'r5', type: 'route', pts: [[19, 104], [19, 108]] }] },
+      { no: 9, name: '34 Arrow Hitch', kind: 'k-pass', form: 'trips', note: '<b>High-low the flat.</b> #3 arrow to the flat, #4 hitch behind it, #6 clears vertical, #5 backside hot.', paths: [{ who: 'r3', type: 'route', pts: [[251, 112], [236, 118]] }, { who: 'r4', type: 'route', pts: [[213, 104], [213, 108]] }, { who: 'r6', type: 'route', pts: [[187, 56]] }, { who: 'r5', type: 'route', pts: [[17, 102], [17, 106]] }] },
+      { no: 10, name: 'Twins Corner Hitch', kind: 'k-pass', form: 'twins', note: '<b>Corner/hitch high-low.</b> Hitch vs off coverage, corner vs press or a squatting flat defender.', paths: [{ who: 'r4', type: 'route', pts: [[243, 94], [258, 72]] }, { who: 'r3', type: 'route', pts: [[208, 102], [208, 106]] }, { who: 'r5', type: 'route', pts: [[19, 102], [19, 106]] }] },
     ],
   },
   {
     g: 'Shots',
     items: [
-      { no: 11, name: 'Verticals (4 verts)', kind: 'k-shot', form: 'trips', note: '<b>MOF read.</b> Outside go, slots on the seams. 1-high → hit a seam in the void; 2-high → best outside go.', def: [[130, 42, 'FS']], paths: [{ who: 'r3', type: 'route', pts: [[247, 30]] }, { who: 'r4', type: 'route', pts: [[210, 34]] }, { who: 'r6', type: 'route', pts: [[178, 32]] }, { who: 'r5', type: 'route', pts: [[17, 30]] }] },
-      { no: 12, name: 'Flip 5 Fade', kind: 'k-shot', form: 'trips', note: '<b>One-shot iso.</b> Press → back-shoulder fade to #5; off coverage → nothing there, check it down to the RB.', def: [[24, 104, 'CB']], paths: [{ who: 'r5', type: 'route', pts: [[13, 34]] }, { who: 'RB', type: 'route', pts: [[96, 138], [78, 132]] }] },
+      { no: 11, name: 'Verticals (4 verts)', kind: 'k-shot', form: 'trips', note: '<b>MOF read.</b> Outside go, slots on the seams. 1-high → hit a seam in the void; 2-high → best outside go.', read: { id: 'S_R', label: 'FS' }, paths: [{ who: 'r3', type: 'route', pts: [[247, 28]] }, { who: 'r4', type: 'route', pts: [[210, 32]] }, { who: 'r6', type: 'route', pts: [[178, 30]] }, { who: 'r5', type: 'route', pts: [[17, 28]] }] },
+      { no: 12, name: 'Flip 5 Fade', kind: 'k-shot', form: 'trips', note: '<b>One-shot iso.</b> Press → back-shoulder fade to #5; off coverage → nothing there, check it down to the RB.', read: { id: 'CB_L', label: 'CB' }, paths: [{ who: 'r5', type: 'route', pts: [[13, 32]] }, { who: 'RB', type: 'route', pts: [[96, 138], [78, 132]] }] },
     ],
   },
   {
     g: 'Heavy',
     items: [
-      { no: 13, name: 'Beast 26', kind: 'k-heavy', form: 'beast', note: '<b>Short yardage / goal line.</b> Double-team the point defender (two ○ on one ✕), RB one cut downhill.', def: [[176, 112, ''], [147, 110, '']], paths: [{ who: 'RB', type: 'run', pts: [[142, 140], [160, 122], [166, 66]] }, { who: 'RT', type: 'block', pts: [[173, 116]] }, { who: 'r4', type: 'block', pts: [[180, 116]] }] },
+      { no: 13, name: 'Beast 26', kind: 'k-heavy', form: 'beast', note: '<b>Short yardage / goal line.</b> Double-team the point defender (two ○ on one ✕), RB one cut downhill.', read: { id: 'DE_R', label: '' }, paths: [{ who: 'RB', type: 'run', pts: [[142, 140], [162, 120], [168, 64]] }, { who: 'RT', type: 'block', pts: [[172, 113]] }, { who: 'r4', type: 'block', pts: [[176, 113]] }] },
     ],
   },
   {
     g: 'Gadget (one per game)',
     items: [
-      { no: 14, name: 'Doce Cross Return', kind: 'k-gadget', form: 'doce', note: '<b>Double pass.</b> ① QB flips a clear <u>backward</u> pass to #8, ② #8 resets and throws the deep cross. Plus territory only.', paths: [{ who: 'QB', type: 'throw', pts: [[110, 152]] }, { who: 'r4', type: 'route', pts: [[220, 72], [182, 50]] }, { who: 'r8', type: 'throw', pts: [[178, 52]] }] },
-      { no: 15, name: 'Doce Jet Wheel Hitch Post', kind: 'k-gadget', form: 'doce', note: '<b>Shot off jet.</b> Jet holds the flat, #4 wheels up the sideline, #3 hitch underneath, #5 post is the single-high alert.', def: [[130, 42, 'FS']], paths: [{ who: 'r6', type: 'motion', pts: [[120, 150], [150, 150]] }, { who: 'r4', type: 'route', pts: [[248, 128], [250, 88], [251, 50]] }, { who: 'r3', type: 'route', pts: [[210, 104], [210, 108]] }, { who: 'r5', type: 'route', pts: [[15, 72], [58, 40]] }] },
+      { no: 14, name: 'Doce Cross Return', kind: 'k-gadget', form: 'doce', note: '<b>Double pass.</b> ① QB flips a clear <u>backward</u> pass to #8, ② #8 resets and throws the deep cross. Plus territory only.', paths: [{ who: 'QB', type: 'throw', pts: [[110, 152]] }, { who: 'r4', type: 'route', pts: [[220, 70], [182, 48]] }, { who: 'r8', type: 'throw', pts: [[178, 50]] }] },
+      { no: 15, name: 'Doce Jet Wheel Hitch Post', kind: 'k-gadget', form: 'doce', note: '<b>Shot off jet.</b> Jet holds the flat, #4 wheels up the sideline, #3 hitch underneath, #5 post is the single-high alert.', read: { id: 'S_R', label: 'FS' }, paths: [{ who: 'r6', type: 'motion', pts: [[120, 150], [150, 150]] }, { who: 'r4', type: 'route', pts: [[248, 126], [250, 86], [251, 48]] }, { who: 'r3', type: 'route', pts: [[210, 102], [210, 106]] }, { who: 'r5', type: 'route', pts: [[15, 70], [58, 38]] }] },
     ],
   },
 ]
@@ -191,14 +223,14 @@ const CSS = `
   --bv-navy:#485995; --bv-navy-deep:#36436f; --bv-gold:#d2c600; --bv-gold-deep:#8f8600;
   --bv-ink:#141922; --bv-muted:#5b6472; --bv-paper:#ffffff; --bv-bg:#eef1f7; --bv-line:#cdd2e0;
   --bv-field:#f4f6fb; --bv-field-line:#d3d9e8; --bv-los:#485995;
-  --bv-run:#b58a00; --bv-route:#2b3f74; --bv-motion:#8a93a6; --bv-def:#c0453b;
+  --bv-run:#b58a00; --bv-route:#2b3f74; --bv-motion:#8a93a6; --bv-def:#c0453b; --bv-dline:#737d90;
   --bv-run-tag:#2f8f5b; --bv-pass-tag:#3563b0; --bv-rpo-tag:#8a5cc0; --bv-shot-tag:#c8871a; --bv-heavy-tag:#8a5a2b; --bv-gadget-tag:#c0453b;
   color:var(--bv-ink); background:var(--bv-bg); min-height:100vh;
 }
 .dark .bv-root{
   --bv-ink:#e9edf6; --bv-muted:#9aa3b7; --bv-paper:#161c2e; --bv-bg:#0b0f1a; --bv-line:#2a3350;
   --bv-field:#10162a; --bv-field-line:#232c48; --bv-los:#8fa3df;
-  --bv-run:#e0b23a; --bv-route:#9db4ee; --bv-motion:#6c7590; --bv-def:#e0665c;
+  --bv-run:#e0b23a; --bv-route:#9db4ee; --bv-motion:#6c7590; --bv-def:#e0665c; --bv-dline:#828ca4;
 }
 .bv-container{max-width:1080px;margin:0 auto;padding:86px 14px 80px;}
 .bv-hero{background:linear-gradient(135deg,var(--bv-navy-deep),var(--bv-navy));color:#fff;border-radius:18px;padding:26px 28px;position:relative;overflow:hidden;box-shadow:0 14px 40px rgba(17,24,39,.16);}
@@ -241,7 +273,8 @@ function buildBody() {
     <span class="bv-lg"><svg width="34" height="12"><line x1="1" y1="6" x2="26" y2="6" stroke="var(--bv-run)" stroke-width="3.2"/><polygon points="26,1 33,6 26,11" fill="var(--bv-run)"/></svg>Run / ball</span>
     <span class="bv-lg"><svg width="34" height="12"><line x1="1" y1="6" x2="26" y2="6" stroke="var(--bv-motion)" stroke-width="2" stroke-dasharray="4 3"/><polygon points="26,2 33,6 26,10" fill="var(--bv-motion)"/></svg>Motion</span>
     <span class="bv-lg"><svg width="30" height="12"><line x1="1" y1="6" x2="22" y2="6" stroke="var(--bv-route)" stroke-width="2.4"/><line x1="22" y1="1" x2="22" y2="11" stroke="var(--bv-route)" stroke-width="2.4"/></svg>Block</span>
-    <span class="bv-lg"><svg width="18" height="14"><text x="3" y="12" fill="var(--bv-def)" font-size="14" font-weight="700" font-family="sans-serif">✕</text></svg>Read / defender</span>
+    <span class="bv-lg"><svg width="16" height="14"><text x="3" y="12" fill="var(--bv-dline)" font-size="13" font-weight="700" font-family="sans-serif">✕</text></svg>Defender</span>
+    <span class="bv-lg"><svg width="16" height="14"><text x="3" y="12" fill="var(--bv-def)" font-size="13" font-weight="700" font-family="sans-serif">✕</text></svg>Read / key</span>
   </div>`
 
   const groups = PLAYS.map((group) => {
@@ -267,14 +300,15 @@ export default function BulldogsVarsityPage() {
           <div className="bv-eye">Tinley Bulldogs 13U · PlayScout · PlaybookIQ</div>
           <h1>Bulldogs Varsity — Visual Play Diagrams</h1>
           <p>
-            The optimized 15-play core, drawn up. ○ = your players, ✕ = defense. Solid arrows are pass routes, the
-            thick gold arrow is the ball carrier, dashed = motion, and the red defender is your read / point of attack.
+            The optimized 15-play core, drawn up against a base 4-3 defense. ○ = your players, ✕ = defense. Solid arrows
+            are pass routes, the thick gold arrow is the ball carrier, dashed = motion, and the red defender is your read
+            / point of attack.
           </p>
         </header>
         <div dangerouslySetInnerHTML={{ __html: buildBody() }} />
         <p style={{ marginTop: 34, textAlign: 'center', color: 'var(--bv-muted)', fontSize: 12 }}>
-          Formations &amp; routes are a recommended install derived from your v1.0 calls — confirm spacing &amp;
-          terminology with your staff.
+          Formations &amp; routes are a recommended install derived from your v1.0 calls — the defense shown is a base
+          4-3 look for reference. Confirm spacing &amp; terminology with your staff.
         </p>
       </div>
     </div>
