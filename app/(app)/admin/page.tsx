@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { getCurrentMembership } from '@/lib/auth/roles'
 import { createAdminClient } from '@/lib/supabase/admin'
-import AdminUsersClient, { type Member } from './AdminUsersClient'
+import AdminUsersClient, { type Member, type TeamOption } from './AdminUsersClient'
 
 export const metadata = { title: 'Admin — Users & Roles' }
 export const dynamic = 'force-dynamic'
@@ -12,6 +12,7 @@ export default async function AdminPage() {
   if (!membership) redirect('/dashboard')
 
   let members: Member[] = []
+  let teams: TeamOption[] = []
   let loadError: string | null = null
 
   try {
@@ -23,6 +24,21 @@ export default async function AdminPage() {
       .order('created_at', { ascending: true })
     if (error) throw error
 
+    const { data: teamRows } = await admin
+      .from('teams')
+      .select('id, name')
+      .eq('organization_id', membership.organization_id)
+      .order('name', { ascending: true })
+    teams = teamRows ?? []
+
+    const teamIdSet = teams.map((t) => t.id)
+    const { data: assigns } = await admin
+      .from('team_assignments')
+      .select('team_id, user_id')
+      .in('team_id', teamIdSet.length ? teamIdSet : ['00000000-0000-0000-0000-000000000000'])
+    const byUser = new Map<string, string[]>()
+    for (const a of assigns ?? []) byUser.set(a.user_id, [...(byUser.get(a.user_id) ?? []), a.team_id])
+
     members = await Promise.all(
       (rows ?? []).map(async (r) => {
         const { data } = await admin.auth.admin.getUserById(r.user_id)
@@ -32,6 +48,7 @@ export default async function AdminPage() {
           email: data?.user?.email ?? '(unknown)',
           lastSignInAt: data?.user?.last_sign_in_at ?? null,
           isSelf: r.user_id === user.id,
+          teamIds: byUser.get(r.user_id) ?? [],
         }
       })
     )
@@ -52,6 +69,7 @@ export default async function AdminPage() {
       </div>
       <AdminUsersClient
         initialMembers={members}
+        teams={teams}
         currentUserId={user.id}
         currentUserRole={membership.role}
         loadError={loadError}

@@ -1,31 +1,11 @@
 import 'server-only'
 import { NextRequest, NextResponse } from 'next/server'
 import { randomBytes } from 'crypto'
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { isAdminRole, ASSIGNABLE_ROLES } from '@/lib/auth/roles'
+import { ASSIGNABLE_ROLES } from '@/lib/auth/roles'
+import { requireAdmin } from '@/lib/auth/require-admin'
 
 export const runtime = 'nodejs'
-
-/** Verify the caller is signed in AND an org admin. Returns their org + role. */
-async function requireAdmin() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return { error: NextResponse.json({ error: 'Not signed in' }, { status: 401 }) }
-
-  const { data: membership } = await supabase
-    .from('organization_members')
-    .select('organization_id, role')
-    .eq('user_id', user.id)
-    .maybeSingle()
-
-  if (!membership || !isAdminRole(membership.role)) {
-    return { error: NextResponse.json({ error: 'Admin access required' }, { status: 403 }) }
-  }
-  return { user, organizationId: membership.organization_id as string, role: membership.role as string }
-}
 
 function genTempPassword() {
   // 14 chars, guaranteed to satisfy typical policies.
@@ -46,6 +26,22 @@ export async function GET() {
     .order('created_at', { ascending: true })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+  // Org teams + all assignments, so the UI can show/assign per member.
+  const { data: teams } = await admin
+    .from('teams')
+    .select('id, name')
+    .eq('organization_id', auth.organizationId)
+    .order('name', { ascending: true })
+  const teamIds = new Set((teams ?? []).map((t) => t.id))
+  const { data: assigns } = await admin
+    .from('team_assignments')
+    .select('team_id, user_id')
+    .in('team_id', teamIds.size ? [...teamIds] : ['00000000-0000-0000-0000-000000000000'])
+  const byUser = new Map<string, string[]>()
+  for (const a of assigns ?? []) {
+    byUser.set(a.user_id, [...(byUser.get(a.user_id) ?? []), a.team_id])
+  }
+
   const members = await Promise.all(
     (rows ?? []).map(async (r) => {
       const { data } = await admin.auth.admin.getUserById(r.user_id)
@@ -56,10 +52,11 @@ export async function GET() {
         email: data?.user?.email ?? '(unknown)',
         lastSignInAt: data?.user?.last_sign_in_at ?? null,
         isSelf: r.user_id === auth.user.id,
+        teamIds: byUser.get(r.user_id) ?? [],
       }
     })
   )
-  return NextResponse.json({ members })
+  return NextResponse.json({ members, teams: teams ?? [] })
 }
 
 /** Create (or attach an existing) user to the org with a role. */
@@ -116,7 +113,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: memErr.message }, { status: 500 })
   }
 
-  return NextResponse.json({ ok: true, email, role, tempPassword })
+  return NextResponse.json({ ok: true, userId, email, role, tempPassword })
 }
 
 /** Change a member's role. */
