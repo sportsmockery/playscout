@@ -69,22 +69,34 @@ export default function NewTeamPage() {
       organizationId = org.id;
     }
 
-    const { data, error: insertError } = await supabase
+    const baseTeam = {
+      organization_id: organizationId,
+      name,
+      age_group: ageGroup || null,
+      season,
+      level: level || null,
+      home_jersey_color: homeJerseyColor || null,
+      away_jersey_color: awayJerseyColor || null,
+    };
+
+    // Prefer setting created_by (used by team-access). If the column hasn't been
+    // migrated yet (016_team_access), fall back so team creation still works.
+    let { data, error: insertError } = await supabase
       .from('teams')
-      .insert({
-        organization_id: organizationId,
-        name,
-        age_group: ageGroup || null,
-        season,
-        level: level || null,
-        home_jersey_color: homeJerseyColor || null,
-        away_jersey_color: awayJerseyColor || null,
-      })
+      .insert({ ...baseTeam, created_by: user.id })
       .select()
       .single();
 
-    if (insertError) {
-      setError(insertError.message);
+    if (insertError && /created_by/i.test(insertError.message)) {
+      ({ data, error: insertError } = await supabase
+        .from('teams')
+        .insert(baseTeam)
+        .select()
+        .single());
+    }
+
+    if (insertError || !data) {
+      setError(insertError?.message ?? 'Could not create team.');
       setLoading(false);
       return;
     }

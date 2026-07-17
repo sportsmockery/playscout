@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient as createBrowserClient } from '@/lib/supabase/client';
 import { Eye, EyeOff, UserPlus } from 'lucide-react';
+import GoogleButton from '@/components/auth/GoogleButton';
 
 export default function RegisterForm() {
   const router = useRouter();
@@ -61,7 +62,14 @@ export default function RegisterForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <div className="space-y-4">
+      <GoogleButton nextPath="/dashboard" />
+      <div className="flex items-center gap-3">
+        <span className="h-px flex-1 bg-[var(--brand-border)]" />
+        <span className="text-xs text-[var(--brand-muted)]">or with email</span>
+        <span className="h-px flex-1 bg-[var(--brand-border)]" />
+      </div>
+      <form onSubmit={handleSubmit} className="space-y-4">
       <div>
         <label className="block text-sm font-medium text-[var(--brand-ink)] mb-1.5">
           Full Name
@@ -145,5 +153,6 @@ export default function RegisterForm() {
         <a href="/privacy" className="underline">Privacy Policy</a>.
       </p>
     </form>
+    </div>
   );
 }

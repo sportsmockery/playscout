@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient as createBrowserClient } from '@/lib/supabase/client';
 import { Eye, EyeOff, LogIn } from 'lucide-react';
+import GoogleButton from '@/components/auth/GoogleButton';
 
 interface Props {
   nextPath: string;
@@ -43,7 +44,14 @@ export default function LoginForm({ nextPath }: Props) {
     'w-full px-4 py-3 rounded-lg border border-[var(--brand-border)] bg-white text-[var(--brand-ink)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--brand-navy)] focus:border-transparent transition-all placeholder:text-[var(--brand-muted)]';
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <div className="space-y-4">
+      <GoogleButton nextPath={nextPath} />
+      <div className="flex items-center gap-3">
+        <span className="h-px flex-1 bg-[var(--brand-border)]" />
+        <span className="text-xs text-[var(--brand-muted)]">or with email</span>
+        <span className="h-px flex-1 bg-[var(--brand-border)]" />
+      </div>
+      <form onSubmit={handleSubmit} className="space-y-4">
       <div>
         <label className="block text-sm font-medium text-[var(--brand-ink)] mb-1.5">
           Email
@@ -108,6 +116,7 @@ export default function LoginForm({ nextPath }: Props) {
           </>
         )}
       </button>
-    </form>
+      </form>
+    </div>
   );
 }
