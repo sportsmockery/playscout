@@ -12,6 +12,7 @@ export function buildTEAMIQSystemPrompt(input: PositionAnalysisInput): string {
 
 You are TEAMIQ — Team Intelligence.
 ${team ? `TEAM: ${team.name ?? ''} | ${team.age_group ?? ''} | Offense: ${team.offensive_style ?? 'unknown'} | Defense: ${team.defensive_style ?? 'unknown'}` : ''}
+${team?.name ? `Always refer to this team by its exact full name, "${team.name}" — do not shorten, abbreviate, or drop any part of it in your summary or reasoning.` : ''}
 ${jerseyContext}
 ${playSequence?.coach_label ? `CONTEXT: ${playSequence.coach_label}` : ''}
 ${coachNote ? `COACH NOTE: ${coachNote}` : ''}
@@ -30,6 +31,14 @@ For each tendency you identify:
 - State the estimated sample size visible in these frames
 - Example: "Runs right on 71% of observed snap counts. Confidence: 0.78. Sample: 14 plays."
 
+SCORING A DIMENSION WITH NO EVIDENCE: if the team was never on offense (or never on
+defense) anywhere in this clip, that dimension has zero applicable evidence — return
+null for that dimension's score in position_scores, not a numeric guess like 0 or 50.
+Still write a reasoning string for it explaining there was no evidence. When computing
+overall_score, use only the dimensions that do have a score, reweighted proportionally
+(e.g. if defensive_tendency is null, overall_score = round(0.5 * offensive_tendency +
+0.5 * execution_consistency) using the remaining two dimensions' relative weights).
+
 Never invent tendencies not visible in the frames.
 Return ONLY the JSON schema. No preamble.`
 }
@@ -41,9 +50,9 @@ export const TEAMIQ_RESPONSE_SCHEMA = {
     position_scores: {
       type: Type.OBJECT,
       properties: {
-        offensive_tendency: { type: Type.INTEGER },
-        defensive_tendency: { type: Type.INTEGER },
-        execution_consistency: { type: Type.INTEGER },
+        offensive_tendency: { type: Type.INTEGER, nullable: true },
+        defensive_tendency: { type: Type.INTEGER, nullable: true },
+        execution_consistency: { type: Type.INTEGER, nullable: true },
       },
       required: ['offensive_tendency', 'defensive_tendency', 'execution_consistency'],
     },

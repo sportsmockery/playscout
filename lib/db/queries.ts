@@ -47,6 +47,12 @@ export async function getVideosByTeam(teamId: string): Promise<Video[]> {
   return data ?? []
 }
 
+export async function getVideoCount(): Promise<number> {
+  const supabase = await createClient()
+  const { count } = await supabase.from('videos').select('id', { count: 'exact', head: true })
+  return count ?? 0
+}
+
 export async function getVideoById(videoId: string): Promise<Video | null> {
   const supabase = await createClient()
   const { data } = await supabase.from('videos').select('*').eq('id', videoId).single()

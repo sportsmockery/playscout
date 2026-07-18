@@ -134,10 +134,10 @@ export default function Sidebar({ teamId: teamIdProp, defaultTeamId }: SidebarPr
       {/* Bottom — settings */}
       <div className="px-3 py-4 border-t border-white/10">
         <Link
-          href="/settings"
+          href={teamId ? `/teams/${teamId}/settings` : '/teams'}
           className={cn(
             'sidebar-nav-item',
-            isActive('/settings') && 'active'
+            pathname.endsWith('/settings') && 'active'
           )}
         >
           <Settings size={18} className="flex-shrink-0" />

@@ -16,9 +16,9 @@ interface Props {
 interface OLResult {
   overall_score: number;
   position_scores: {
-    pass_protection: number;
-    run_blocking: number;
-    footwork_leverage: number;
+    pass_protection: number | null;
+    run_blocking: number | null;
+    footwork_leverage: number | null;
   };
   reasoning: {
     pass_protection: string;
@@ -229,16 +229,17 @@ export default function OLIQClient({ teamId, teamName, ageGroup, olPlayers, vide
               <h2 className="font-bold text-[var(--brand-navy)] mb-4">Unit Scores</h2>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {[
-                  { label: 'Overall', score: result.overall_score },
+                  { label: 'Overall', score: result.overall_score as number | null },
                   { label: 'Pass Pro', score: result.position_scores.pass_protection },
                   { label: 'Run Block', score: result.position_scores.run_blocking },
                   { label: 'Footwork', score: result.position_scores.footwork_leverage },
                 ].map((s) => (
                   <div key={s.label} className="text-center p-3 bg-[var(--brand-bg)] rounded-xl">
                     <p className={`text-2xl font-bold ${
+                      s.score == null ? 'text-[var(--brand-muted)]' :
                       s.score >= 80 ? 'text-emerald-600' :
                       s.score >= 60 ? 'text-amber-600' : 'text-red-600'
-                    }`}>{s.score}</p>
+                    }`}>{s.score ?? 'N/A'}</p>
                     <p className="text-xs text-[var(--brand-muted)] font-medium mt-0.5">{s.label}</p>
                   </div>
                 ))}

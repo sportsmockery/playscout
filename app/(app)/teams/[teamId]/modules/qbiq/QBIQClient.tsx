@@ -16,9 +16,9 @@ interface Props {
 interface AnalysisResult {
   overall_score: number;
   position_scores: {
-    mechanics: number;
-    decision_making: number;
-    pocket_presence: number;
+    mechanics: number | null;
+    decision_making: number | null;
+    pocket_presence: number | null;
   };
   reasoning: {
     mechanics: string;
@@ -259,7 +259,9 @@ export default function QBIQClient({ teamId, teamName, ageGroup, qbs, videos, pa
                     {DIMENSIONS.map(([key, label]) => (
                       <div key={key} className="text-xs">
                         <span className="text-[var(--brand-muted)]">{label}: </span>
-                        <span className="font-semibold text-[var(--brand-ink)]">{result.position_scores[key]}</span>
+                        <span className="font-semibold text-[var(--brand-ink)]">
+                          {result.position_scores[key] ?? 'N/A'}
+                        </span>
                       </div>
                     ))}
                   </div>

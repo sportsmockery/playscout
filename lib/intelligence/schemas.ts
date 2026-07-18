@@ -41,7 +41,10 @@ export type PositionAnalysisInput = z.infer<typeof PositionAnalysisInputSchema>
 
 export interface PositionAnalysisResult {
   overall_score: number
-  position_scores: Record<string, number>
+  // A dimension is null when the clip has no applicable evidence for it
+  // (e.g. pocket_presence with no dropback, defensive_tendency with no
+  // defensive snaps) — the model is instructed to say so rather than guess.
+  position_scores: Record<string, number | null>
   reasoning: Record<string, string>
   strengths: string[]
   weaknesses: string[]

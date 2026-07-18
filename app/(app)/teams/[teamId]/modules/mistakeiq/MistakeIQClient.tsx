@@ -17,9 +17,9 @@ interface Props {
 interface MistakeIQResult {
   overall_score: number;
   position_scores: {
-    assignment_integrity: number;
-    leverage_discipline: number;
-    ball_security: number;
+    assignment_integrity: number | null;
+    leverage_discipline: number | null;
+    ball_security: number | null;
   };
   reasoning: {
     assignment_integrity: string;
@@ -265,7 +265,9 @@ export default function MistakeIQClient({
                     {DIMENSIONS.map(([key, label]) => (
                       <div key={key} className="text-xs">
                         <span className="text-[var(--brand-muted)]">{label}: </span>
-                        <span className="font-semibold text-[var(--brand-ink)]">{result.position_scores[key]}</span>
+                        <span className="font-semibold text-[var(--brand-ink)]">
+                          {result.position_scores[key] ?? 'N/A'}
+                        </span>
                       </div>
                     ))}
                   </div>

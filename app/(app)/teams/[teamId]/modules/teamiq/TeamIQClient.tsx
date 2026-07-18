@@ -19,9 +19,9 @@ interface Props {
 interface TeamIQResult {
   overall_score: number;
   position_scores: {
-    offensive_tendency: number;
-    defensive_tendency: number;
-    execution_consistency: number;
+    offensive_tendency: number | null;
+    defensive_tendency: number | null;
+    execution_consistency: number | null;
   };
   reasoning: {
     offensive_tendency: string;
@@ -275,7 +275,9 @@ export default function TeamIQClient({
                     {DIMENSIONS.map(([key, label]) => (
                       <div key={key} className="text-xs">
                         <span className="text-[var(--brand-muted)]">{label}: </span>
-                        <span className="font-semibold text-[var(--brand-ink)]">{result.position_scores[key]}</span>
+                        <span className="font-semibold text-[var(--brand-ink)]">
+                          {result.position_scores[key] ?? 'N/A'}
+                        </span>
                       </div>
                     ))}
                   </div>

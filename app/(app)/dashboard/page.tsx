@@ -1,6 +1,6 @@
 import { createClient as createServerClient } from '@/lib/supabase/server';
 import Link from 'next/link';
-import { getTeams, getRecentAnalyses } from '@/lib/db/queries';
+import { getTeams, getRecentAnalyses, getVideoCount } from '@/lib/db/queries';
 import { Users, Film, Brain, Zap, ArrowRight, Plus } from 'lucide-react';
 
 export const metadata = { title: 'Dashboard' };
@@ -9,9 +9,10 @@ export default async function DashboardPage() {
   const supabase = await createServerClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  const [teams, analyses] = await Promise.all([
+  const [teams, analyses, filmSessionCount] = await Promise.all([
     getTeams(user!.id),
     getRecentAnalyses(user!.id, 5),
+    getVideoCount(),
   ]);
 
   const displayName = user?.user_metadata?.full_name?.split(' ')[0] ?? 'Coach';
@@ -49,7 +50,7 @@ export default async function DashboardPage() {
           },
           {
             label: 'Film Sessions',
-            value: 0,
+            value: filmSessionCount,
             icon: Film,
             color: 'text-purple-600',
             bg: 'bg-purple-50',

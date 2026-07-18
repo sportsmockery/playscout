@@ -49,6 +49,12 @@ QBIQ RUBRIC — Score three dimensions, each 0-100:
 
 OVERALL = round(0.4 * MECHANICS + 0.4 * DECISION_MAKING + 0.2 * POCKET_PRESENCE)
 
+SCORING A DIMENSION WITH NO EVIDENCE: if the clip has no dropback/pass attempt at all
+(e.g. it's a single run/handoff play), POCKET_PRESENCE may have zero applicable
+evidence — return null for that dimension's score instead of a numeric guess. Still
+write a reasoning string explaining there was no evidence. When computing overall_score,
+use only the dimensions that do have a score, reweighted proportionally.
+
 For each dimension: 2-3 sentences referencing specific things visible in frames.
 Return ONLY the JSON schema. No preamble.`
 }
@@ -60,9 +66,9 @@ export const QBIQ_RESPONSE_SCHEMA = {
     position_scores: {
       type: Type.OBJECT,
       properties: {
-        mechanics: { type: Type.INTEGER },
-        decision_making: { type: Type.INTEGER },
-        pocket_presence: { type: Type.INTEGER },
+        mechanics: { type: Type.INTEGER, nullable: true },
+        decision_making: { type: Type.INTEGER, nullable: true },
+        pocket_presence: { type: Type.INTEGER, nullable: true },
       },
       required: ['mechanics', 'decision_making', 'pocket_presence'],
     },

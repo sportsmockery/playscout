@@ -32,7 +32,7 @@ export async function analyzePosition(input: PositionAnalysisInput): Promise<Pos
   }
 
   // Normalize position_scores keys for consistent output
-  const rawScores = parsed.position_scores as Record<string, number>
+  const rawScores = parsed.position_scores as Record<string, number | null>
   const rawReasoning = parsed.reasoning as Record<string, string>
 
   return {

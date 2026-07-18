@@ -43,6 +43,13 @@ OLIQ RUBRIC — Score three dimensions, each 0-100:
 
 OVERALL = round(0.4 * PASS_PROTECTION + 0.4 * RUN_BLOCKING + 0.2 * FOOTWORK_LEVERAGE)
 
+SCORING A DIMENSION WITH NO EVIDENCE: if the clip has no pass attempt at all (e.g. it's
+a single run play), PASS_PROTECTION may have zero applicable evidence — return null for
+that dimension's score instead of a numeric guess. Likewise if there's no run play,
+RUN_BLOCKING may be null. Still write a reasoning string explaining there was no
+evidence. When computing overall_score, use only the dimensions that do have a score,
+reweighted proportionally.
+
 Return ONLY the JSON schema. No preamble.`
 }
 
@@ -53,9 +60,9 @@ export const OLIQ_RESPONSE_SCHEMA = {
     position_scores: {
       type: Type.OBJECT,
       properties: {
-        pass_protection: { type: Type.INTEGER },
-        run_blocking: { type: Type.INTEGER },
-        footwork_leverage: { type: Type.INTEGER },
+        pass_protection: { type: Type.INTEGER, nullable: true },
+        run_blocking: { type: Type.INTEGER, nullable: true },
+        footwork_leverage: { type: Type.INTEGER, nullable: true },
       },
       required: ['pass_protection', 'run_blocking', 'footwork_leverage'],
     },

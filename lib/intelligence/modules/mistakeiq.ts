@@ -12,6 +12,7 @@ export function buildMISTAKEIQSystemPrompt(input: PositionAnalysisInput): string
 
 You are MISTAKEIQ — Mistake Intelligence.
 ${team ? `TEAM: ${team.name ?? ''} | ${team.age_group ?? ''}` : ''}
+${team?.name ? `Always refer to this team by its exact full name, "${team.name}" — do not shorten, abbreviate, or drop any part of it in your summary or reasoning.` : ''}
 ${jerseyContext}
 ${playSequence?.coach_label ? `PLAY: ${playSequence.coach_label}` : ''}
 ${coachNote ? `COACH NOTE: ${coachNote}` : ''}
@@ -32,6 +33,12 @@ For each mistake identified:
 - Confidence: 0.0-1.0
 - Which frame indices show the mistake
 
+SCORING A DIMENSION WITH NO EVIDENCE: ball_security only applies if the team's players
+possess the ball at some point in the clip — if they never do (e.g. they're on defense
+the whole clip), return null for ball_security's score rather than a numeric guess.
+Still write a reasoning string explaining there was no evidence. When computing
+overall_score, use only the dimensions that do have a score, reweighted proportionally.
+
 PROHIBITED: Never invent mistakes. Only report what is visible in frames.
 Return ONLY the JSON schema. No preamble.`
 }
@@ -43,9 +50,9 @@ export const MISTAKEIQ_RESPONSE_SCHEMA = {
     position_scores: {
       type: Type.OBJECT,
       properties: {
-        assignment_integrity: { type: Type.INTEGER },
-        leverage_discipline: { type: Type.INTEGER },
-        ball_security: { type: Type.INTEGER },
+        assignment_integrity: { type: Type.INTEGER, nullable: true },
+        leverage_discipline: { type: Type.INTEGER, nullable: true },
+        ball_security: { type: Type.INTEGER, nullable: true },
       },
       required: ['assignment_integrity', 'leverage_discipline', 'ball_security'],
     },

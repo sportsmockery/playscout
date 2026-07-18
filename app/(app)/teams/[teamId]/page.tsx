@@ -2,7 +2,7 @@ import { createClient as createServerClient } from '@/lib/supabase/server';
 import { getTeamById, getPlayersByTeam, getVideosByTeam, getRecentAnalysis } from '@/lib/db/queries';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { Users, Film, Brain, ArrowRight, Plus, Zap } from 'lucide-react';
+import { Users, Film, Brain, ArrowRight, Plus, Zap, Settings } from 'lucide-react';
 
 export async function generateMetadata({ params }: { params: Promise<{ teamId: string }> }) {
   const { teamId } = await params;
@@ -49,13 +49,22 @@ export default async function TeamDetailPage({
             </p>
           </div>
         </div>
-        <Link
-          href={`/teams/${teamId}/roster`}
-          className="flex items-center gap-2 bg-[var(--brand-navy)] text-white text-sm font-semibold px-4 py-2.5 rounded-lg hover:bg-[var(--brand-navy-dark)] transition-colors"
-        >
-          <Plus size={16} />
-          Add Player
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href={`/teams/${teamId}/settings`}
+            className="flex items-center gap-2 bg-white border border-[var(--brand-border)] text-[var(--brand-ink)] text-sm font-semibold px-4 py-2.5 rounded-lg hover:bg-[var(--brand-bg)] transition-colors"
+          >
+            <Settings size={16} />
+            Settings
+          </Link>
+          <Link
+            href={`/teams/${teamId}/roster`}
+            className="flex items-center gap-2 bg-[var(--brand-navy)] text-white text-sm font-semibold px-4 py-2.5 rounded-lg hover:bg-[var(--brand-navy-dark)] transition-colors"
+          >
+            <Plus size={16} />
+            Add Player
+          </Link>
+        </div>
       </div>
 
       {/* Quick links */}
