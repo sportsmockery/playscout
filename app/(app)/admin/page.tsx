@@ -19,7 +19,7 @@ export default async function AdminPage() {
     const admin = createAdminClient()
     const { data: rows, error } = await admin
       .from('organization_members')
-      .select('id, user_id, role, created_at')
+      .select('id, user_id, role, created_at, all_teams')
       .eq('organization_id', membership.organization_id)
       .order('created_at', { ascending: true })
     if (error) throw error
@@ -48,6 +48,7 @@ export default async function AdminPage() {
           email: data?.user?.email ?? '(unknown)',
           lastSignInAt: data?.user?.last_sign_in_at ?? null,
           isSelf: r.user_id === user.id,
+          allTeams: !!r.all_teams,
           teamIds: byUser.get(r.user_id) ?? [],
         }
       })

@@ -21,7 +21,7 @@ export async function GET() {
 
   const { data: rows, error } = await admin
     .from('organization_members')
-    .select('id, user_id, role, created_at')
+    .select('id, user_id, role, created_at, all_teams')
     .eq('organization_id', auth.organizationId)
     .order('created_at', { ascending: true })
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -52,6 +52,7 @@ export async function GET() {
         email: data?.user?.email ?? '(unknown)',
         lastSignInAt: data?.user?.last_sign_in_at ?? null,
         isSelf: r.user_id === auth.user.id,
+        allTeams: !!r.all_teams,
         teamIds: byUser.get(r.user_id) ?? [],
       }
     })
