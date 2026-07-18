@@ -50,6 +50,7 @@ export async function analyzePosition(input: PositionAnalysisInput): Promise<Pos
     summary: parsed.summary as string,
     confidence: (parsed.confidence as number) ?? 0.7,
     evidence_frames: (parsed.evidence_frames as number[]) ?? [],
+    plays_observed: parsed.plays_observed as number | undefined,
     model: route.model,
     framesAnalyzed: input.frames.length,
   }

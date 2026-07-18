@@ -28,6 +28,7 @@ export const PositionAnalysisInputSchema = z.object({
     offensive_style: z.string().optional(),
     defensive_style: z.string().optional(),
     jersey_color: z.string().optional(),
+    side_of_ball: z.enum(['offense', 'defense', 'both', 'unknown']).optional(),
   }).optional(),
   playSequence: z.object({
     down: z.number().optional(),
@@ -52,6 +53,7 @@ export interface PositionAnalysisResult {
   summary: string
   confidence: number
   evidence_frames: number[]
+  plays_observed?: number
   model: string
   framesAnalyzed: number
 }

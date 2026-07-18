@@ -36,6 +36,7 @@ interface TeamIQResult {
   summary: string;
   confidence: number;
   evidence_frames: number[];
+  plays_observed?: number;
 }
 
 const DIMENSIONS: Array<[keyof TeamIQResult['position_scores'], string]> = [
@@ -45,6 +46,14 @@ const DIMENSIONS: Array<[keyof TeamIQResult['position_scores'], string]> = [
 ];
 
 type JerseyChoice = 'home' | 'away' | 'unknown';
+type SideChoice = 'offense' | 'defense' | 'both' | 'unknown';
+
+const SIDE_OPTIONS: Array<[SideChoice, string]> = [
+  ['offense', 'Offense'],
+  ['defense', 'Defense'],
+  ['both', 'Both'],
+  ['unknown', 'Not sure'],
+];
 
 export default function TeamIQClient({
   teamId,
@@ -62,6 +71,7 @@ export default function TeamIQClient({
   const [jerseyChoice, setJerseyChoice] = useState<JerseyChoice>(
     homeJerseyColor ? 'home' : awayJerseyColor ? 'away' : 'unknown'
   );
+  const [sideChoice, setSideChoice] = useState<SideChoice>('unknown');
   const [coachNote, setCoachNote] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<TeamIQResult | null>(null);
@@ -102,6 +112,7 @@ export default function TeamIQClient({
             offensive_style: offensiveStyle,
             defensive_style: defensiveStyle,
             jersey_color: resolvedJerseyColor,
+            side_of_ball: sideChoice,
           },
         }),
       });
@@ -190,6 +201,31 @@ export default function TeamIQClient({
                 No jersey/helmet color is set for this team, so the AI can&apos;t reliably tell your players apart from the opponent. Mention it below (e.g. &quot;we wear white jerseys, navy helmets&quot;) until a team-settings page exists to save it permanently.
               </p>
             )}
+
+            <div>
+              <label className="block text-xs font-medium text-[var(--brand-ink)] mb-1.5">
+                {teamName} Is On (This Clip)
+              </label>
+              <div className="grid grid-cols-4 gap-2">
+                {SIDE_OPTIONS.map(([choice, label]) => (
+                  <button
+                    key={choice}
+                    type="button"
+                    onClick={() => setSideChoice(choice)}
+                    className={`px-2 py-2 rounded-lg border text-xs font-semibold transition-colors ${
+                      sideChoice === choice
+                        ? 'bg-[var(--brand-navy)] text-white border-[var(--brand-navy)]'
+                        : 'bg-white text-[var(--brand-muted)] border-[var(--brand-border)] hover:border-[var(--brand-navy)]'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-[var(--brand-muted)] mt-1.5">
+                Which side of the ball to grade, so the AI analyzes {teamName} and not the opponent.
+              </p>
+            </div>
 
             <div>
               <label className="block text-xs font-medium text-[var(--brand-ink)] mb-1.5">
@@ -291,6 +327,14 @@ export default function TeamIQClient({
                 <div>
                   <h2 className="text-xl font-bold text-[var(--brand-navy)]">Team Intelligence Score</h2>
                   <p className="text-sm text-[var(--brand-muted)] mt-1">{teamName}</p>
+                  <div className="flex flex-wrap items-center gap-2 mt-2">
+                    <span className="inline-flex items-center rounded-full bg-[var(--brand-bg)] border border-[var(--brand-border)] px-2 py-0.5 text-xs font-medium text-[var(--brand-ink)]">
+                      Sample: {result.plays_observed ?? '—'} {result.plays_observed === 1 ? 'play' : 'plays'}
+                    </span>
+                    <span className="inline-flex items-center rounded-full bg-[var(--brand-bg)] border border-[var(--brand-border)] px-2 py-0.5 text-xs font-medium text-[var(--brand-ink)]">
+                      Confidence: {Math.round((result.confidence ?? 0) * 100)}%
+                    </span>
+                  </div>
                   <div className="grid grid-cols-1 gap-1 mt-3">
                     {DIMENSIONS.map(([key, label]) => (
                       <div key={key} className="text-xs">
@@ -303,6 +347,17 @@ export default function TeamIQClient({
                   </div>
                 </div>
               </div>
+
+              {((result.plays_observed ?? 0) <= 1 || (result.confidence ?? 1) < 0.5) && (
+                <div className="mt-4 flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 p-3">
+                  <AlertCircle size={16} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-amber-800 leading-relaxed">
+                    {result.plays_observed === 1
+                      ? 'This score reflects a single play, not a season tendency. Treat it as a one-snap read — run more film for a reliable team grade.'
+                      : 'Low-confidence read from limited film. Scores may not reflect true tendencies yet — analyze more plays to firm them up.'}
+                  </p>
+                </div>
+              )}
             </div>
 
             {selectedVideo && (

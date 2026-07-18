@@ -12,6 +12,7 @@ import {
   Settings,
   ChevronRight,
   Shield,
+  ShieldCheck,
   Zap,
   TrendingUp,
   AlertTriangle,
@@ -41,9 +42,10 @@ const MODULE_ITEMS: NavItem[] = [
 interface SidebarProps {
   teamId?: string;
   defaultTeamId?: string;
+  isAdmin?: boolean;
 }
 
-export default function Sidebar({ teamId: teamIdProp, defaultTeamId }: SidebarProps) {
+export default function Sidebar({ teamId: teamIdProp, defaultTeamId, isAdmin }: SidebarProps) {
   const pathname = usePathname();
 
   // Film Library and the module pages only exist scoped to a team
@@ -131,8 +133,17 @@ export default function Sidebar({ teamId: teamIdProp, defaultTeamId }: SidebarPr
         ))}
       </nav>
 
-      {/* Bottom — settings */}
-      <div className="px-3 py-4 border-t border-white/10">
+      {/* Bottom — admin (owners/admins only) + settings */}
+      <div className="px-3 py-4 border-t border-white/10 space-y-1">
+        {isAdmin && (
+          <Link
+            href="/admin"
+            className={cn('sidebar-nav-item', isActive('/admin') && 'active')}
+          >
+            <ShieldCheck size={18} className="flex-shrink-0" />
+            <span>Users &amp; Roles</span>
+          </Link>
+        )}
         <Link
           href={teamId ? `/teams/${teamId}/settings` : '/teams'}
           className={cn(
