@@ -14,6 +14,7 @@ export interface Member {
   email: string
   lastSignInAt: string | null
   isSelf: boolean
+  allTeams: boolean
   teamIds: string[]
 }
 
@@ -26,6 +27,52 @@ const ROLE_LABEL: Record<string, string> = {
   viewer: 'Viewer',
 }
 const isAdmin = (role: string) => role === 'owner' || role === 'admin'
+
+/** All-teams toggle + specific team chips. */
+function AccessControl({
+  teams,
+  allTeams,
+  teamIds,
+  onChange,
+}: {
+  teams: TeamOption[]
+  allTeams: boolean
+  teamIds: string[]
+  onChange: (allTeams: boolean, teamIds: string[]) => void
+}) {
+  const chip = (on: boolean) =>
+    'rounded-full border px-3 py-1 text-xs font-medium transition-colors ' +
+    (on
+      ? 'border-[var(--brand-navy)] bg-[var(--brand-navy)] text-white'
+      : 'border-[var(--brand-border)] bg-white text-[var(--brand-ink)] hover:border-[var(--brand-navy)]')
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <button type="button" onClick={() => onChange(!allTeams, teamIds)} className={chip(allTeams)}>
+        {allTeams ? '✓ ' : ''}All teams (whole org)
+      </button>
+      <span className="text-xs text-[var(--brand-muted)]">or</span>
+      {teams.length === 0 ? (
+        <span className="text-xs text-[var(--brand-muted)]">no teams yet — ones a user creates appear here</span>
+      ) : (
+        teams.map((t) => {
+          const on = !allTeams && teamIds.includes(t.id)
+          return (
+            <button
+              key={t.id}
+              type="button"
+              disabled={allTeams}
+              onClick={() => onChange(false, teamIds.includes(t.id) ? teamIds.filter((x) => x !== t.id) : [...teamIds, t.id])}
+              className={chip(on) + (allTeams ? ' opacity-40' : '')}
+            >
+              {on ? '✓ ' : ''}
+              {t.name}
+            </button>
+          )
+        })
+      )}
+    </div>
+  )
+}
 
 export default function AdminUsersClient({
   initialMembers,
@@ -43,6 +90,7 @@ export default function AdminUsersClient({
   const [members, setMembers] = useState<Member[]>(initialMembers)
   const [email, setEmail] = useState('')
   const [role, setRole] = useState<(typeof ASSIGNABLE)[number]>('coach')
+  const [newAllTeams, setNewAllTeams] = useState(false)
   const [newTeamIds, setNewTeamIds] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -58,11 +106,11 @@ export default function AdminUsersClient({
     if (res.ok) setMembers((await res.json()).members)
   }
 
-  async function saveTeamAccess(userId: string, teamIds: string[]) {
+  async function saveAccess(userId: string, allTeams: boolean, teamIds: string[]) {
     const res = await fetch('/api/admin/team-access', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, teamIds }),
+      body: JSON.stringify({ userId, allTeams, teamIds }),
     })
     if (!res.ok) {
       setError((await res.json()).error || 'Failed to update team access')
@@ -84,12 +132,13 @@ export default function AdminUsersClient({
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to add user')
-      // Assign selected teams (only meaningful for non-admin roles).
-      if (!isAdmin(role) && newTeamIds.length && data.userId) {
-        await saveTeamAccess(data.userId, newTeamIds)
+      // Assign access (only meaningful for non-admin roles — admins see all).
+      if (!isAdmin(role) && data.userId && (newAllTeams || newTeamIds.length)) {
+        await saveAccess(data.userId, newAllTeams, newTeamIds)
       }
       setCreated({ email: data.email, tempPassword: data.tempPassword })
       setEmail('')
+      setNewAllTeams(false)
       setNewTeamIds([])
       await refresh()
     } catch (e) {
@@ -113,15 +162,11 @@ export default function AdminUsersClient({
     setMembers((m) => m.map((x) => (x.userId === userId ? { ...x, role: newRole } : x)))
   }
 
-  async function toggleTeam(m: Member, teamId: string) {
-    const has = m.teamIds.includes(teamId)
-    const next = has ? m.teamIds.filter((t) => t !== teamId) : [...m.teamIds, teamId]
-    setMembers((list) => list.map((x) => (x.userId === m.userId ? { ...x, teamIds: next } : x)))
-    const ok = await saveTeamAccess(m.userId, next)
-    if (!ok) {
-      // revert
-      setMembers((list) => list.map((x) => (x.userId === m.userId ? { ...x, teamIds: m.teamIds } : x)))
-    }
+  async function updateAccess(m: Member, allTeams: boolean, teamIds: string[]) {
+    const prev = { allTeams: m.allTeams, teamIds: m.teamIds }
+    setMembers((list) => list.map((x) => (x.userId === m.userId ? { ...x, allTeams, teamIds } : x)))
+    const ok = await saveAccess(m.userId, allTeams, teamIds)
+    if (!ok) setMembers((list) => list.map((x) => (x.userId === m.userId ? { ...x, ...prev } : x)))
   }
 
   async function removeUser(userId: string, memberEmail: string) {
@@ -145,39 +190,11 @@ export default function AdminUsersClient({
     setTimeout(() => setCopied(false), 1500)
   }
 
-  function TeamPicker({
-    selected,
-    onToggle,
-  }: {
-    selected: string[]
-    onToggle: (id: string) => void
-  }) {
-    if (teams.length === 0) {
-      return <p className="text-xs text-[var(--brand-muted)]">No teams yet. Teams a user creates will appear here.</p>
-    }
-    return (
-      <div className="flex flex-wrap gap-2">
-        {teams.map((t) => {
-          const on = selected.includes(t.id)
-          return (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => onToggle(t.id)}
-              className={
-                'rounded-full border px-3 py-1 text-xs font-medium transition-colors ' +
-                (on
-                  ? 'border-[var(--brand-navy)] bg-[var(--brand-navy)] text-white'
-                  : 'border-[var(--brand-border)] bg-white text-[var(--brand-ink)] hover:border-[var(--brand-navy)]')
-              }
-            >
-              {on ? '✓ ' : ''}
-              {t.name}
-            </button>
-          )
-        })}
-      </div>
-    )
+  function summary(m: Member): string {
+    if (isAdmin(m.role)) return 'Access to all teams'
+    if (m.allTeams) return 'Access to all teams (whole org)'
+    if (m.teamIds.length) return `${m.teamIds.length} team${m.teamIds.length > 1 ? 's' : ''}: ${m.teamIds.map(teamName).join(', ')}`
+    return 'No teams assigned'
   }
 
   return (
@@ -230,15 +247,18 @@ export default function AdminUsersClient({
             </button>
           </div>
 
-          {/* Team access — admins see everything, so only offer this for others */}
+          {/* Team access — admins already see everything, so only offer for others */}
           {!isAdmin(role) && (
             <div>
               <span className="mb-1.5 block text-sm font-medium text-[var(--brand-ink)]">Team access</span>
-              <TeamPicker
-                selected={newTeamIds}
-                onToggle={(id) =>
-                  setNewTeamIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]))
-                }
+              <AccessControl
+                teams={teams}
+                allTeams={newAllTeams}
+                teamIds={newTeamIds}
+                onChange={(a, ids) => {
+                  setNewAllTeams(a)
+                  setNewTeamIds(ids)
+                }}
               />
             </div>
           )}
@@ -293,13 +313,7 @@ export default function AdminUsersClient({
                       {m.email}
                       {m.isSelf && <span className="ml-2 text-xs text-[var(--brand-muted)]">(you)</span>}
                     </p>
-                    <p className="text-xs text-[var(--brand-muted)]">
-                      {memberIsAdmin
-                        ? 'Access to all teams'
-                        : m.teamIds.length
-                          ? `${m.teamIds.length} team${m.teamIds.length > 1 ? 's' : ''}: ${m.teamIds.map(teamName).join(', ')}`
-                          : 'No teams assigned'}
-                    </p>
+                    <p className="text-xs text-[var(--brand-muted)]">{summary(m)}</p>
                   </div>
 
                   {m.role === 'owner' || m.isSelf || !canManage ? (
@@ -347,7 +361,12 @@ export default function AdminUsersClient({
                     <p className="mb-2 text-xs font-medium text-[var(--brand-ink)]">
                       Which teams can {m.email} access?
                     </p>
-                    <TeamPicker selected={m.teamIds} onToggle={(id) => toggleTeam(m, id)} />
+                    <AccessControl
+                      teams={teams}
+                      allTeams={m.allTeams}
+                      teamIds={m.teamIds}
+                      onChange={(a, ids) => updateAccess(m, a, ids)}
+                    />
                   </div>
                 )}
               </div>

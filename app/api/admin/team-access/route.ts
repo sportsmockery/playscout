@@ -6,9 +6,12 @@ import { requireAdmin } from '@/lib/auth/require-admin'
 export const runtime = 'nodejs'
 
 /**
- * Replace a user's team assignments within the caller's organization.
- * Body: { userId: string, teamIds: string[] }. Only teams that belong to the
- * admin's org are honored. The member must be part of the org.
+ * Set a user's team access within the caller's organization.
+ * Body: { userId, allTeams?: boolean, teamIds?: string[] }.
+ *  - allTeams=true  → grant every team in the org (present & future); clears
+ *    any specific assignments (they'd be redundant).
+ *  - allTeams=false → access is exactly the given teamIds (org teams only).
+ * The member must belong to the caller's org.
  */
 export async function PUT(req: NextRequest) {
   const auth = await requireAdmin()
@@ -17,6 +20,7 @@ export async function PUT(req: NextRequest) {
 
   const body = await req.json().catch(() => ({}))
   const userId = String(body.userId ?? '')
+  const allTeams = body.allTeams === true
   const teamIds: string[] = Array.isArray(body.teamIds) ? body.teamIds.map(String) : []
   if (!userId) return NextResponse.json({ error: 'userId is required.' }, { status: 400 })
 
@@ -37,19 +41,23 @@ export async function PUT(req: NextRequest) {
   const orgTeamIds = new Set((orgTeams ?? []).map((t) => t.id))
   const valid = teamIds.filter((id) => orgTeamIds.has(id))
 
-  // Replace: delete this user's assignments for org teams, then insert the new set.
+  // Toggle the org-wide flag.
+  const { error: flagErr } = await admin
+    .from('organization_members')
+    .update({ all_teams: allTeams })
+    .eq('organization_id', auth.organizationId)
+    .eq('user_id', userId)
+  if (flagErr) return NextResponse.json({ error: flagErr.message }, { status: 500 })
+
+  // Reset specific assignments, then set the new set (empty when allTeams).
   if (orgTeamIds.size) {
-    await admin
-      .from('team_assignments')
-      .delete()
-      .eq('user_id', userId)
-      .in('team_id', [...orgTeamIds])
+    await admin.from('team_assignments').delete().eq('user_id', userId).in('team_id', [...orgTeamIds])
   }
-  if (valid.length) {
+  if (!allTeams && valid.length) {
     const rows = valid.map((team_id) => ({ team_id, user_id: userId, assigned_by: auth.user.id }))
     const { error } = await admin.from('team_assignments').insert(rows)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  return NextResponse.json({ ok: true, teamIds: valid })
+  return NextResponse.json({ ok: true, allTeams, teamIds: allTeams ? [] : valid })
 }
