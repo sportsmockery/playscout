@@ -10,6 +10,12 @@ export const maxDuration = 300
 
 export async function POST(req: NextRequest) {
   try {
+    const supabase = await createClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+    }
+
     const body = await req.json()
     const input = PositionAnalysisInputSchema.parse(body)
 
@@ -27,7 +33,6 @@ export async function POST(req: NextRequest) {
     const result = await analyzePosition({ ...input, frames })
 
     // Save to DB
-    const supabase = await createClient()
     const { data: saved, error } = await supabase
       .from('position_analysis_results')
       .insert({
@@ -51,7 +56,17 @@ export async function POST(req: NextRequest) {
       .select()
       .single()
 
-    if (error) console.error('DB save error:', error)
+    if (error) {
+      // The AI call already succeeded and cost real money, but if we can't
+      // persist the result we must not tell the client it worked — a report
+      // that silently vanishes on next page load is worse than a clear
+      // failure the coach can retry.
+      console.error('DB save error:', error)
+      return NextResponse.json(
+        { error: `Analysis completed but could not be saved: ${error.message}` },
+        { status: 500 }
+      )
+    }
 
     // Save to team memory (async, non-blocking)
     saveToTeamMemory(input.teamId, result, {

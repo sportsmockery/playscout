@@ -26,8 +26,8 @@ export default async function QBIQPage({
   if (!team) notFound();
 
   const qbs = players.filter((p) => p.primary_position === 'QB');
-  const completedVideos = videos.filter((v) => v.processing_status === 'completed' || v.status === 'analysis_complete');
-  const qbAnalyses = pastAnalyses.filter((a) => a.module_key === 'qbiq');
+  const completedVideos = videos.filter((v) => v.status === 'ready_for_review' || v.status === 'analysis_complete');
+  const qbAnalyses = pastAnalyses.filter((a) => a.module_key === 'QBIQ');
 
   return (
     <div className="p-6 max-w-6xl mx-auto">

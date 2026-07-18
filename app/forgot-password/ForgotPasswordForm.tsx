@@ -1,46 +1,55 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { createClient as createBrowserClient } from '@/lib/supabase/client';
-import { Eye, EyeOff, LogIn } from 'lucide-react';
+import { Mail } from 'lucide-react';
 
-interface Props {
-  nextPath: string;
-}
-
-export default function LoginForm({ nextPath }: Props) {
-  const router = useRouter();
+export default function ForgotPasswordForm() {
   const supabase = createBrowserClient();
 
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [sent, setSent] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError('');
 
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
     });
 
-    if (signInError) {
-      setError(signInError.message);
-      setLoading(false);
+    setLoading(false);
+
+    // Always show the same confirmation whether or not the email exists —
+    // otherwise this form becomes a way to enumerate registered coaches.
+    if (resetError && resetError.status && resetError.status >= 500) {
+      setError('Something went wrong sending the reset link. Please try again.');
       return;
     }
 
-    router.push(nextPath);
-    router.refresh();
+    setSent(true);
   }
 
   const inputClass =
     'w-full px-4 py-3 rounded-lg border border-[var(--brand-border)] bg-white text-[var(--brand-ink)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--brand-navy)] focus:border-transparent transition-all placeholder:text-[var(--brand-muted)]';
+
+  if (sent) {
+    return (
+      <div className="text-center py-4">
+        <div className="w-12 h-12 rounded-full bg-[var(--brand-navy)]/10 flex items-center justify-center mx-auto mb-4">
+          <Mail size={22} className="text-[var(--brand-navy)]" />
+        </div>
+        <p className="font-semibold text-[var(--brand-ink)] mb-1">Check your email</p>
+        <p className="text-sm text-[var(--brand-muted)]">
+          If an account exists for <span className="font-medium text-[var(--brand-ink)]">{email}</span>, a
+          password reset link is on its way.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
@@ -59,35 +68,6 @@ export default function LoginForm({ nextPath }: Props) {
         />
       </div>
 
-      <div>
-        <div className="flex items-center justify-between mb-1.5">
-          <label className="block text-sm font-medium text-[var(--brand-ink)]">
-            Password
-          </label>
-          <a href="/forgot-password" className="text-xs text-[var(--brand-navy)] hover:underline">
-            Forgot password?
-          </a>
-        </div>
-        <div className="relative">
-          <input
-            type={showPw ? 'text' : 'password'}
-            required
-            placeholder="••••••••"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className={`${inputClass} pr-11`}
-            autoComplete="current-password"
-          />
-          <button
-            type="button"
-            onClick={() => setShowPw(!showPw)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--brand-muted)] hover:text-[var(--brand-ink)] transition-colors"
-          >
-            {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
-          </button>
-        </div>
-      </div>
-
       {error && (
         <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
           {error}
@@ -102,10 +82,7 @@ export default function LoginForm({ nextPath }: Props) {
         {loading ? (
           <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
         ) : (
-          <>
-            <LogIn size={18} />
-            Sign in
-          </>
+          'Send reset link'
         )}
       </button>
     </form>

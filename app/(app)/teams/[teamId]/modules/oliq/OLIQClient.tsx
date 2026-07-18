@@ -15,26 +15,38 @@ interface Props {
 
 interface OLResult {
   overall_score: number;
-  pass_protection_score: number;
-  run_blocking_score: number;
-  cohesion_score: number;
-  gap_assignment_score: number;
+  position_scores: {
+    pass_protection: number;
+    run_blocking: number;
+    footwork_leverage: number;
+  };
+  reasoning: {
+    pass_protection: string;
+    run_blocking: string;
+    footwork_leverage: string;
+  };
   strengths: string[];
   weaknesses: string[];
-  priority_drills: Array<{ drill: string; focus: string; reps: string }>;
-  unit_notes: string;
-  individual_grades: Array<{ position: string; grade: string; note: string }>;
+  drills: string[];
+  summary: string;
 }
+
+const DIMENSIONS: Array<[keyof OLResult['position_scores'], string]> = [
+  ['pass_protection', 'Pass Protection'],
+  ['run_blocking', 'Run Blocking'],
+  ['footwork_leverage', 'Footwork & Leverage'],
+];
 
 export default function OLIQClient({ teamId, teamName, ageGroup, olPlayers, videos, pastAnalyses }: Props) {
   const [selectedVideo, setSelectedVideo] = useState<Video | null>(videos[0] ?? null);
-  const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(olPlayers[0] ?? null);
+  const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
   const [context, setContext] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<OLResult | null>(null);
   const [error, setError] = useState('');
 
   async function runAnalysis() {
+    if (!selectedVideo) return;
     setLoading(true);
     setError('');
     setResult(null);
@@ -44,16 +56,29 @@ export default function OLIQClient({ teamId, teamName, ageGroup, olPlayers, vide
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          module: 'oliq',
+          moduleKey: 'OLIQ',
           teamId,
           playerId: selectedPlayer?.id,
-          videoId: selectedVideo?.id,
-          context: { teamName, ageGroup, additionalContext: context },
+          videoId: selectedVideo.id,
+          coachNote: context || undefined,
+          player: selectedPlayer
+            ? {
+                name: `${selectedPlayer.first_name ?? ''} ${selectedPlayer.last_name ?? ''}`.trim() || undefined,
+                position: selectedPlayer.primary_position ?? undefined,
+                jersey_number: selectedPlayer.jersey_number != null ? String(selectedPlayer.jersey_number) : undefined,
+                age_group: ageGroup,
+                notes: selectedPlayer.notes ?? undefined,
+              }
+            : undefined,
+          team: {
+            name: teamName,
+            age_group: ageGroup,
+          },
         }),
       });
 
-      if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Analysis failed');
       setResult(data.result);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Analysis failed');
@@ -77,11 +102,11 @@ export default function OLIQClient({ teamId, teamName, ageGroup, olPlayers, vide
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-medium text-[var(--brand-ink)] mb-1.5">
-                Film (recommended)
+                Film
               </label>
               {videos.length === 0 ? (
                 <p className="text-xs text-[var(--brand-muted)] bg-[var(--brand-bg)] border border-[var(--brand-border)] rounded-lg p-2">
-                  No processed film. Upload film for full OL analysis.
+                  No processed film yet. Upload game film and wait for it to finish processing.
                 </p>
               ) : (
                 <div className="relative">
@@ -90,7 +115,6 @@ export default function OLIQClient({ teamId, teamName, ageGroup, olPlayers, vide
                     onChange={(e) => setSelectedVideo(videos.find((v) => v.id === e.target.value) ?? null)}
                     className={selectClass}
                   >
-                    <option value="">No film</option>
                     {videos.map((v) => (
                       <option key={v.id} value={v.id}>{v.title}</option>
                     ))}
@@ -136,8 +160,8 @@ export default function OLIQClient({ teamId, teamName, ageGroup, olPlayers, vide
 
             <button
               onClick={runAnalysis}
-              disabled={loading}
-              className="w-full flex items-center justify-center gap-2 bg-emerald-600 text-white font-semibold py-3 rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-60"
+              disabled={loading || !selectedVideo}
+              className="w-full flex items-center justify-center gap-2 bg-emerald-600 text-white font-semibold py-3 rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {loading ? (
                 <>
@@ -153,6 +177,30 @@ export default function OLIQClient({ teamId, teamName, ageGroup, olPlayers, vide
             </button>
           </div>
         </div>
+
+        {/* Past analyses */}
+        {pastAnalyses.length > 0 && (
+          <div className="glass-card p-5">
+            <h2 className="font-bold text-[var(--brand-navy)] mb-3 text-sm uppercase tracking-wide">
+              Past Analyses
+            </h2>
+            <ul className="space-y-2">
+              {pastAnalyses.map((a) => (
+                <li key={a.id} className="flex items-center justify-between text-sm py-1.5 border-b border-[var(--brand-border)] last:border-0">
+                  <span className="text-[var(--brand-muted)]">
+                    {new Date(a.created_at).toLocaleDateString()}
+                  </span>
+                  <span className={`font-bold ${
+                    (a.overall_score ?? 0) >= 80 ? 'text-emerald-600' :
+                    (a.overall_score ?? 0) >= 60 ? 'text-amber-600' : 'text-red-600'
+                  }`}>
+                    {a.overall_score ?? '—'}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
 
       {/* Results */}
@@ -182,9 +230,9 @@ export default function OLIQClient({ teamId, teamName, ageGroup, olPlayers, vide
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {[
                   { label: 'Overall', score: result.overall_score },
-                  { label: 'Pass Pro', score: result.pass_protection_score },
-                  { label: 'Run Block', score: result.run_blocking_score },
-                  { label: 'Cohesion', score: result.cohesion_score },
+                  { label: 'Pass Pro', score: result.position_scores.pass_protection },
+                  { label: 'Run Block', score: result.position_scores.run_blocking },
+                  { label: 'Footwork', score: result.position_scores.footwork_leverage },
                 ].map((s) => (
                   <div key={s.label} className="text-center p-3 bg-[var(--brand-bg)] rounded-xl">
                     <p className={`text-2xl font-bold ${
@@ -195,6 +243,22 @@ export default function OLIQClient({ teamId, teamName, ageGroup, olPlayers, vide
                   </div>
                 ))}
               </div>
+            </div>
+
+            {result.summary && (
+              <div className="glass-card p-5">
+                <h3 className="font-bold text-[var(--brand-navy)] mb-2 text-sm uppercase tracking-wide">Summary</h3>
+                <p className="text-sm text-[var(--brand-ink)] leading-relaxed whitespace-pre-wrap">{result.summary}</p>
+              </div>
+            )}
+
+            <div className="space-y-3">
+              {DIMENSIONS.map(([key, label]) => (
+                <div key={key} className="glass-card p-5">
+                  <p className="text-emerald-600 text-xs font-bold uppercase tracking-wide mb-1">{label}</p>
+                  <p className="text-sm text-[var(--brand-ink)] leading-relaxed">{result.reasoning[key]}</p>
+                </div>
+              ))}
             </div>
 
             <div className="grid md:grid-cols-2 gap-5">
@@ -222,25 +286,21 @@ export default function OLIQClient({ teamId, teamName, ageGroup, olPlayers, vide
               </div>
             </div>
 
-            {result.individual_grades?.length > 0 && (
+            {result.drills.length > 0 && (
               <div className="glass-card p-5">
-                <h3 className="font-bold text-[var(--brand-navy)] mb-3 text-sm uppercase tracking-wide">Individual Grades</h3>
-                <div className="space-y-2">
-                  {result.individual_grades.map((g, i) => (
-                    <div key={i} className="flex items-center gap-3 py-2 border-b border-[var(--brand-border)] last:border-0">
-                      <span className="font-bold text-[var(--brand-navy)] w-10 text-sm">{g.position}</span>
-                      <span className="font-semibold text-[var(--brand-ink)] w-6 text-sm">{g.grade}</span>
-                      <span className="text-sm text-[var(--brand-muted)] flex-1">{g.note}</span>
+                <h3 className="font-bold text-[var(--brand-navy)] mb-3 text-sm uppercase tracking-wide">Recommended Fixes</h3>
+                <div className="space-y-3">
+                  {result.drills.map((d, i) => (
+                    <div key={i} className="flex items-start gap-3 p-3 bg-[var(--brand-bg)] rounded-lg">
+                      <span className="w-6 h-6 rounded-full bg-[var(--brand-navy)] text-white text-xs flex items-center justify-center font-bold flex-shrink-0">
+                        {i + 1}
+                      </span>
+                      <p className="text-sm text-[var(--brand-ink)]">{d}</p>
                     </div>
                   ))}
                 </div>
               </div>
             )}
-
-            <div className="glass-card p-5">
-              <h3 className="font-bold text-[var(--brand-navy)] mb-3 text-sm uppercase tracking-wide">Unit Notes</h3>
-              <p className="text-sm text-[var(--brand-ink)] leading-relaxed">{result.unit_notes}</p>
-            </div>
           </div>
         )}
 
@@ -251,7 +311,7 @@ export default function OLIQClient({ teamId, teamName, ageGroup, olPlayers, vide
             </div>
             <h3 className="font-bold text-[var(--brand-navy)] text-lg mb-2">OLIQ Ready</h3>
             <p className="text-[var(--brand-muted)] text-sm">
-              Select film or a focus player to analyze your offensive line.
+              Select film, and optionally a focus player, then run the analysis.
             </p>
           </div>
         )}

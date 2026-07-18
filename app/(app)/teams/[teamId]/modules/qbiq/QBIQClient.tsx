@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Zap, Play, ChevronDown, AlertCircle } from 'lucide-react';
+import { Zap, ChevronDown, AlertCircle } from 'lucide-react';
 import type { Player, Video, PositionAnalysisResult } from '@/lib/db/types';
 
 interface Props {
@@ -15,17 +15,27 @@ interface Props {
 
 interface AnalysisResult {
   overall_score: number;
-  mechanics_score: number;
-  decision_score: number;
-  footwork_score: number;
-  release_score: number;
+  position_scores: {
+    mechanics: number;
+    decision_making: number;
+    pocket_presence: number;
+  };
+  reasoning: {
+    mechanics: string;
+    decision_making: string;
+    pocket_presence: string;
+  };
   strengths: string[];
   weaknesses: string[];
-  priority_drills: Array<{ drill: string; focus: string; reps: string }>;
-  tendency_flags: string[];
-  game_situation_notes: string;
-  development_plan: string;
+  drills: string[];
+  summary: string;
 }
+
+const DIMENSIONS: Array<[keyof AnalysisResult['position_scores'], string]> = [
+  ['mechanics', 'Mechanics'],
+  ['decision_making', 'Decision Making'],
+  ['pocket_presence', 'Pocket Presence'],
+];
 
 export default function QBIQClient({ teamId, teamName, ageGroup, qbs, videos, pastAnalyses }: Props) {
   const [selectedQB, setSelectedQB] = useState<Player | null>(qbs[0] ?? null);
@@ -36,7 +46,7 @@ export default function QBIQClient({ teamId, teamName, ageGroup, qbs, videos, pa
   const [error, setError] = useState('');
 
   async function runAnalysis() {
-    if (!selectedQB && !selectedVideo) return;
+    if (!selectedVideo) return;
     setLoading(true);
     setError('');
     setResult(null);
@@ -46,20 +56,29 @@ export default function QBIQClient({ teamId, teamName, ageGroup, qbs, videos, pa
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          module: 'qbiq',
+          moduleKey: 'QBIQ',
           teamId,
           playerId: selectedQB?.id,
-          videoId: selectedVideo?.id,
-          context: {
-            teamName,
-            ageGroup,
-            additionalContext: context,
+          videoId: selectedVideo.id,
+          coachNote: context || undefined,
+          player: selectedQB
+            ? {
+                name: `${selectedQB.first_name ?? ''} ${selectedQB.last_name ?? ''}`.trim() || undefined,
+                position: selectedQB.primary_position ?? undefined,
+                jersey_number: selectedQB.jersey_number != null ? String(selectedQB.jersey_number) : undefined,
+                age_group: ageGroup,
+                notes: selectedQB.notes ?? undefined,
+              }
+            : undefined,
+          team: {
+            name: teamName,
+            age_group: ageGroup,
           },
         }),
       });
 
-      if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Analysis failed');
       setResult(data.result);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Analysis failed');
@@ -110,11 +129,11 @@ export default function QBIQClient({ teamId, teamName, ageGroup, qbs, videos, pa
 
             <div>
               <label className="block text-xs font-medium text-[var(--brand-ink)] mb-1.5">
-                Film (optional)
+                Film
               </label>
               {videos.length === 0 ? (
                 <p className="text-xs text-[var(--brand-muted)] bg-[var(--brand-bg)] border border-[var(--brand-border)] rounded-lg p-2">
-                  No processed film available. Upload film to enable video analysis.
+                  No processed film yet. Upload game film and wait for it to finish processing.
                 </p>
               ) : (
                 <div className="relative">
@@ -123,7 +142,6 @@ export default function QBIQClient({ teamId, teamName, ageGroup, qbs, videos, pa
                     onChange={(e) => setSelectedVideo(videos.find((v) => v.id === e.target.value) ?? null)}
                     className={selectClass}
                   >
-                    <option value="">No film (text analysis only)</option>
                     {videos.map((v) => (
                       <option key={v.id} value={v.id}>{v.title}</option>
                     ))}
@@ -148,7 +166,7 @@ export default function QBIQClient({ teamId, teamName, ageGroup, qbs, videos, pa
 
             <button
               onClick={runAnalysis}
-              disabled={loading || (!selectedQB && !selectedVideo)}
+              disabled={loading || !selectedVideo}
               className="w-full flex items-center justify-center gap-2 bg-[var(--brand-navy)] text-white font-semibold py-3 rounded-lg hover:bg-[var(--brand-navy-dark)] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {loading ? (
@@ -206,9 +224,7 @@ export default function QBIQClient({ teamId, teamName, ageGroup, qbs, videos, pa
               <Zap size={28} className="text-blue-600 animate-pulse" />
             </div>
             <p className="font-semibold text-[var(--brand-navy)] mb-1">Running QBIQ Analysis</p>
-            <p className="text-sm text-[var(--brand-muted)]">
-              {selectedVideo ? 'Analyzing film frames with Gemini...' : 'Analyzing with Claude...'}
-            </p>
+            <p className="text-sm text-[var(--brand-muted)]">Analyzing film frames with Gemini...</p>
           </div>
         )}
 
@@ -239,21 +255,32 @@ export default function QBIQClient({ teamId, teamName, ageGroup, qbs, videos, pa
                   <p className="text-sm text-[var(--brand-muted)] mt-1">
                     {selectedQB ? `${selectedQB.first_name} ${selectedQB.last_name}` : 'Quarterback'}
                   </p>
-                  <div className="grid grid-cols-2 gap-2 mt-3">
-                    {[
-                      { label: 'Mechanics', score: result.mechanics_score },
-                      { label: 'Decisions', score: result.decision_score },
-                      { label: 'Footwork', score: result.footwork_score },
-                      { label: 'Release', score: result.release_score },
-                    ].map((s) => (
-                      <div key={s.label} className="text-xs">
-                        <span className="text-[var(--brand-muted)]">{s.label}: </span>
-                        <span className="font-semibold text-[var(--brand-ink)]">{s.score}</span>
+                  <div className="grid grid-cols-1 gap-1 mt-3">
+                    {DIMENSIONS.map(([key, label]) => (
+                      <div key={key} className="text-xs">
+                        <span className="text-[var(--brand-muted)]">{label}: </span>
+                        <span className="font-semibold text-[var(--brand-ink)]">{result.position_scores[key]}</span>
                       </div>
                     ))}
                   </div>
                 </div>
               </div>
+            </div>
+
+            {result.summary && (
+              <div className="glass-card p-5">
+                <h3 className="font-bold text-[var(--brand-navy)] mb-2 text-sm uppercase tracking-wide">Summary</h3>
+                <p className="text-sm text-[var(--brand-ink)] leading-relaxed whitespace-pre-wrap">{result.summary}</p>
+              </div>
+            )}
+
+            <div className="space-y-3">
+              {DIMENSIONS.map(([key, label]) => (
+                <div key={key} className="glass-card p-5">
+                  <p className="text-blue-600 text-xs font-bold uppercase tracking-wide mb-1">{label}</p>
+                  <p className="text-sm text-[var(--brand-ink)] leading-relaxed">{result.reasoning[key]}</p>
+                </div>
+              ))}
             </div>
 
             <div className="grid md:grid-cols-2 gap-5">
@@ -284,29 +311,21 @@ export default function QBIQClient({ teamId, teamName, ageGroup, qbs, videos, pa
               </div>
             </div>
 
-            {/* Priority drills */}
-            <div className="glass-card p-5">
-              <h3 className="font-bold text-[var(--brand-navy)] mb-3 text-sm uppercase tracking-wide">Priority Drills</h3>
-              <div className="space-y-3">
-                {result.priority_drills.map((d, i) => (
-                  <div key={i} className="flex items-start gap-3 p-3 bg-[var(--brand-bg)] rounded-lg">
-                    <span className="w-6 h-6 rounded-full bg-[var(--brand-navy)] text-white text-xs flex items-center justify-center font-bold flex-shrink-0">
-                      {i + 1}
-                    </span>
-                    <div>
-                      <p className="text-sm font-semibold text-[var(--brand-ink)]">{d.drill}</p>
-                      <p className="text-xs text-[var(--brand-muted)]">{d.focus} · {d.reps}</p>
+            {result.drills.length > 0 && (
+              <div className="glass-card p-5">
+                <h3 className="font-bold text-[var(--brand-navy)] mb-3 text-sm uppercase tracking-wide">Priority Drills</h3>
+                <div className="space-y-3">
+                  {result.drills.map((d, i) => (
+                    <div key={i} className="flex items-start gap-3 p-3 bg-[var(--brand-bg)] rounded-lg">
+                      <span className="w-6 h-6 rounded-full bg-[var(--brand-navy)] text-white text-xs flex items-center justify-center font-bold flex-shrink-0">
+                        {i + 1}
+                      </span>
+                      <p className="text-sm text-[var(--brand-ink)]">{d}</p>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
-
-            {/* Development plan */}
-            <div className="glass-card p-5">
-              <h3 className="font-bold text-[var(--brand-navy)] mb-3 text-sm uppercase tracking-wide">Development Plan</h3>
-              <p className="text-sm text-[var(--brand-ink)] leading-relaxed whitespace-pre-wrap">{result.development_plan}</p>
-            </div>
+            )}
           </div>
         )}
 
@@ -317,7 +336,7 @@ export default function QBIQClient({ teamId, teamName, ageGroup, qbs, videos, pa
             </div>
             <h3 className="font-bold text-[var(--brand-navy)] text-lg mb-2">QBIQ Ready</h3>
             <p className="text-[var(--brand-muted)] text-sm">
-              Select a quarterback and optionally attach film, then run the analysis.
+              Select film, and optionally a quarterback, then run the analysis.
             </p>
           </div>
         )}

@@ -28,8 +28,8 @@ export default async function OLIQPage({
   const olPlayers = players.filter((p) =>
     ['OL', 'C', 'OG', 'OT'].includes(p.primary_position ?? '')
   );
-  const completedVideos = videos.filter((v) => v.processing_status === 'completed' || v.status === 'analysis_complete');
-  const olAnalyses = pastAnalyses.filter((a) => a.module_key === 'oliq');
+  const completedVideos = videos.filter((v) => v.status === 'ready_for_review' || v.status === 'analysis_complete');
+  const olAnalyses = pastAnalyses.filter((a) => a.module_key === 'OLIQ');
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
