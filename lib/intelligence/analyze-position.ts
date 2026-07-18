@@ -1,4 +1,5 @@
 import { analyzeFramesWithGemini } from '@/lib/ai/providers/google'
+import { getRoute } from '@/lib/ai/model-router'
 import { buildQBIQSystemPrompt, QBIQ_RESPONSE_SCHEMA } from './modules/qbiq'
 import { buildOLIQSystemPrompt, OLIQ_RESPONSE_SCHEMA } from './modules/oliq'
 import { buildTEAMIQSystemPrompt, TEAMIQ_RESPONSE_SCHEMA } from './modules/teamiq'
@@ -22,7 +23,11 @@ export async function analyzePosition(input: PositionAnalysisInput): Promise<Pos
   if (!config) throw new Error(`Unknown module: ${input.moduleKey}`)
 
   const systemPrompt = config.buildPrompt(input)
-  const rawJson = await analyzeFramesWithGemini(systemPrompt, input.frames, config.schema)
+  // Every module here is a frame-based structured-output call — route them
+  // all through the same job type so the model choice has one source of
+  // truth (lib/ai/model-router.ts) instead of being hardcoded per provider.
+  const route = getRoute('frame_observation')
+  const rawJson = await analyzeFramesWithGemini(systemPrompt, input.frames, config.schema, undefined, route.model)
 
   let parsed: Record<string, unknown>
   try {
@@ -45,7 +50,7 @@ export async function analyzePosition(input: PositionAnalysisInput): Promise<Pos
     summary: parsed.summary as string,
     confidence: (parsed.confidence as number) ?? 0.7,
     evidence_frames: (parsed.evidence_frames as number[]) ?? [],
-    model: 'gemini-2.5-pro',
+    model: route.model,
     framesAnalyzed: input.frames.length,
   }
 }

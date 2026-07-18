@@ -1,9 +1,10 @@
 import 'server-only'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { callClaude, CLAUDE_OPUS } from '@/lib/ai/providers/anthropic'
+import { callClaude } from '@/lib/ai/providers/anthropic'
 import { buildPlaybookIQPrompt, PLAYBOOKIQ_CLAUDE_SCHEMA } from '@/lib/intelligence/modules/playbookiq'
-import { extractPlaybookText } from '@/lib/playbook/extract'
+import { extractPlaybookText, isPlaybookTextUsable } from '@/lib/playbook/extract'
+import { getRoute } from '@/lib/ai/model-router'
 
 export const runtime = 'nodejs'
 export const maxDuration = 120
@@ -42,8 +43,15 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  if (!extractedText || extractedText.length < 50) {
-    return new NextResponse('Could not extract text from playbook', { status: 422 })
+  if (!isPlaybookTextUsable(extractedText)) {
+    // Distinguish "nothing came out" (scanned/image-only PDF) from "mostly
+    // symbol-font noise came out" (Wingdings-style PPTX bullets) so the
+    // coach gets an actionable message instead of a report built on
+    // garbage text echoed back as if it were real playbook content.
+    const message = extractedText.length < 50
+      ? 'Could not extract readable text from this playbook. If it’s a scanned or image-based PDF, try uploading a text-based export instead.'
+      : 'The text extracted from this playbook looks garbled (often caused by a symbol/dingbat font in a PowerPoint export). Try re-saving it as a PDF and uploading that instead.'
+    return new NextResponse(message, { status: 422 })
   }
 
   const systemPrompt = buildPlaybookIQPrompt({
@@ -55,9 +63,11 @@ export async function POST(req: NextRequest) {
     pageCount: playbook.page_count ?? undefined,
   })
 
-  // Use Claude Opus for deep document analysis
+  // Deep document analysis — routed through model-router.ts's job-type
+  // mapping rather than hardcoding a model here.
+  const route = getRoute('deep_analysis')
   const rawJson = await callClaude(
-    CLAUDE_OPUS,
+    route.model,
     systemPrompt,
     [{ role: 'user', content: `Analyze this playbook. Return JSON matching this schema:\n${PLAYBOOKIQ_CLAUDE_SCHEMA}` }],
     4096
@@ -93,7 +103,7 @@ export async function POST(req: NextRequest) {
       install_order: result.install_order,
       summary: result.summary,
       model_provider: 'anthropic',
-      model_name: CLAUDE_OPUS,
+      model_name: route.model,
     })
     .select()
     .single()

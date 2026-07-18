@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { Shield, AlertCircle, ChevronDown } from 'lucide-react';
 import type { Player, Video, PositionAnalysisResult } from '@/lib/db/types';
+import EvidenceFrames from '@/components/intelligence/EvidenceFrames';
+import QuickClipUpload from '@/components/intelligence/QuickClipUpload';
 
 interface Props {
   teamId: string;
@@ -29,6 +31,8 @@ interface OLResult {
   weaknesses: string[];
   drills: string[];
   summary: string;
+  confidence: number;
+  evidence_frames: number[];
 }
 
 const DIMENSIONS: Array<[keyof OLResult['position_scores'], string]> = [
@@ -39,14 +43,25 @@ const DIMENSIONS: Array<[keyof OLResult['position_scores'], string]> = [
 
 export default function OLIQClient({ teamId, teamName, ageGroup, olPlayers, videos, pastAnalyses }: Props) {
   const [selectedVideo, setSelectedVideo] = useState<Video | null>(videos[0] ?? null);
+  const [quickClipFrames, setQuickClipFrames] = useState<string[] | null>(null);
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
   const [context, setContext] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<OLResult | null>(null);
   const [error, setError] = useState('');
 
+  function selectVideo(video: Video | null) {
+    setSelectedVideo(video);
+    if (video) setQuickClipFrames(null);
+  }
+
+  function useQuickClip(frames: string[]) {
+    setQuickClipFrames(frames);
+    setSelectedVideo(null);
+  }
+
   async function runAnalysis() {
-    if (!selectedVideo) return;
+    if (!selectedVideo && !quickClipFrames) return;
     setLoading(true);
     setError('');
     setResult(null);
@@ -59,7 +74,8 @@ export default function OLIQClient({ teamId, teamName, ageGroup, olPlayers, vide
           moduleKey: 'OLIQ',
           teamId,
           playerId: selectedPlayer?.id,
-          videoId: selectedVideo.id,
+          videoId: selectedVideo?.id,
+          frames: quickClipFrames ?? undefined,
           coachNote: context || undefined,
           player: selectedPlayer
             ? {
@@ -105,14 +121,14 @@ export default function OLIQClient({ teamId, teamName, ageGroup, olPlayers, vide
                 Film
               </label>
               {videos.length === 0 ? (
-                <p className="text-xs text-[var(--brand-muted)] bg-[var(--brand-bg)] border border-[var(--brand-border)] rounded-lg p-2">
-                  No processed film yet. Upload game film and wait for it to finish processing.
+                <p className="text-xs text-[var(--brand-muted)] bg-[var(--brand-bg)] border border-[var(--brand-border)] rounded-lg p-2 mb-2">
+                  No processed film yet. Upload game film and wait for it to finish processing, or use a quick clip below.
                 </p>
               ) : (
-                <div className="relative">
+                <div className="relative mb-2">
                   <select
-                    value={selectedVideo?.id ?? ''}
-                    onChange={(e) => setSelectedVideo(videos.find((v) => v.id === e.target.value) ?? null)}
+                    value={quickClipFrames ? '' : selectedVideo?.id ?? ''}
+                    onChange={(e) => selectVideo(videos.find((v) => v.id === e.target.value) ?? null)}
                     className={selectClass}
                   >
                     {videos.map((v) => (
@@ -122,6 +138,11 @@ export default function OLIQClient({ teamId, teamName, ageGroup, olPlayers, vide
                   <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--brand-muted)] pointer-events-none" />
                 </div>
               )}
+              <QuickClipUpload
+                onFramesReady={useQuickClip}
+                onClear={() => setQuickClipFrames(null)}
+                disabled={loading}
+              />
             </div>
 
             <div>
@@ -160,7 +181,7 @@ export default function OLIQClient({ teamId, teamName, ageGroup, olPlayers, vide
 
             <button
               onClick={runAnalysis}
-              disabled={loading || !selectedVideo}
+              disabled={loading || (!selectedVideo && !quickClipFrames)}
               className="w-full flex items-center justify-center gap-2 bg-emerald-600 text-white font-semibold py-3 rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {loading ? (
@@ -245,6 +266,15 @@ export default function OLIQClient({ teamId, teamName, ageGroup, olPlayers, vide
                 ))}
               </div>
             </div>
+
+            {selectedVideo && (
+              <EvidenceFrames
+                key={`${selectedVideo.id}-${(result.evidence_frames ?? []).join(',')}`}
+                videoId={selectedVideo.id}
+                frameIndices={result.evidence_frames ?? []}
+                confidence={result.confidence}
+              />
+            )}
 
             {result.summary && (
               <div className="glass-card p-5">

@@ -3,6 +3,7 @@ import { createClient as createServerClient } from '@/lib/supabase/server';
 import { anthropic } from '@/lib/ai/providers/anthropic';
 import { buildPlayScoutIQPrompt } from '@/lib/intelligence/playscoutiq-prompt';
 import { getRelevantMemory } from '@/lib/intelligence/memory';
+import { getRoute } from '@/lib/ai/model-router';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -59,7 +60,7 @@ export async function POST(req: NextRequest) {
     async start(controller) {
       try {
         const response = await anthropic.messages.create({
-          model: 'claude-sonnet-4-5',
+          model: getRoute('quick_question').model,
           max_tokens: 2048,
           system: systemPrompt,
           messages: messages.map((m: { role: 'user' | 'assistant'; content: string }) => ({

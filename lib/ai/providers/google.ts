@@ -14,7 +14,8 @@ export async function analyzeFramesWithGemini(
   systemPrompt: string,
   frames: string[],
   responseSchema: object,
-  userText?: string
+  userText?: string,
+  model: string = GEMINI_MODEL
 ): Promise<string> {
   const client = getClient()
   const parts: object[] = frames.map((frame) => {
@@ -24,7 +25,7 @@ export async function analyzeFramesWithGemini(
   if (userText) parts.push({ text: userText })
 
   const response = await client.models.generateContent({
-    model: GEMINI_MODEL,
+    model,
     contents: [{ role: 'user', parts }],
     config: {
       systemInstruction: systemPrompt,
