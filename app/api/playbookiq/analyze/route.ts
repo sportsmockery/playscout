@@ -110,5 +110,21 @@ export async function POST(req: NextRequest) {
 
   if (insertErr) return new NextResponse(insertErr.message, { status: 500 })
 
+  // Best-effort link to whatever plays already exist for this playbook —
+  // often none yet, since the visual per-play pipeline runs in the
+  // background and usually finishes after this text-based pass. The plays
+  // GET route backfills this once that pipeline reaches 'ready'.
+  const { data: existingPlays } = await supabase
+    .from('playbook_plays')
+    .select('id')
+    .eq('playbook_id', playbookId)
+  if (existingPlays?.length) {
+    await supabase
+      .from('playbook_analyses')
+      .update({ covered_play_ids: existingPlays.map((p) => p.id) })
+      .eq('id', analysis.id)
+    analysis.covered_play_ids = existingPlays.map((p) => p.id)
+  }
+
   return NextResponse.json({ analysis })
 }

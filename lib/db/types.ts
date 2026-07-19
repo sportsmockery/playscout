@@ -123,6 +123,7 @@ export interface PlaybookAnalysis {
   model_provider?: string | null
   model_name?: string | null
   created_at: string
+  covered_play_ids?: string[] | null
 }
 
 export interface PlaybookRecommendation {

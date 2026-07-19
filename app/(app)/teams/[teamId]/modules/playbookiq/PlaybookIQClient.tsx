@@ -103,9 +103,11 @@ function ModuleCard({ label, notes }: { label: string; notes?: string | null }) 
 function PlayCard({
   play,
   onUpdated,
+  linkedToAnalysis,
 }: {
   play: PlaybookPlayWithUrl;
   onUpdated: (updated: PlaybookPlayWithUrl) => void;
+  linkedToAnalysis: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -150,7 +152,7 @@ function PlayCard({
     'w-full px-2 py-1 rounded border border-[var(--brand-border)] bg-white text-xs text-[var(--brand-ink)] focus:outline-none focus:ring-1 focus:ring-[var(--brand-navy)]';
 
   return (
-    <div className="border border-[var(--brand-border)] rounded-xl overflow-hidden break-inside-avoid">
+    <div id={`play-${play.id}`} className="border border-[var(--brand-border)] rounded-xl overflow-hidden break-inside-avoid scroll-mt-6">
       {play.imageUrl && (
         // eslint-disable-next-line @next/next/no-img-element
         <img
@@ -208,6 +210,15 @@ function PlayCard({
 
         {play.edited_at && (
           <p className="text-[10px] font-medium text-[var(--brand-navy)] mb-1.5">Edited by coach</p>
+        )}
+
+        {linkedToAnalysis && (
+          <a
+            href="#whole-book-analysis"
+            className="print:hidden inline-block text-[10px] font-medium text-indigo-600 hover:text-indigo-800 underline mb-1.5"
+          >
+            Part of whole-book analysis
+          </a>
         )}
 
         {editing ? (
@@ -332,6 +343,9 @@ export default function PlaybookIQClient({
     setPlays(data.plays ?? []);
     setPagesStatus(data.pagesStatus);
     setPagesError(data.pagesError ?? null);
+    if (data.coveredPlayIds) {
+      setResult((prev) => (prev ? { ...prev, covered_play_ids: data.coveredPlayIds } : prev));
+    }
     return data.pagesStatus;
   }, []);
 
@@ -622,7 +636,7 @@ export default function PlaybookIQClient({
         {result && !loading && (
           <div className="space-y-5">
             {/* Scores */}
-            <div className="glass-card p-6">
+            <div id="whole-book-analysis" className="glass-card p-6 scroll-mt-6">
               <div className="flex justify-end mb-2">
                 <button
                   onClick={deleteAnalysis}
@@ -651,6 +665,14 @@ export default function PlaybookIQClient({
                     <p className="text-sm text-[var(--brand-ink)] mt-3 leading-relaxed max-w-md">
                       {result.summary}
                     </p>
+                  )}
+                  {(result.covered_play_ids ?? []).length > 0 && (
+                    <a
+                      href={`#play-${result.covered_play_ids![0]}`}
+                      className="print:hidden inline-block text-xs font-semibold text-indigo-600 hover:text-indigo-800 underline mt-3"
+                    >
+                      Covers {result.covered_play_ids!.length} play{result.covered_play_ids!.length === 1 ? '' : 's'} — jump to diagrams
+                    </a>
                   )}
                 </div>
               </div>
@@ -721,6 +743,7 @@ export default function PlaybookIQClient({
                     <PlayCard
                       key={play.id}
                       play={play}
+                      linkedToAnalysis={(result.covered_play_ids ?? []).includes(play.id)}
                       onUpdated={(updated) =>
                         setPlays((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
                       }

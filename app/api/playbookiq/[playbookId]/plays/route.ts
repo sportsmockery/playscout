@@ -39,9 +39,40 @@ export async function GET(
     })
   )
 
+  // The per-play visual pipeline usually finishes after the whole-book text
+  // analysis was created (see app/api/playbookiq/analyze/route.ts), so
+  // covered_play_ids is often still empty at that point. Backfill it here
+  // once pages are actually ready, so the two AI passes end up linked
+  // without the client having to orchestrate it.
+  let coveredPlayIds: string[] | null = null
+  const { data: latestAnalysis } = await supabase
+    .from('playbook_analyses')
+    .select('id, covered_play_ids')
+    .eq('playbook_id', playbookId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (latestAnalysis) {
+    const stored: string[] = latestAnalysis.covered_play_ids ?? []
+    coveredPlayIds = stored
+    if (playbook.pages_status === 'ready' && plays?.length) {
+      const currentIds = plays.map((p) => p.id).sort()
+      const storedIds = [...stored].sort()
+      if (JSON.stringify(currentIds) !== JSON.stringify(storedIds)) {
+        await supabase
+          .from('playbook_analyses')
+          .update({ covered_play_ids: plays.map((p) => p.id) })
+          .eq('id', latestAnalysis.id)
+        coveredPlayIds = plays.map((p) => p.id)
+      }
+    }
+  }
+
   return NextResponse.json({
     pagesStatus: playbook.pages_status,
     pagesError: playbook.pages_error,
     plays: withUrls,
+    coveredPlayIds,
   })
 }
