@@ -100,6 +100,7 @@ export interface PlaybookPlay {
   edited_by?: string | null
   edited_at?: string | null
   original_play?: Json | null
+  page_type?: 'live_play' | 'formation_reference'
 }
 
 export interface PlaybookAnalysis {

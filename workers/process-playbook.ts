@@ -23,6 +23,9 @@ import {
   buildPlaybookPlaySystemPrompt,
   PLAYBOOK_PLAY_RESPONSE_SCHEMA,
   type PlaybookPlayResult,
+  buildPageClassificationPrompt,
+  PAGE_CLASSIFICATION_SCHEMA,
+  type PageClassificationResult,
 } from '../lib/intelligence/modules/playbook-play'
 
 const WORKER_ID = process.env.WORKER_ID ?? 'playscout-playbook-worker-001'
@@ -128,9 +131,48 @@ async function processPage(
     .upload(imagePath, page.pngBytes, { contentType: 'image/png', upsert: true })
   if (uploadErr) throw new Error(`Page ${page.pageNumber} upload failed: ${uploadErr.message}`)
 
-  const systemPrompt = buildPlaybookPlaySystemPrompt({ ageGroup, offensiveStyle, pageNumber: page.pageNumber })
   const route = getRoute('frame_observation')
   const base64 = page.pngBytes.toString('base64')
+
+  // Classify BEFORE spending a full assignment-extraction call: a formation
+  // reference diagram (base alignment, numbering key) has no live
+  // assignments to extract, so skip straight to a labeled row for it.
+  let classification: PageClassificationResult
+  try {
+    const classifyJson = await analyzeFramesWithGemini(
+      buildPageClassificationPrompt(),
+      [base64],
+      PAGE_CLASSIFICATION_SCHEMA,
+      undefined,
+      route.model,
+      'image/png',
+    )
+    classification = JSON.parse(classifyJson)
+  } catch (err) {
+    log(`page ${page.pageNumber}: classification failed, skipping`, err instanceof Error ? err.message : err)
+    return
+  }
+
+  if (!classification.is_play_diagram) return
+
+  if (classification.page_type === 'formation_reference') {
+    const { error: insertErr } = await supabase.from('playbook_plays').insert({
+      playbook_id: job.playbook_id,
+      team_id: job.team_id,
+      page_number: page.pageNumber,
+      play_name: null,
+      formation: null,
+      image_path: imagePath,
+      blocking_summary: 'Formation Reference — no live assignments',
+      assignments: [],
+      confidence: classification.confidence,
+      page_type: 'formation_reference',
+    })
+    if (insertErr) throw new Error(`Page ${page.pageNumber} insert failed: ${insertErr.message}`)
+    return
+  }
+
+  const systemPrompt = buildPlaybookPlaySystemPrompt({ ageGroup, offensiveStyle, pageNumber: page.pageNumber })
 
   let rawJson: string
   try {
@@ -168,6 +210,7 @@ async function processPage(
     blocking_summary: parsed.blocking_summary,
     assignments: parsed.assignments ?? [],
     confidence: parsed.confidence,
+    page_type: 'live_play',
   })
   if (insertErr) throw new Error(`Page ${page.pageNumber} insert failed: ${insertErr.message}`)
 }

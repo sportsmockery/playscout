@@ -208,6 +208,12 @@ function PlayCard({
           </span>
         )}
 
+        {play.page_type === 'formation_reference' && !editing && (
+          <span className="inline-block text-[11px] font-medium text-[var(--brand-muted)] bg-[var(--brand-bg)] border border-[var(--brand-border)] rounded-full px-2 py-0.5 mb-2 ml-1">
+            Formation Reference
+          </span>
+        )}
+
         {play.edited_at && (
           <p className="text-[10px] font-medium text-[var(--brand-navy)] mb-1.5">Edited by coach</p>
         )}

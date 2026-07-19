@@ -114,3 +114,48 @@ export interface PlaybookPlayResult {
   assignments: PlaybookPlayAssignment[]
   confidence: number
 }
+
+/**
+ * Runs BEFORE assignment extraction. A formation reference diagram (base
+ * alignment, personnel grouping, numbering key) is a real play-diagram page
+ * — it should still appear in the viewer — but it has no live assignments to
+ * extract, so giving it a full per-player table produces confident-looking
+ * nonsense. This gates whether the (more expensive) assignment-extraction
+ * call in buildPlaybookPlaySystemPrompt runs at all for a given page.
+ */
+export function buildPageClassificationPrompt(): string {
+  return `${FOOTBALL_BRAIN_SYSTEM}
+
+You are looking at ONE page from a youth football playbook. Before any
+assignment extraction happens, classify what kind of page this is.
+
+- is_play_diagram: false if this page is NOT a play/formation diagram at all
+  (title page, table of contents, roster, text-only page). true otherwise.
+- page_type (only if is_play_diagram is true):
+  - "live_play" — this diagram shows a specific play being run: routes,
+    blocking arrows, motion, a play call/name. There are real per-player
+    assignments to extract.
+  - "formation_reference" — this diagram shows a base alignment, personnel
+    grouping, or numbering key with NO routes, blocking arrows, or play
+    action drawn — players are just standing in their spots. There is
+    nothing live to extract an assignment from.
+- confidence (0.0-1.0): how clear-cut this classification is.
+
+Return ONLY the JSON schema. No preamble.`
+}
+
+export const PAGE_CLASSIFICATION_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    is_play_diagram: { type: Type.BOOLEAN },
+    page_type: { type: Type.STRING, nullable: true },
+    confidence: { type: Type.NUMBER },
+  },
+  required: ['is_play_diagram', 'confidence'],
+}
+
+export interface PageClassificationResult {
+  is_play_diagram: boolean
+  page_type: 'live_play' | 'formation_reference' | null
+  confidence: number
+}
