@@ -309,6 +309,7 @@ export default function PlaybookIQClient({
   const [plays, setPlays] = useState<PlaybookPlayWithUrl[]>([]);
   const [pagesStatus, setPagesStatus] = useState<Playbook['pages_status']>('not_started');
   const [pagesError, setPagesError] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const supabase = createBrowserClient();
 
@@ -340,6 +341,23 @@ export default function PlaybookIQClient({
     }, 4000);
     return () => clearTimeout(timer);
   }, [pagesStatus, activePlaybook, fetchPlays]);
+
+  async function retryPageProcessing() {
+    if (!activePlaybook || retrying) return;
+    setRetrying(true);
+    setPagesError(null);
+    try {
+      const res = await fetch(`/api/playbookiq/${activePlaybook.id}/retry`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not retry.');
+      setPagesStatus('queued');
+      fetchPlays(activePlaybook.id);
+    } catch (err) {
+      setPagesError(err instanceof Error ? err.message : 'Could not retry.');
+    } finally {
+      setRetrying(false);
+    }
+  }
 
   async function handleUploadAndAnalyze() {
     if (!file) return;
@@ -572,10 +590,28 @@ export default function PlaybookIQClient({
 
             {pagesStatus === 'failed' && (
               <div className="glass-card p-5 border border-amber-200 bg-amber-50">
-                <p className="text-sm font-semibold text-amber-800">Couldn&apos;t generate play diagrams</p>
-                <p className="text-xs text-amber-700 mt-1">
-                  {pagesError || 'Something went wrong rendering the pages. The rest of this report is unaffected.'}
-                </p>
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-semibold text-amber-800">Couldn&apos;t generate play diagrams</p>
+                    <p className="text-xs text-amber-700 mt-1">
+                      {pagesError || 'Something went wrong rendering the pages. The rest of this report is unaffected.'}
+                    </p>
+                  </div>
+                  <button
+                    onClick={retryPageProcessing}
+                    disabled={retrying}
+                    className="flex-shrink-0 flex items-center gap-1.5 text-xs font-semibold bg-amber-600 text-white px-3 py-1.5 rounded-lg hover:bg-amber-700 transition-colors disabled:opacity-60"
+                  >
+                    {retrying ? (
+                      <>
+                        <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        Retrying...
+                      </>
+                    ) : (
+                      'Try Again'
+                    )}
+                  </button>
+                </div>
               </div>
             )}
 
