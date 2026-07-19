@@ -9,6 +9,7 @@ import {
   FileText,
   ShieldCheck,
   Printer,
+  Trash2,
 } from 'lucide-react';
 import { createClient as createBrowserClient } from '@/lib/supabase/client';
 import type { Playbook, PlaybookAnalysis, PlaybookPlay } from '@/lib/db/types';
@@ -310,6 +311,9 @@ export default function PlaybookIQClient({
   const [pagesStatus, setPagesStatus] = useState<Playbook['pages_status']>('not_started');
   const [pagesError, setPagesError] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deletingPlaybookId, setDeletingPlaybookId] = useState<string | null>(null);
+  const [deletingAnalysis, setDeletingAnalysis] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const supabase = createBrowserClient();
 
@@ -435,6 +439,44 @@ export default function PlaybookIQClient({
     }
   }
 
+  async function deletePlaybook(playbookId: string) {
+    setDeletingPlaybookId(playbookId);
+    setError('');
+    try {
+      const res = await fetch(`/api/playbookiq/${playbookId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not delete this playbook.');
+      setPlaybooks((prev) => prev.filter((p) => p.id !== playbookId));
+      if (activePlaybook?.id === playbookId) {
+        setActivePlaybook(null);
+        setResult(null);
+        setPlays([]);
+        setPagesStatus('not_started');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not delete this playbook.');
+    } finally {
+      setDeletingPlaybookId(null);
+      setConfirmDeleteId(null);
+    }
+  }
+
+  async function deleteAnalysis() {
+    if (!result) return;
+    setDeletingAnalysis(true);
+    setError('');
+    try {
+      const res = await fetch(`/api/playbookiq/analyses/${result.id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not delete this analysis.');
+      setResult(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not delete this analysis.');
+    } finally {
+      setDeletingAnalysis(false);
+    }
+  }
+
   const inputClass =
     'w-full px-3 py-2.5 rounded-lg border border-[var(--brand-border)] bg-white text-[var(--brand-ink)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--brand-navy)] focus:border-transparent transition-all placeholder:text-[var(--brand-muted)]';
 
@@ -509,20 +551,48 @@ export default function PlaybookIQClient({
             <ul className="space-y-1">
               {playbooks.map((p) => (
                 <li key={p.id}>
-                  <button
-                    onClick={() => loadPastPlaybook(p)}
-                    className={`w-full flex items-center gap-2.5 text-left text-sm py-2 px-2 rounded-lg transition-colors ${
-                      activePlaybook?.id === p.id
-                        ? 'bg-[var(--brand-navy)]/10 text-[var(--brand-navy)]'
-                        : 'hover:bg-[var(--brand-bg)] text-[var(--brand-ink)]'
-                    }`}
-                  >
-                    <FileText size={14} className="flex-shrink-0 text-[var(--brand-muted)]" />
-                    <span className="truncate flex-1">{p.title}</span>
-                    <span className="text-xs text-[var(--brand-muted)] flex-shrink-0">
-                      {new Date(p.created_at).toLocaleDateString()}
-                    </span>
-                  </button>
+                  {confirmDeleteId === p.id ? (
+                    <div className="flex items-center gap-2 text-sm py-2 px-2 rounded-lg bg-red-50 border border-red-200">
+                      <span className="flex-1 text-red-700 text-xs">Delete &quot;{p.title}&quot; and all its plays?</span>
+                      <button
+                        onClick={() => deletePlaybook(p.id)}
+                        disabled={deletingPlaybookId === p.id}
+                        className="text-xs font-semibold text-white bg-red-600 hover:bg-red-700 px-2 py-1 rounded-md disabled:opacity-60"
+                      >
+                        {deletingPlaybookId === p.id ? '...' : 'Delete'}
+                      </button>
+                      <button
+                        onClick={() => setConfirmDeleteId(null)}
+                        disabled={deletingPlaybookId === p.id}
+                        className="text-xs font-semibold text-[var(--brand-muted)] hover:text-[var(--brand-ink)] px-2 py-1"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <div
+                      className={`group w-full flex items-center gap-2.5 text-left text-sm py-2 px-2 rounded-lg transition-colors ${
+                        activePlaybook?.id === p.id
+                          ? 'bg-[var(--brand-navy)]/10 text-[var(--brand-navy)]'
+                          : 'hover:bg-[var(--brand-bg)] text-[var(--brand-ink)]'
+                      }`}
+                    >
+                      <button onClick={() => loadPastPlaybook(p)} className="flex items-center gap-2.5 flex-1 min-w-0 text-left">
+                        <FileText size={14} className="flex-shrink-0 text-[var(--brand-muted)]" />
+                        <span className="truncate flex-1">{p.title}</span>
+                        <span className="text-xs text-[var(--brand-muted)] flex-shrink-0">
+                          {new Date(p.created_at).toLocaleDateString()}
+                        </span>
+                      </button>
+                      <button
+                        onClick={() => setConfirmDeleteId(p.id)}
+                        className="flex-shrink-0 p-1 text-[var(--brand-muted)] hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="Delete playbook"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>
@@ -553,6 +623,17 @@ export default function PlaybookIQClient({
           <div className="space-y-5">
             {/* Scores */}
             <div className="glass-card p-6">
+              <div className="flex justify-end mb-2">
+                <button
+                  onClick={deleteAnalysis}
+                  disabled={deletingAnalysis}
+                  className="print:hidden flex items-center gap-1.5 text-xs font-semibold text-[var(--brand-muted)] hover:text-red-600 transition-colors disabled:opacity-60"
+                  title="Delete this analysis (keeps the uploaded playbook)"
+                >
+                  <Trash2 size={13} />
+                  {deletingAnalysis ? 'Deleting...' : 'Delete Analysis'}
+                </button>
+              </div>
               <div className="flex flex-wrap items-center gap-8">
                 <ScoreRing score={result.overall_score ?? 0} label="Overall" />
                 <ScoreRing score={result.complexity_score ?? 0} label="Complexity" invert />

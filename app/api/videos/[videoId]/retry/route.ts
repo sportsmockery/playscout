@@ -39,6 +39,22 @@ export async function POST(
     return NextResponse.json({ error: 'No processing job found for this video.' }, { status: 404 })
   }
 
+  // videos' UPDATE policy is the actual write-role gate (video_processing_jobs'
+  // is org-membership-only). Verify this one first — RLS silently returns zero
+  // affected rows on denial rather than erroring, so a `.select()` + length
+  // check is required to actually detect it, not just the absence of an error.
+  const { data: videoUpdated, error: videoUpdateErr } = await supabase
+    .from('videos')
+    .update({ status: 'uploaded', error_message: null })
+    .eq('id', videoId)
+    .select('id')
+  if (videoUpdateErr) {
+    return NextResponse.json({ error: videoUpdateErr.message }, { status: 403 })
+  }
+  if (!videoUpdated?.length) {
+    return NextResponse.json({ error: 'You do not have permission to retry this video.' }, { status: 403 })
+  }
+
   const { error: jobUpdateErr } = await supabase
     .from('video_processing_jobs')
     .update({
@@ -56,14 +72,6 @@ export async function POST(
     .eq('id', job.id)
   if (jobUpdateErr) {
     return NextResponse.json({ error: jobUpdateErr.message }, { status: 403 })
-  }
-
-  const { error: videoUpdateErr } = await supabase
-    .from('videos')
-    .update({ status: 'uploaded', error_message: null })
-    .eq('id', videoId)
-  if (videoUpdateErr) {
-    return NextResponse.json({ error: videoUpdateErr.message }, { status: 403 })
   }
 
   return NextResponse.json({ ok: true })

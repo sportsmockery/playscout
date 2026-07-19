@@ -39,6 +39,21 @@ export async function POST(
     return NextResponse.json({ error: 'No processing job found for this playbook.' }, { status: 404 })
   }
 
+  // playbooks' UPDATE policy is the write-role gate. Verify this one first —
+  // RLS silently returns zero affected rows on denial rather than erroring,
+  // so a `.select()` + length check is required to actually detect it.
+  const { data: playbookUpdated, error: playbookUpdateErr } = await supabase
+    .from('playbooks')
+    .update({ pages_status: 'queued', pages_error: null })
+    .eq('id', playbookId)
+    .select('id')
+  if (playbookUpdateErr) {
+    return NextResponse.json({ error: playbookUpdateErr.message }, { status: 403 })
+  }
+  if (!playbookUpdated?.length) {
+    return NextResponse.json({ error: 'You do not have permission to retry this playbook.' }, { status: 403 })
+  }
+
   const { error: jobUpdateErr } = await supabase
     .from('playbook_processing_jobs')
     .update({
@@ -56,14 +71,6 @@ export async function POST(
     .eq('id', job.id)
   if (jobUpdateErr) {
     return NextResponse.json({ error: jobUpdateErr.message }, { status: 403 })
-  }
-
-  const { error: playbookUpdateErr } = await supabase
-    .from('playbooks')
-    .update({ pages_status: 'queued', pages_error: null })
-    .eq('id', playbookId)
-  if (playbookUpdateErr) {
-    return NextResponse.json({ error: playbookUpdateErr.message }, { status: 403 })
   }
 
   return NextResponse.json({ ok: true })
