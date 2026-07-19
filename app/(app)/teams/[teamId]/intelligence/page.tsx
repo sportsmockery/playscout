@@ -1,4 +1,3 @@
-import { createClient as createServerClient } from '@/lib/supabase/server';
 import { getTeamById, getRecentAnalysis, getTeamTendencies } from '@/lib/db/queries';
 import type { PositionAnalysisResult } from '@/lib/db/types';
 import Link from 'next/link';

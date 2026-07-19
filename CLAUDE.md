@@ -812,7 +812,6 @@ GEMINI_API_KEY=
 PERPLEXITY_API_KEY=
 
 # Workers
-VIDEO_PROCESSING_SECRET=      # Shared secret between app and worker
 WORKER_ID=playscout-worker-001
 
 # Vercel
@@ -833,7 +832,7 @@ VERCEL_ORG_ID=team_tyYugyFj05x63r5t9jwqFWq3
 - Vercel project env vars are separate from `.env.local` and must be pushed explicitly: `vercel env add <NAME> <production|preview|development>` (reads value from stdin, prompts per environment — non-interactive shells should pipe the value in and pass the environment as one call per target). Preview environment additions may require selecting "Add to all Preview branches" — rerun the suggested command if it errors asking to disambiguate.
 - At minimum, `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` must exist in the Vercel project (used by `lib/supabase/client.ts`, `server.ts`, and `proxy.ts`). A blank/missing `NEXT_PUBLIC_SUPABASE_ANON_KEY` causes every route to 500 in production, because `proxy.ts` runs `createServerClient` on nearly every request via its matcher.
 - There is an orphaned duplicate project `playscout-scaffold` in the same Vercel scope (from an early accidental deploy under the pre-rename package name). Do not deploy to it; the real project is `playscout`. Safe to delete once confirmed unused, but ask before deleting.
-- Workers run on Railway (not Vercel) — use `VIDEO_PROCESSING_SECRET` to authenticate worker→app calls
+- Workers run on Railway (not Vercel) — they authenticate to Supabase directly via `SUPABASE_SERVICE_ROLE_KEY` (see `workers/lib/service-client.ts`), not a separate shared secret
 - Use `apply_migration` for all DB schema changes — never raw DDL in production
 
 ---
@@ -858,12 +857,12 @@ Supabase MCP is registered as a **project-scoped HTTP MCP server** in `.mcp.json
   "mcpServers": {
     "supabase": {
       "type": "http",
-      "url": "https://mcp.supabase.com/mcp?project_ref=rapuqqztreaefzysetju"
+      "url": "https://mcp.supabase.com/mcp?project_ref=${SUPABASE_PROJECT_REF:-rapuqqztreaefzysetju}"
     }
   }
 }
 ```
-Added via: `claude mcp add --scope project --transport http supabase "https://mcp.supabase.com/mcp?project_ref=rapuqqztreaefzysetju"`. This auto-connects in Claude Code for anyone with this repo checked out; it may prompt for OAuth/authorization on first tool use in a session. (Note: this superseded an earlier plan to use `.claude/mcp_config.json` + `SUPABASE_SERVICE_ROLE_KEY` in the shell — the HTTP MCP connector is what's actually wired up.)
+The project ref reads from the `SUPABASE_PROJECT_REF` env var (already in `.env.local`), falling back to the real value so this still works for anyone without that var set — the ref isn't a secret (it's the same identifier visible in the dashboard URL), so the fallback is safe to commit. This auto-connects in Claude Code for anyone with this repo checked out; it may prompt for OAuth/authorization on first tool use in a session. (Note: this superseded an earlier plan to use `.claude/mcp_config.json` + `SUPABASE_SERVICE_ROLE_KEY` in the shell — the HTTP MCP connector is what's actually wired up.)
 
 ---
 

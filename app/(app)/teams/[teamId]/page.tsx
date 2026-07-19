@@ -1,4 +1,3 @@
-import { createClient as createServerClient } from '@/lib/supabase/server';
 import { getTeamById, getPlayersByTeam, getVideosByTeam, getRecentAnalysis } from '@/lib/db/queries';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -16,8 +15,6 @@ export default async function TeamDetailPage({
   params: Promise<{ teamId: string }>;
 }) {
   const { teamId } = await params;
-  const supabase = await createServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
 
   const [team, players, videos, analyses] = await Promise.all([
     getTeamById(teamId),

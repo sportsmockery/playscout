@@ -77,13 +77,11 @@ function AccessControl({
 export default function AdminUsersClient({
   initialMembers,
   teams,
-  currentUserId,
   currentUserRole,
   loadError,
 }: {
   initialMembers: Member[]
   teams: TeamOption[]
-  currentUserId: string
   currentUserRole: string
   loadError: string | null
 }) {

@@ -1,13 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { createClient as createBrowserClient } from '@/lib/supabase/client';
 import { Eye, EyeOff, UserPlus } from 'lucide-react';
 import GoogleButton from '@/components/auth/GoogleButton';
 
 export default function RegisterForm() {
-  const router = useRouter();
   const supabase = createBrowserClient();
 
   const [name, setName] = useState('');

@@ -10,7 +10,6 @@ import {
   Film,
   Brain,
   Settings,
-  ChevronRight,
   Shield,
   ShieldCheck,
   Zap,
@@ -24,11 +23,6 @@ interface NavItem {
   href: string;
   icon: React.ElementType;
   badge?: string;
-}
-
-interface NavGroup {
-  label: string;
-  items: NavItem[];
 }
 
 const MODULE_ITEMS: NavItem[] = [

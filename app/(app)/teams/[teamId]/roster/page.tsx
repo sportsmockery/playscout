@@ -1,8 +1,7 @@
-import { createClient as createServerClient } from '@/lib/supabase/server';
 import { getTeamById, getPlayersByTeam } from '@/lib/db/queries';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ArrowLeft, Plus, UserCircle } from 'lucide-react';
+import { ArrowLeft, UserCircle } from 'lucide-react';
 import AddPlayerButton from './AddPlayerButton';
 
 export async function generateMetadata({ params }: { params: Promise<{ teamId: string }> }) {
@@ -10,12 +9,6 @@ export async function generateMetadata({ params }: { params: Promise<{ teamId: s
   const team = await getTeamById(teamId);
   return { title: `Roster — ${team?.name ?? 'Team'}` };
 }
-
-const POSITIONS = [
-  'QB', 'RB', 'FB', 'WR', 'TE', 'OL', 'C', 'OG', 'OT',
-  'DE', 'DT', 'LB', 'CB', 'SS', 'FS',
-  'K', 'P', 'LS',
-];
 
 const POSITION_COLORS: Record<string, string> = {
   QB: 'bg-blue-100 text-blue-700',

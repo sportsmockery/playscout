@@ -10,20 +10,49 @@ export async function getTeamById(teamId: string): Promise<Team | null> {
   return data
 }
 
+/**
+ * RLS is necessary but not sufficient (it has broken before — see
+ * migrations 011, 012, 016_storage_team_scoping). Every query keyed off a
+ * userId param filters explicitly by it rather than trusting RLS alone to
+ * scope the result.
+ */
+async function getUserTeamIds(supabase: Awaited<ReturnType<typeof createClient>>, userId: string): Promise<string[]> {
+  const { data: memberships } = await supabase
+    .from('organization_members')
+    .select('organization_id')
+    .eq('user_id', userId)
+  const orgIds = (memberships ?? []).map((m) => m.organization_id)
+  if (!orgIds.length) return []
+
+  const { data: teams } = await supabase
+    .from('teams')
+    .select('id')
+    .in('organization_id', orgIds)
+  return (teams ?? []).map((t) => t.id)
+}
+
 export async function getTeams(userId: string): Promise<Team[]> {
   const supabase = await createClient()
+  const teamIds = await getUserTeamIds(supabase, userId)
+  if (!teamIds.length) return []
+
   const { data } = await supabase
     .from('teams')
     .select('*')
+    .in('id', teamIds)
     .order('created_at', { ascending: false })
   return data ?? []
 }
 
 export async function getRecentAnalyses(userId: string, limit = 5): Promise<PositionAnalysisResult[]> {
   const supabase = await createClient()
+  const teamIds = await getUserTeamIds(supabase, userId)
+  if (!teamIds.length) return []
+
   const { data } = await supabase
     .from('position_analysis_results')
     .select('*')
+    .in('team_id', teamIds)
     .order('created_at', { ascending: false })
     .limit(limit)
   return data ?? []

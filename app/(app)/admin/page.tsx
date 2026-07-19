@@ -71,7 +71,6 @@ export default async function AdminPage() {
       <AdminUsersClient
         initialMembers={members}
         teams={teams}
-        currentUserId={user.id}
         currentUserRole={membership.role}
         loadError={loadError}
       />
