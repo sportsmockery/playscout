@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import type { Team, Player, Video, PositionAnalysisResult, TeamTendency, MistakeEvent, Playbook, PlaybookAnalysis } from './types'
+import type { Team, Player, Video, PositionAnalysisResult, TeamTendency, MistakeEvent, Playbook, PlaybookAnalysis, PlaybookPlay } from './types'
 
 // Alias for server component compatibility
 export const createServerClient = createClient
@@ -129,5 +129,15 @@ export async function getPlaybookAnalyses(playbookId: string): Promise<PlaybookA
     .select('*')
     .eq('playbook_id', playbookId)
     .order('created_at', { ascending: false })
+  return data ?? []
+}
+
+export async function getPlaybookPlays(playbookId: string): Promise<PlaybookPlay[]> {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('playbook_plays')
+    .select('*')
+    .eq('playbook_id', playbookId)
+    .order('page_number', { ascending: true })
   return data ?? []
 }

@@ -74,6 +74,27 @@ export interface Playbook {
   storage_path?: string | null
   page_count?: number | null
   extracted_text?: string | null
+  pages_status?: 'not_started' | 'queued' | 'processing' | 'ready' | 'failed'
+  pages_error?: string | null
+  created_at: string
+}
+
+export interface PlaybookPlayAssignment {
+  position: string
+  assignment: string
+}
+
+export interface PlaybookPlay {
+  id: string
+  playbook_id: string
+  team_id: string
+  page_number: number
+  play_name?: string | null
+  formation?: string | null
+  image_path?: string | null
+  blocking_summary?: string | null
+  assignments: PlaybookPlayAssignment[]
+  confidence?: number | null
   created_at: string
 }
 

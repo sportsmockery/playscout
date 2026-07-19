@@ -54,11 +54,26 @@ export async function POST(req: NextRequest) {
       storage_path: storagePath,
       page_count: pageCount,
       extracted_text: extractedText || null,
+      // PPTX/DOCX/image uploads stay text-only — there's no reliable page
+      // rasterization path for those formats yet, so pages_status is left
+      // at its 'not_started' default and no job is queued for them below.
+      pages_status: fileType === 'pdf' ? 'queued' : 'not_started',
     })
     .select()
     .single()
 
   if (insertErr) return new NextResponse(insertErr.message, { status: 500 })
+
+  if (fileType === 'pdf') {
+    const { error: jobErr } = await supabase.from('playbook_processing_jobs').insert({
+      playbook_id: playbook.id,
+      team_id: teamId,
+    })
+    // Non-fatal: the coach still gets the playbook and its text-only
+    // analysis works either way. Log it server-side; the UI's "processing"
+    // indicator just won't ever flip to ready for this upload.
+    if (jobErr) console.error('Failed to queue playbook page processing:', jobErr)
+  }
 
   return NextResponse.json({ playbook })
 }

@@ -1,15 +1,19 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   BookOpen,
   Upload,
   AlertCircle,
   ChevronDown,
   FileText,
+  ShieldCheck,
+  Printer,
 } from 'lucide-react';
 import { createClient as createBrowserClient } from '@/lib/supabase/client';
-import type { Playbook, PlaybookAnalysis } from '@/lib/db/types';
+import type { Playbook, PlaybookAnalysis, PlaybookPlay } from '@/lib/db/types';
+
+type PlaybookPlayWithUrl = PlaybookPlay & { imageUrl: string | null };
 
 interface Props {
   teamId: string;
@@ -111,6 +115,9 @@ export default function PlaybookIQClient({
   const [loadingStage, setLoadingStage] = useState(0);
   const [result, setResult] = useState<PlaybookAnalysis | null>(null);
   const [error, setError] = useState('');
+  const [plays, setPlays] = useState<PlaybookPlayWithUrl[]>([]);
+  const [pagesStatus, setPagesStatus] = useState<Playbook['pages_status']>('not_started');
+  const [pagesError, setPagesError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const supabase = createBrowserClient();
 
@@ -121,6 +128,27 @@ export default function PlaybookIQClient({
     }, 3000);
     return () => clearInterval(interval);
   }, [loading]);
+
+  const fetchPlays = useCallback(async (playbookId: string): Promise<Playbook['pages_status']> => {
+    const res = await fetch(`/api/playbookiq/${playbookId}/plays`);
+    if (!res.ok) return 'failed';
+    const data = await res.json();
+    setPlays(data.plays ?? []);
+    setPagesStatus(data.pagesStatus);
+    setPagesError(data.pagesError ?? null);
+    return data.pagesStatus;
+  }, []);
+
+  // The worker processes a playbook's pages in the background — poll while
+  // it's queued/processing rather than making the coach refresh the page.
+  useEffect(() => {
+    if (pagesStatus !== 'queued' && pagesStatus !== 'processing') return;
+    if (!activePlaybook) return;
+    const timer = setTimeout(() => {
+      fetchPlays(activePlaybook.id);
+    }, 4000);
+    return () => clearTimeout(timer);
+  }, [pagesStatus, activePlaybook, fetchPlays]);
 
   async function handleUploadAndAnalyze() {
     if (!file) return;
@@ -141,6 +169,10 @@ export default function PlaybookIQClient({
 
       setPlaybooks((prev) => [playbook, ...prev]);
       setActivePlaybook(playbook);
+      setPlays([]);
+      setPagesStatus(playbook.pages_status);
+      setPagesError(null);
+      if (playbook.pages_status === 'queued') fetchPlays(playbook.id);
 
       const analyzeRes = await fetch('/api/playbookiq/analyze', {
         method: 'POST',
@@ -171,6 +203,9 @@ export default function PlaybookIQClient({
     setActivePlaybook(playbook);
     setError('');
     setResult(null);
+    setPlays([]);
+    setPagesStatus(playbook.pages_status ?? 'not_started');
+    setPagesError(null);
     setLoading(true);
     try {
       const { data, error: fetchErr } = await supabase
@@ -183,6 +218,7 @@ export default function PlaybookIQClient({
       if (fetchErr) throw new Error(fetchErr.message);
       setResult(data ?? null);
       if (!data) setError('No analysis found for this playbook yet.');
+      fetchPlays(playbook.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load analysis');
     } finally {
@@ -329,6 +365,109 @@ export default function PlaybookIQClient({
                 </div>
               </div>
             </div>
+
+            {/* Play diagrams & per-player assignments */}
+            {(pagesStatus === 'queued' || pagesStatus === 'processing') && (
+              <div className="glass-card p-6 flex items-center gap-4">
+                <span className="w-5 h-5 border-2 border-[var(--brand-border)] border-t-indigo-600 rounded-full animate-spin flex-shrink-0" />
+                <div>
+                  <p className="font-semibold text-[var(--brand-ink)] text-sm">Reading every play in this playbook...</p>
+                  <p className="text-xs text-[var(--brand-muted)] mt-0.5">
+                    Rendering pages and identifying each play&apos;s assignments — this runs in the background and updates automatically.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {pagesStatus === 'failed' && (
+              <div className="glass-card p-5 border border-amber-200 bg-amber-50">
+                <p className="text-sm font-semibold text-amber-800">Couldn&apos;t generate play diagrams</p>
+                <p className="text-xs text-amber-700 mt-1">
+                  {pagesError || 'Something went wrong rendering the pages. The rest of this report is unaffected.'}
+                </p>
+              </div>
+            )}
+
+            {pagesStatus === 'ready' && plays.length > 0 && (
+              <div className="glass-card p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h3 className="font-bold text-[var(--brand-navy)] text-sm uppercase tracking-wide">
+                      Play Diagrams &amp; Assignments
+                    </h3>
+                    <p className="text-xs text-[var(--brand-muted)] mt-0.5">
+                      {plays.length} play{plays.length === 1 ? '' : 's'} identified, every position labeled
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => window.print()}
+                    className="print:hidden flex items-center gap-1.5 text-xs font-semibold text-[var(--brand-muted)] border border-[var(--brand-border)] rounded-lg px-3 py-1.5 hover:border-[var(--brand-navy)] hover:text-[var(--brand-navy)] transition-colors"
+                  >
+                    <Printer size={13} />
+                    Print
+                  </button>
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-5">
+                  {plays.map((play) => (
+                    <div key={play.id} className="border border-[var(--brand-border)] rounded-xl overflow-hidden break-inside-avoid">
+                      {play.imageUrl && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={play.imageUrl}
+                          alt={play.play_name ?? `Play, page ${play.page_number}`}
+                          className="w-full bg-white border-b border-[var(--brand-border)]"
+                          loading="lazy"
+                        />
+                      )}
+                      <div className="p-4">
+                        <div className="flex items-start justify-between gap-2 mb-1">
+                          <h4 className="font-bold text-[var(--brand-ink)] text-sm">
+                            {play.play_name || `Page ${play.page_number}`}
+                          </h4>
+                          {play.confidence != null && (
+                            <span
+                              className={`flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border flex-shrink-0 ${
+                                play.confidence >= 0.75
+                                  ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                                  : play.confidence >= 0.5
+                                  ? 'text-amber-700 bg-amber-50 border-amber-200'
+                                  : 'text-red-700 bg-red-50 border-red-200'
+                              }`}
+                            >
+                              <ShieldCheck size={10} />
+                              {Math.round(play.confidence * 100)}%
+                            </span>
+                          )}
+                        </div>
+                        {play.formation && (
+                          <span className="inline-block text-[11px] font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-full px-2 py-0.5 mb-2">
+                            {play.formation}
+                          </span>
+                        )}
+                        {play.blocking_summary && (
+                          <p className="text-xs text-[var(--brand-muted)] mb-3 leading-relaxed">{play.blocking_summary}</p>
+                        )}
+                        {play.assignments.length > 0 && (
+                          <table className="w-full text-xs">
+                            <tbody>
+                              {play.assignments.map((a, i) => (
+                                <tr key={i} className="border-t border-[var(--brand-border)] first:border-0">
+                                  <td className="py-1.5 pr-2 font-bold text-[var(--brand-navy)] align-top whitespace-nowrap w-14">
+                                    {a.position}
+                                  </td>
+                                  <td className="py-1.5 text-[var(--brand-ink)] align-top">{a.assignment}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Strengths / Weaknesses */}
             <div className="grid md:grid-cols-2 gap-5">

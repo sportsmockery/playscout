@@ -5,9 +5,11 @@ export const GEMINI_MODEL = 'gemini-2.5-pro'
 
 // Lazy singleton — avoids module-eval errors when env vars aren't set at build time
 function getClient(): GoogleGenAI {
-  return new GoogleGenAI({
-    apiKey: process.env.GOOGLE_API_KEY ?? process.env.GEMINI_API_KEY ?? '',
-  })
+  // An env var set to an empty string is still "set" as far as ?? is
+  // concerned, so it would never fall through to GEMINI_API_KEY — treat
+  // blank the same as unset.
+  const apiKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || ''
+  return new GoogleGenAI({ apiKey })
 }
 
 export async function analyzeFramesWithGemini(
@@ -15,12 +17,13 @@ export async function analyzeFramesWithGemini(
   frames: string[],
   responseSchema: object,
   userText?: string,
-  model: string = GEMINI_MODEL
+  model: string = GEMINI_MODEL,
+  mimeType: string = 'image/jpeg'
 ): Promise<string> {
   const client = getClient()
   const parts: object[] = frames.map((frame) => {
     const base64Data = frame.includes(',') ? frame.split(',')[1] : frame
-    return { inlineData: { mimeType: 'image/jpeg', data: base64Data } }
+    return { inlineData: { mimeType, data: base64Data } }
   })
   if (userText) parts.push({ text: userText })
 
