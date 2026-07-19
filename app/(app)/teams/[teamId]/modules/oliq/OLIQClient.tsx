@@ -5,6 +5,7 @@ import { Shield, AlertCircle, ChevronDown } from 'lucide-react';
 import type { Player, Video, PositionAnalysisResult } from '@/lib/db/types';
 import EvidenceFrames from '@/components/intelligence/EvidenceFrames';
 import QuickClipUpload from '@/components/intelligence/QuickClipUpload';
+import AnalysisCorrections from '@/components/intelligence/AnalysisCorrections';
 
 interface Props {
   teamId: string;
@@ -33,6 +34,7 @@ interface OLResult {
   summary: string;
   confidence: number;
   evidence_frames: number[];
+  edited_at?: string | null;
 }
 
 const DIMENSIONS: Array<[keyof OLResult['position_scores'], string]> = [
@@ -48,6 +50,7 @@ export default function OLIQClient({ teamId, teamName, ageGroup, olPlayers, vide
   const [context, setContext] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<OLResult | null>(null);
+  const [analysisId, setAnalysisId] = useState<string | null>(null);
   const [error, setError] = useState('');
 
   function selectVideo(video: Video | null) {
@@ -65,6 +68,7 @@ export default function OLIQClient({ teamId, teamName, ageGroup, olPlayers, vide
     setLoading(true);
     setError('');
     setResult(null);
+    setAnalysisId(null);
 
     try {
       const res = await fetch('/api/intelligence/analyze', {
@@ -96,6 +100,7 @@ export default function OLIQClient({ teamId, teamName, ageGroup, olPlayers, vide
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Analysis failed');
       setResult(data.result);
+      setAnalysisId(data.analysisId ?? null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Analysis failed');
     } finally {
@@ -245,6 +250,23 @@ export default function OLIQClient({ teamId, teamName, ageGroup, olPlayers, vide
 
         {result && !loading && (
           <div className="space-y-5">
+            <AnalysisCorrections
+              analysisId={analysisId}
+              result={result}
+              dimensions={DIMENSIONS}
+              onSaved={(patch) =>
+                setResult((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        ...patch,
+                        position_scores: { ...prev.position_scores, ...(patch.position_scores as Partial<OLResult['position_scores']> | undefined) },
+                      }
+                    : prev
+                )
+              }
+            />
+
             {/* Scores */}
             <div className="glass-card p-6">
               <h2 className="font-bold text-[var(--brand-navy)] mb-4">Unit Scores</h2>

@@ -33,13 +33,21 @@ export async function PUT(req: NextRequest) {
     .maybeSingle()
   if (!member) return NextResponse.json({ error: 'User is not in your organization.' }, { status: 404 })
 
-  // Only teams in this org are assignable.
+  // Only teams in this org are assignable — reject the whole request if any
+  // requested team isn't one of them, rather than silently dropping it.
   const { data: orgTeams } = await admin
     .from('teams')
     .select('id')
     .eq('organization_id', auth.organizationId)
   const orgTeamIds = new Set((orgTeams ?? []).map((t) => t.id))
-  const valid = teamIds.filter((id) => orgTeamIds.has(id))
+  const foreign = teamIds.filter((id) => !orgTeamIds.has(id))
+  if (foreign.length) {
+    return NextResponse.json(
+      { error: 'One or more teams do not belong to your organization.' },
+      { status: 403 }
+    )
+  }
+  const valid = teamIds
 
   // Toggle the org-wide flag.
   const { error: flagErr } = await admin

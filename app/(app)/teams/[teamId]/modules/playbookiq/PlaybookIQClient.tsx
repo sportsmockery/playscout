@@ -99,6 +99,197 @@ function ModuleCard({ label, notes }: { label: string; notes?: string | null }) 
   );
 }
 
+function PlayCard({
+  play,
+  onUpdated,
+}: {
+  play: PlaybookPlayWithUrl;
+  onUpdated: (updated: PlaybookPlayWithUrl) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [name, setName] = useState(play.play_name ?? '');
+  const [summary, setSummary] = useState(play.blocking_summary ?? '');
+  const [assignments, setAssignments] = useState(play.assignments);
+
+  function startEdit() {
+    setName(play.play_name ?? '');
+    setSummary(play.blocking_summary ?? '');
+    setAssignments(play.assignments);
+    setError('');
+    setEditing(true);
+  }
+
+  async function save() {
+    setSaving(true);
+    setError('');
+    try {
+      const res = await fetch(`/api/playbookiq/plays/${play.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          play_name: name || null,
+          blocking_summary: summary || null,
+          assignments,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not save changes');
+      onUpdated({ ...play, ...data.play });
+      setEditing(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save changes');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const inputClass =
+    'w-full px-2 py-1 rounded border border-[var(--brand-border)] bg-white text-xs text-[var(--brand-ink)] focus:outline-none focus:ring-1 focus:ring-[var(--brand-navy)]';
+
+  return (
+    <div className="border border-[var(--brand-border)] rounded-xl overflow-hidden break-inside-avoid">
+      {play.imageUrl && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={play.imageUrl}
+          alt={play.play_name ?? `Play, page ${play.page_number}`}
+          className="w-full bg-white border-b border-[var(--brand-border)]"
+          loading="lazy"
+        />
+      )}
+      <div className="p-4">
+        <div className="flex items-start justify-between gap-2 mb-1">
+          {editing ? (
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={`Page ${play.page_number}`}
+              className={`${inputClass} font-bold`}
+            />
+          ) : (
+            <h4 className="font-bold text-[var(--brand-ink)] text-sm">
+              {play.play_name || `Page ${play.page_number}`}
+            </h4>
+          )}
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {play.confidence != null && (
+              <span
+                className={`flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${
+                  play.confidence >= 0.75
+                    ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                    : play.confidence >= 0.5
+                    ? 'text-amber-700 bg-amber-50 border-amber-200'
+                    : 'text-red-700 bg-red-50 border-red-200'
+                }`}
+              >
+                <ShieldCheck size={10} />
+                {Math.round(play.confidence * 100)}%
+              </span>
+            )}
+            {!editing && (
+              <button
+                onClick={startEdit}
+                className="print:hidden text-[10px] font-semibold text-[var(--brand-muted)] border border-[var(--brand-border)] rounded-full px-2 py-0.5 hover:border-[var(--brand-navy)] hover:text-[var(--brand-navy)] transition-colors"
+              >
+                Edit
+              </button>
+            )}
+          </div>
+        </div>
+
+        {play.formation && !editing && (
+          <span className="inline-block text-[11px] font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-full px-2 py-0.5 mb-2">
+            {play.formation}
+          </span>
+        )}
+
+        {play.edited_at && (
+          <p className="text-[10px] font-medium text-[var(--brand-navy)] mb-1.5">Edited by coach</p>
+        )}
+
+        {editing ? (
+          <textarea
+            value={summary}
+            onChange={(e) => setSummary(e.target.value)}
+            rows={2}
+            placeholder="Blocking summary"
+            className={`${inputClass} mb-3 resize-none`}
+          />
+        ) : (
+          play.blocking_summary && (
+            <p className="text-xs text-[var(--brand-muted)] mb-3 leading-relaxed">{play.blocking_summary}</p>
+          )
+        )}
+
+        {editing ? (
+          <div className="space-y-1.5">
+            {assignments.map((a, i) => (
+              <div key={i} className="flex gap-1.5">
+                <input
+                  value={a.position}
+                  onChange={(e) => {
+                    const next = [...assignments];
+                    next[i] = { ...next[i], position: e.target.value };
+                    setAssignments(next);
+                  }}
+                  className={`${inputClass} w-14 flex-shrink-0 font-bold`}
+                />
+                <input
+                  value={a.assignment}
+                  onChange={(e) => {
+                    const next = [...assignments];
+                    next[i] = { ...next[i], assignment: e.target.value };
+                    setAssignments(next);
+                  }}
+                  className={inputClass}
+                />
+              </div>
+            ))}
+          </div>
+        ) : (
+          play.assignments.length > 0 && (
+            <table className="w-full text-xs">
+              <tbody>
+                {play.assignments.map((a, i) => (
+                  <tr key={i} className="border-t border-[var(--brand-border)] first:border-0">
+                    <td className="py-1.5 pr-2 font-bold text-[var(--brand-navy)] align-top whitespace-nowrap w-14">
+                      {a.position}
+                    </td>
+                    <td className="py-1.5 text-[var(--brand-ink)] align-top">{a.assignment}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )
+        )}
+
+        {error && <p className="text-[11px] text-red-600 mt-2">{error}</p>}
+
+        {editing && (
+          <div className="flex gap-2 mt-3">
+            <button
+              onClick={save}
+              disabled={saving}
+              className="flex-1 text-xs font-semibold bg-[var(--brand-navy)] text-white rounded-lg py-1.5 hover:bg-[var(--brand-navy-dark)] transition-colors disabled:opacity-60"
+            >
+              {saving ? 'Saving...' : 'Save'}
+            </button>
+            <button
+              onClick={() => { setEditing(false); setError(''); }}
+              disabled={saving}
+              className="flex-1 text-xs font-semibold border border-[var(--brand-border)] text-[var(--brand-muted)] rounded-lg py-1.5 hover:bg-[var(--brand-bg)] transition-colors disabled:opacity-60"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function PlaybookIQClient({
   teamId,
   teamName,
@@ -410,60 +601,13 @@ export default function PlaybookIQClient({
 
                 <div className="grid sm:grid-cols-2 gap-5">
                   {plays.map((play) => (
-                    <div key={play.id} className="border border-[var(--brand-border)] rounded-xl overflow-hidden break-inside-avoid">
-                      {play.imageUrl && (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={play.imageUrl}
-                          alt={play.play_name ?? `Play, page ${play.page_number}`}
-                          className="w-full bg-white border-b border-[var(--brand-border)]"
-                          loading="lazy"
-                        />
-                      )}
-                      <div className="p-4">
-                        <div className="flex items-start justify-between gap-2 mb-1">
-                          <h4 className="font-bold text-[var(--brand-ink)] text-sm">
-                            {play.play_name || `Page ${play.page_number}`}
-                          </h4>
-                          {play.confidence != null && (
-                            <span
-                              className={`flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border flex-shrink-0 ${
-                                play.confidence >= 0.75
-                                  ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
-                                  : play.confidence >= 0.5
-                                  ? 'text-amber-700 bg-amber-50 border-amber-200'
-                                  : 'text-red-700 bg-red-50 border-red-200'
-                              }`}
-                            >
-                              <ShieldCheck size={10} />
-                              {Math.round(play.confidence * 100)}%
-                            </span>
-                          )}
-                        </div>
-                        {play.formation && (
-                          <span className="inline-block text-[11px] font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-full px-2 py-0.5 mb-2">
-                            {play.formation}
-                          </span>
-                        )}
-                        {play.blocking_summary && (
-                          <p className="text-xs text-[var(--brand-muted)] mb-3 leading-relaxed">{play.blocking_summary}</p>
-                        )}
-                        {play.assignments.length > 0 && (
-                          <table className="w-full text-xs">
-                            <tbody>
-                              {play.assignments.map((a, i) => (
-                                <tr key={i} className="border-t border-[var(--brand-border)] first:border-0">
-                                  <td className="py-1.5 pr-2 font-bold text-[var(--brand-navy)] align-top whitespace-nowrap w-14">
-                                    {a.position}
-                                  </td>
-                                  <td className="py-1.5 text-[var(--brand-ink)] align-top">{a.assignment}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        )}
-                      </div>
-                    </div>
+                    <PlayCard
+                      key={play.id}
+                      play={play}
+                      onUpdated={(updated) =>
+                        setPlays((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
+                      }
+                    />
                   ))}
                 </div>
               </div>

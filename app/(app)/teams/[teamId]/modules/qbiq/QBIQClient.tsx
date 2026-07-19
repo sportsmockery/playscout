@@ -5,6 +5,7 @@ import { Zap, ChevronDown, AlertCircle } from 'lucide-react';
 import type { Player, Video, PositionAnalysisResult } from '@/lib/db/types';
 import EvidenceFrames from '@/components/intelligence/EvidenceFrames';
 import QuickClipUpload from '@/components/intelligence/QuickClipUpload';
+import AnalysisCorrections from '@/components/intelligence/AnalysisCorrections';
 
 interface Props {
   teamId: string;
@@ -33,6 +34,7 @@ interface AnalysisResult {
   summary: string;
   confidence: number;
   evidence_frames: number[];
+  edited_at?: string | null;
 }
 
 const DIMENSIONS: Array<[keyof AnalysisResult['position_scores'], string]> = [
@@ -48,6 +50,7 @@ export default function QBIQClient({ teamId, teamName, ageGroup, qbs, videos, pa
   const [context, setContext] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
+  const [analysisId, setAnalysisId] = useState<string | null>(null);
   const [error, setError] = useState('');
 
   function selectVideo(video: Video | null) {
@@ -65,6 +68,7 @@ export default function QBIQClient({ teamId, teamName, ageGroup, qbs, videos, pa
     setLoading(true);
     setError('');
     setResult(null);
+    setAnalysisId(null);
 
     try {
       const res = await fetch('/api/intelligence/analyze', {
@@ -96,6 +100,7 @@ export default function QBIQClient({ teamId, teamName, ageGroup, qbs, videos, pa
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Analysis failed');
       setResult(data.result);
+      setAnalysisId(data.analysisId ?? null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Analysis failed');
     } finally {
@@ -251,6 +256,23 @@ export default function QBIQClient({ teamId, teamName, ageGroup, qbs, videos, pa
 
         {result && !loading && (
           <div className="space-y-5">
+            <AnalysisCorrections
+              analysisId={analysisId}
+              result={result}
+              dimensions={DIMENSIONS}
+              onSaved={(patch) =>
+                setResult((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        ...patch,
+                        position_scores: { ...prev.position_scores, ...(patch.position_scores as Partial<AnalysisResult['position_scores']> | undefined) },
+                      }
+                    : prev
+                )
+              }
+            />
+
             {/* Score ring */}
             <div className="glass-card p-6">
               <div className="flex items-center gap-6">

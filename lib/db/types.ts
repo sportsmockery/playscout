@@ -46,6 +46,7 @@ export interface PositionAnalysisResult {
   position_scores?: Json | null; reasoning?: Json | null; strengths?: string[] | null
   weaknesses?: string[] | null; drills?: string[] | null; summary?: string | null
   frames_analyzed?: number | null; evidence?: Json | null; model_provider?: string | null; model_name?: string | null; created_at: string
+  edited_by?: string | null; edited_at?: string | null; original_result?: Json | null
 }
 
 export interface MistakeEvent {
@@ -96,6 +97,9 @@ export interface PlaybookPlay {
   assignments: PlaybookPlayAssignment[]
   confidence?: number | null
   created_at: string
+  edited_by?: string | null
+  edited_at?: string | null
+  original_play?: Json | null
 }
 
 export interface PlaybookAnalysis {
