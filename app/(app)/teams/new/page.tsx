@@ -34,10 +34,17 @@ export default function NewTeamPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { router.push('/login'); return; }
 
+    // Only reuse an org where this user can actually create teams. The teams
+    // INSERT RLS policy requires an owner/admin/coach membership for the target
+    // org, so a viewer/analyst membership (or an org the user didn't create)
+    // would make the insert fail with "new row violates row-level security
+    // policy for table teams". If there's no such org, we bootstrap a fresh one
+    // below where the user is the owner.
     const { data: membership } = await supabase
       .from('organization_members')
-      .select('organization_id')
+      .select('organization_id, role')
       .eq('user_id', user.id)
+      .in('role', ['owner', 'admin', 'coach'])
       .limit(1)
       .maybeSingle();
 
