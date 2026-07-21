@@ -66,6 +66,7 @@ export async function POST(req: NextRequest) {
       // rasterization path for those formats yet, so pages_status is left
       // at its 'not_started' default and no job is queued for them below.
       pages_status: fileType === 'pdf' ? 'queued' : 'not_started',
+      analysis_mode: fileType === 'pdf' ? 'visual' : 'text_only',
     })
     .select()
     .single()

@@ -685,6 +685,17 @@ export default function PlaybookIQClient({
             </div>
 
             {/* Play diagrams & per-player assignments */}
+            {activePlaybook?.analysis_mode === 'text_only' && (
+              <div className="glass-card p-5 border border-indigo-200 bg-indigo-50">
+                <p className="text-sm font-semibold text-indigo-900">
+                  Visual play analysis currently supports PDF playbooks — this file will get text analysis only.
+                </p>
+                <p className="text-xs text-indigo-700 mt-1">
+                  Export to PDF for full analysis (play diagrams, per-player assignments, and formation labeling).
+                </p>
+              </div>
+            )}
+
             {(pagesStatus === 'queued' || pagesStatus === 'processing') && (
               <div className="glass-card p-6 flex items-center gap-4">
                 <span className="w-5 h-5 border-2 border-[var(--brand-border)] border-t-indigo-600 rounded-full animate-spin flex-shrink-0" />

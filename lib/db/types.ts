@@ -77,6 +77,7 @@ export interface Playbook {
   extracted_text?: string | null
   pages_status?: 'not_started' | 'queued' | 'processing' | 'ready' | 'failed'
   pages_error?: string | null
+  analysis_mode?: 'visual' | 'text_only'
   created_at: string
 }
 
