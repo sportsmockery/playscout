@@ -40,6 +40,27 @@ export const PositionAnalysisInputSchema = z.object({
 
 export type PositionAnalysisInput = z.infer<typeof PositionAnalysisInputSchema>
 
+/**
+ * Validates the MODEL's output, not user input — the JSON.parse in
+ * analyze-position.ts only catches syntax errors; this catches a
+ * syntactically-valid-but-wrong-shape response (missing field, a string
+ * where a number was expected) before it becomes a report a coach reads as
+ * ground truth. See CLAUDE.md rule 5: "Zod validation on inputs AND AI
+ * outputs."
+ */
+export const PositionAnalysisOutputSchema = z.object({
+  overall_score: z.number(),
+  position_scores: z.record(z.string(), z.number().nullable()),
+  reasoning: z.record(z.string(), z.string()),
+  strengths: z.array(z.string()),
+  weaknesses: z.array(z.string()),
+  drills: z.array(z.string()),
+  summary: z.string(),
+  confidence: z.number().optional(),
+  evidence_frames: z.array(z.number()).optional(),
+  plays_observed: z.number().optional(),
+})
+
 export interface PositionAnalysisResult {
   overall_score: number
   // A dimension is null when the clip has no applicable evidence for it

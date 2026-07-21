@@ -16,6 +16,7 @@
  */
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createServiceClient } from './lib/service-client'
+import { Sentry } from './lib/sentry'
 import { renderPdfPages } from './lib/pdf-render'
 import { analyzeFramesWithGemini } from '../lib/ai/providers/google'
 import { getRoute } from '../lib/ai/model-router'
@@ -330,6 +331,11 @@ async function failJob(supabase: SupabaseClient, job: Job, err: unknown) {
   const message = err instanceof Error ? err.message : String(err)
   const exhausted = job.attempts >= job.max_attempts
   const now = new Date().toISOString()
+
+  Sentry.captureException(err, {
+    tags: { worker: 'playbook', exhausted },
+    extra: { jobId: job.id, playbookId: job.playbook_id, teamId: job.team_id, attempts: job.attempts },
+  })
 
   await supabase
     .from('playbook_processing_jobs')

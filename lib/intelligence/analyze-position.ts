@@ -6,7 +6,7 @@ import { buildQBIQSystemPrompt, QBIQ_RESPONSE_SCHEMA } from './modules/qbiq'
 import { buildOLIQSystemPrompt, OLIQ_RESPONSE_SCHEMA } from './modules/oliq'
 import { buildTEAMIQSystemPrompt, TEAMIQ_RESPONSE_SCHEMA } from './modules/teamiq'
 import { buildMISTAKEIQSystemPrompt, MISTAKEIQ_RESPONSE_SCHEMA } from './modules/mistakeiq'
-import type { PositionAnalysisInput, PositionAnalysisResult } from './schemas'
+import { PositionAnalysisOutputSchema, type PositionAnalysisInput, type PositionAnalysisResult } from './schemas'
 
 type ModuleConfig = {
   buildPrompt: (input: PositionAnalysisInput) => string
@@ -56,28 +56,34 @@ export async function analyzePosition(
     await setCachedResponse(supabase, cacheHash, 'frame_observation', rawJson)
   }
 
-  let parsed: Record<string, unknown>
+  let parsedJson: unknown
   try {
-    parsed = JSON.parse(rawJson)
+    parsedJson = JSON.parse(rawJson)
   } catch {
     throw new Error(`Invalid JSON from ${input.moduleKey}: ${rawJson.slice(0, 200)}`)
   }
 
-  // Normalize position_scores keys for consistent output
-  const rawScores = parsed.position_scores as Record<string, number | null>
-  const rawReasoning = parsed.reasoning as Record<string, string>
+  // Syntactically valid JSON can still be the wrong shape (missing field, a
+  // string where a number was expected) — reject that here rather than
+  // rendering a report built on it. See PositionAnalysisOutputSchema's doc
+  // comment.
+  const result = PositionAnalysisOutputSchema.safeParse(parsedJson)
+  if (!result.success) {
+    throw new Error(`Malformed ${input.moduleKey} output: ${result.error.message}`)
+  }
+  const parsed = result.data
 
   return {
-    overall_score: parsed.overall_score as number,
-    position_scores: rawScores,
-    reasoning: rawReasoning,
-    strengths: parsed.strengths as string[],
-    weaknesses: parsed.weaknesses as string[],
-    drills: parsed.drills as string[],
-    summary: parsed.summary as string,
-    confidence: (parsed.confidence as number) ?? 0.7,
-    evidence_frames: (parsed.evidence_frames as number[]) ?? [],
-    plays_observed: parsed.plays_observed as number | undefined,
+    overall_score: parsed.overall_score,
+    position_scores: parsed.position_scores,
+    reasoning: parsed.reasoning,
+    strengths: parsed.strengths,
+    weaknesses: parsed.weaknesses,
+    drills: parsed.drills,
+    summary: parsed.summary,
+    confidence: parsed.confidence ?? 0.7,
+    evidence_frames: parsed.evidence_frames ?? [],
+    plays_observed: parsed.plays_observed,
     model: route.model,
     framesAnalyzed: input.frames.length,
   }

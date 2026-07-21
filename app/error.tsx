@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import * as Sentry from '@sentry/nextjs';
 import { AlertTriangle, RotateCw } from 'lucide-react';
 
 export default function RootError({
@@ -14,6 +15,7 @@ export default function RootError({
 }) {
   useEffect(() => {
     console.error(error);
+    Sentry.captureException(error);
   }, [error]);
 
   return (

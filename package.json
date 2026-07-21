@@ -16,7 +16,8 @@
     "worker:video:dev": "tsx watch workers/process-video.ts",
     "worker:playbook": "tsx workers/process-playbook.ts",
     "worker:playbook:dev": "tsx watch workers/process-playbook.ts",
-    "build-deploy": "git add -A && git commit -m 'deploy' && git push origin main"
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.109.0",
@@ -37,6 +38,8 @@
     "@radix-ui/react-tabs": "^1.1.16",
     "@radix-ui/react-toast": "^1.2.18",
     "@radix-ui/react-tooltip": "^1.2.11",
+    "@sentry/nextjs": "^10.67.0",
+    "@sentry/node": "^10.67.0",
     "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "^2.109.0",
     "@tanstack/react-query": "^5.101.2",
@@ -69,16 +72,22 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@tailwindcss/postcss": "^4",
+    "@testing-library/jest-dom": "^7.0.0",
+    "@testing-library/react": "^16.3.2",
     "@types/node": "^20",
     "@types/pdf-parse": "^1.1.5",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^4.7.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
+    "jsdom": "^29.1.1",
     "shadcn": "^4.12.0",
     "tailwindcss": "^4",
     "tsx": "^4.23.0",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.10"
   }
 }

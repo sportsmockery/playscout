@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Lint, typecheck, unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      # RUN_INTEGRATION_TESTS is deliberately not set here — the real-session
+      # RLS tests (lib/auth/require-team-member.integration.test.ts) create
+      # and delete real auth users, which this default gate should not do on
+      # every PR without a dedicated test project. They still run (and
+      # self-verify their own cleanup) when triggered manually — see that
+      # file's header for the exact command.
+      - run: npm test
+
+  smoke:
+    name: Playwright smoke (public pages)
+    runs-on: ubuntu-latest
+    # Only on main — a PR's smoke run would need its own preview deployment
+    # or a full local build; keeping this to main matches the build doc's
+    # "smoke on main" and avoids a slow, flaky gate on every PR.
+    if: github.ref == 'refs/heads/main'
+    needs: checks
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14

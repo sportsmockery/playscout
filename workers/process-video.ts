@@ -22,6 +22,7 @@ import { pipeline } from 'node:stream/promises'
 import type { ReadableStream as WebReadableStream } from 'node:stream/web'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createServiceClient } from './lib/service-client'
+import { Sentry } from './lib/sentry'
 import {
   probeDurationSeconds,
   extractFrameAt,
@@ -236,6 +237,11 @@ async function failJob(supabase: SupabaseClient, job: Job, err: unknown) {
   const message = err instanceof Error ? err.message : String(err)
   const exhausted = job.attempts >= job.max_attempts
   const now = new Date().toISOString()
+
+  Sentry.captureException(err, {
+    tags: { worker: 'video', jobType: job.job_type, exhausted },
+    extra: { jobId: job.id, videoId: job.video_id, teamId: job.team_id, attempts: job.attempts },
+  })
 
   await supabase
     .from('video_processing_jobs')
