@@ -2,6 +2,7 @@ import 'server-only'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { extractPlaybookText, getPdfPageCount } from '@/lib/playbook/extract'
+import { requireTeamMember, WRITE_ROLES } from '@/lib/auth/require-team-member'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -25,6 +26,13 @@ export async function POST(req: NextRequest) {
   const title = formData.get('title') as string
 
   if (!file || !teamId) return new NextResponse('file and teamId required', { status: 400 })
+
+  // Storage's upload policy only checks can_access_team (no role filter), so
+  // a viewer-role member with a team_assignments row could otherwise upload
+  // files via RLS alone. This enforces the same write-role floor as every
+  // other mutation before any buffering or extraction work happens.
+  const access = await requireTeamMember(teamId, { writeRoles: WRITE_ROLES })
+  if (access.error) return access.error
 
   const fileType = ALLOWED_TYPES[file.type]
   if (!fileType) return new NextResponse(`Unsupported file type: ${file.type}`, { status: 415 })

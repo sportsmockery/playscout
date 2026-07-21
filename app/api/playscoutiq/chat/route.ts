@@ -4,6 +4,7 @@ import { anthropic } from '@/lib/ai/providers/anthropic';
 import { buildPlayScoutIQPrompt } from '@/lib/intelligence/playscoutiq-prompt';
 import { getRelevantMemory } from '@/lib/intelligence/memory';
 import { getRoute } from '@/lib/ai/model-router';
+import { requireTeamMember } from '@/lib/auth/require-team-member';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -29,6 +30,16 @@ export async function POST(req: NextRequest) {
 
   if (!messages || messages.length === 0) {
     return new Response('messages required', { status: 400 });
+  }
+
+  // team_memory's RLS policy currently allows any same-org member to read
+  // it (not scoped to per-team assignment like can_access_team), so this
+  // explicit check is stricter than the DB floor by design — a coach
+  // without access to a specific team shouldn't have that team's memory
+  // fed into a paid AI call just because they're in the same org.
+  if (teamId) {
+    const access = await requireTeamMember(teamId);
+    if (access.error) return access.error;
   }
 
   // Pull RAG memory if teamId provided

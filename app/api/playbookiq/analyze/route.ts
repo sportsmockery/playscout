@@ -5,6 +5,7 @@ import { callClaude } from '@/lib/ai/providers/anthropic'
 import { buildPlaybookIQPrompt, PLAYBOOKIQ_CLAUDE_SCHEMA } from '@/lib/intelligence/modules/playbookiq'
 import { extractPlaybookText, isPlaybookTextUsable } from '@/lib/playbook/extract'
 import { getRoute } from '@/lib/ai/model-router'
+import { requireTeamMember, WRITE_ROLES } from '@/lib/auth/require-team-member'
 
 export const runtime = 'nodejs'
 export const maxDuration = 120
@@ -15,7 +16,7 @@ export async function POST(req: NextRequest) {
   if (authError || !user) return new NextResponse('Unauthorized', { status: 401 })
 
   const body = await req.json()
-  const { playbookId, teamId, teamName, ageGroup, offensiveStyle, defensiveStyle } = body
+  const { playbookId, teamName, ageGroup, offensiveStyle, defensiveStyle } = body
 
   // Load playbook record
   const { data: playbook, error: pbErr } = await supabase
@@ -25,6 +26,13 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (pbErr || !playbook) return new NextResponse('Playbook not found', { status: 404 })
+
+  // Explicit app-layer check using the playbook's REAL team, not a
+  // client-supplied teamId — that value is only used below for prompt
+  // context, never for the DB write, so a mismatched teamId can't attribute
+  // this analysis to a team the caller doesn't actually have write access to.
+  const access = await requireTeamMember(playbook.team_id, { writeRoles: WRITE_ROLES })
+  if (access.error) return access.error
 
   // Use pre-extracted text OR re-extract from storage
   let extractedText = playbook.extracted_text ?? ''
@@ -87,7 +95,7 @@ export async function POST(req: NextRequest) {
     .from('playbook_analyses')
     .insert({
       playbook_id: playbookId,
-      team_id: teamId,
+      team_id: playbook.team_id,
       overall_score: result.overall_score,
       complexity_score: result.complexity_score,
       age_appropriate: result.age_appropriate,

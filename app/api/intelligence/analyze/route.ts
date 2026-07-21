@@ -4,6 +4,7 @@ import { saveToTeamMemory } from '@/lib/intelligence/memory'
 import { PositionAnalysisInputSchema } from '@/lib/intelligence/schemas'
 import { getVideoFramesBase64 } from '@/lib/intelligence/get-frames'
 import { createClient } from '@/lib/supabase/server'
+import { requireTeamMember, WRITE_ROLES } from '@/lib/auth/require-team-member'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -18,6 +19,12 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json()
     const input = PositionAnalysisInputSchema.parse(body)
+
+    // Explicit app-layer check before any paid AI work or frame access —
+    // RLS's insert-role policy only fires at the final save, by which point
+    // the (costly) analysis has already run against another team's film.
+    const access = await requireTeamMember(input.teamId, { writeRoles: WRITE_ROLES })
+    if (access.error) return access.error
 
     let frames = input.frames
     if (!frames.length && input.videoId) {
