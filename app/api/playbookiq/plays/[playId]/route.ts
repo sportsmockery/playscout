@@ -26,7 +26,7 @@ export async function PATCH(
 
   const { data: existing, error: fetchErr } = await supabase
     .from('playbook_plays')
-    .select('play_name, assignments, blocking_summary, original_play')
+    .select('team_id, play_name, assignments, blocking_summary, original_play, confidence')
     .eq('id', playId)
     .single()
   if (fetchErr || !existing) {
@@ -53,6 +53,28 @@ export async function PATCH(
 
   if (updateErr) {
     return NextResponse.json({ error: updateErr.message }, { status: 403 })
+  }
+
+  // Training-data flywheel: one row per field actually changed, ai_value
+  // always the model's true original (never a previous correction), even on
+  // a coach's second or third edit of the same field.
+  const originalValues = (existing.original_play as Record<string, unknown> | null) ?? existing
+  const corrections = (EDITABLE_FIELDS as readonly string[])
+    .filter((field) => field in patch && JSON.stringify(patch[field]) !== JSON.stringify((existing as Record<string, unknown>)[field]))
+    .map((field) => ({
+      team_id: existing.team_id,
+      result_id: playId,
+      result_type: 'playbook_play' as const,
+      field,
+      ai_value: (originalValues as Record<string, unknown>)[field] ?? null,
+      corrected_value: patch[field] ?? null,
+      ai_confidence: existing.confidence ?? null,
+      model: null,
+      corrected_by: user.id,
+    }))
+  if (corrections.length) {
+    const { error: correctionErr } = await supabase.from('output_corrections').insert(corrections)
+    if (correctionErr) console.error('output_corrections insert failed:', correctionErr)
   }
 
   return NextResponse.json({ play: updated })

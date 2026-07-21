@@ -139,3 +139,18 @@ export interface PlaybookInstallStep {
   play: string
   reason: string
 }
+
+export interface OutputCorrection {
+  id: string
+  team_id: string
+  result_id: string
+  result_type: 'position_analysis_result' | 'playbook_play'
+  field: string
+  ai_value: Json | null
+  corrected_value: Json | null
+  ai_confidence: number | null
+  model: string | null
+  prompt_version: string | null
+  corrected_by: string | null
+  created_at: string
+}
