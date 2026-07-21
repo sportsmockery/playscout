@@ -19,6 +19,7 @@ import { createServiceClient } from './lib/service-client'
 import { renderPdfPages } from './lib/pdf-render'
 import { analyzeFramesWithGemini } from '../lib/ai/providers/google'
 import { getRoute } from '../lib/ai/model-router'
+import { recordUsage, hashCacheKey, getCachedResponse, setCachedResponse } from '../lib/ai/record-usage'
 import {
   buildPlaybookPlaySystemPrompt,
   PLAYBOOK_PLAY_RESPONSE_SCHEMA,
@@ -139,14 +140,32 @@ async function processPage(
   // assignments to extract, so skip straight to a labeled row for it.
   let classification: PageClassificationResult
   try {
-    const classifyJson = await analyzeFramesWithGemini(
-      buildPageClassificationPrompt(),
-      [base64],
-      PAGE_CLASSIFICATION_SCHEMA,
-      undefined,
-      route.model,
-      'image/png',
-    )
+    const classifyHash = hashCacheKey('page_classification', buildPageClassificationPrompt(), [base64])
+    const cachedClassification = await getCachedResponse<string>(supabase, classifyHash)
+    let classifyJson: string
+    if (cachedClassification != null) {
+      classifyJson = cachedClassification
+      await recordUsage(supabase, {
+        teamId: job.team_id, userId: null, jobType: 'page_classification',
+        provider: route.provider, model: route.model, inputTokens: 0, outputTokens: 0, cacheHit: true,
+      })
+    } else {
+      const result = await analyzeFramesWithGemini(
+        buildPageClassificationPrompt(),
+        [base64],
+        PAGE_CLASSIFICATION_SCHEMA,
+        undefined,
+        route.model,
+        'image/png',
+      )
+      classifyJson = result.text
+      await recordUsage(supabase, {
+        teamId: job.team_id, userId: null, jobType: 'page_classification',
+        provider: route.provider, model: route.model,
+        inputTokens: result.usage.inputTokens, outputTokens: result.usage.outputTokens,
+      })
+      await setCachedResponse(supabase, classifyHash, 'page_classification', classifyJson)
+    }
     classification = JSON.parse(classifyJson)
   } catch (err) {
     log(`page ${page.pageNumber}: classification failed, skipping`, err instanceof Error ? err.message : err)
@@ -176,14 +195,31 @@ async function processPage(
 
   let rawJson: string
   try {
-    rawJson = await analyzeFramesWithGemini(
-      systemPrompt,
-      [base64],
-      PLAYBOOK_PLAY_RESPONSE_SCHEMA,
-      undefined,
-      route.model,
-      'image/png',
-    )
+    const extractHash = hashCacheKey('assignment_extraction', systemPrompt, [base64])
+    const cachedExtraction = await getCachedResponse<string>(supabase, extractHash)
+    if (cachedExtraction != null) {
+      rawJson = cachedExtraction
+      await recordUsage(supabase, {
+        teamId: job.team_id, userId: null, jobType: 'assignment_extraction',
+        provider: route.provider, model: route.model, inputTokens: 0, outputTokens: 0, cacheHit: true,
+      })
+    } else {
+      const result = await analyzeFramesWithGemini(
+        systemPrompt,
+        [base64],
+        PLAYBOOK_PLAY_RESPONSE_SCHEMA,
+        undefined,
+        route.model,
+        'image/png',
+      )
+      rawJson = result.text
+      await recordUsage(supabase, {
+        teamId: job.team_id, userId: null, jobType: 'assignment_extraction',
+        provider: route.provider, model: route.model,
+        inputTokens: result.usage.inputTokens, outputTokens: result.usage.outputTokens,
+      })
+      await setCachedResponse(supabase, extractHash, 'assignment_extraction', rawJson)
+    }
   } catch (err) {
     // One bad page shouldn't fail the whole playbook — log and skip it.
     log(`page ${page.pageNumber}: vision call failed, skipping`, err instanceof Error ? err.message : err)
@@ -216,6 +252,13 @@ async function processPage(
 }
 
 async function runPipeline(supabase: SupabaseClient, job: Job) {
+  // Global kill-switch — checked once per job, not once per page, since a
+  // multi-hundred-page playbook shouldn't burn through its pages before
+  // this flips true mid-run; the job just retries once the switch flips back.
+  if (process.env.AI_GLOBAL_DISABLE === 'true') {
+    throw new Error('AI features are globally disabled (AI_GLOBAL_DISABLE=true)')
+  }
+
   await supabase.from('playbooks').update({ pages_status: 'processing', pages_error: null }).eq('id', job.playbook_id)
 
   const { data: playbook, error: pbErr } = await supabase

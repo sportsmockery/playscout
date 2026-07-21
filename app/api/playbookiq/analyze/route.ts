@@ -6,6 +6,8 @@ import { buildPlaybookIQPrompt, PLAYBOOKIQ_CLAUDE_SCHEMA } from '@/lib/intellige
 import { extractPlaybookText, isPlaybookTextUsable } from '@/lib/playbook/extract'
 import { getRoute } from '@/lib/ai/model-router'
 import { requireTeamMember, WRITE_ROLES } from '@/lib/auth/require-team-member'
+import { recordUsage, hashCacheKey, getCachedResponse, setCachedResponse } from '@/lib/ai/record-usage'
+import { guardAIRequest } from '@/lib/ai/guard'
 
 export const runtime = 'nodejs'
 export const maxDuration = 120
@@ -33,6 +35,9 @@ export async function POST(req: NextRequest) {
   // this analysis to a team the caller doesn't actually have write access to.
   const access = await requireTeamMember(playbook.team_id, { writeRoles: WRITE_ROLES })
   if (access.error) return access.error
+
+  const blocked = await guardAIRequest(supabase, user.id, playbook.team_id)
+  if (blocked) return blocked
 
   // Use pre-extracted text OR re-extract from storage
   let extractedText = playbook.extracted_text ?? ''
@@ -74,12 +79,34 @@ export async function POST(req: NextRequest) {
   // Deep document analysis — routed through model-router.ts's job-type
   // mapping rather than hardcoding a model here.
   const route = getRoute('deep_analysis')
-  const rawJson = await callClaude(
-    route.model,
-    systemPrompt,
-    [{ role: 'user', content: `Analyze this playbook. Return JSON matching this schema:\n${PLAYBOOKIQ_CLAUDE_SCHEMA}` }],
-    4096
-  )
+  // systemPrompt already fully embeds extractedText (buildPlaybookIQPrompt
+  // bakes it in), so hashing the prompt alone is sufficient — no separate
+  // "frames" input to include.
+  const cacheHash = hashCacheKey('playbook_analysis', systemPrompt, [])
+  const cached = await getCachedResponse<string>(supabase, cacheHash)
+
+  let rawJson: string
+  if (cached != null) {
+    rawJson = cached
+    await recordUsage(supabase, {
+      teamId: playbook.team_id, userId: user.id, jobType: 'playbook_analysis',
+      provider: route.provider, model: route.model, inputTokens: 0, outputTokens: 0, cacheHit: true,
+    })
+  } else {
+    const result = await callClaude(
+      route.model,
+      systemPrompt,
+      [{ role: 'user', content: `Analyze this playbook. Return JSON matching this schema:\n${PLAYBOOKIQ_CLAUDE_SCHEMA}` }],
+      4096
+    )
+    rawJson = result.text
+    await recordUsage(supabase, {
+      teamId: playbook.team_id, userId: user.id, jobType: 'playbook_analysis',
+      provider: route.provider, model: route.model,
+      inputTokens: result.usage.inputTokens, outputTokens: result.usage.outputTokens,
+    })
+    await setCachedResponse(supabase, cacheHash, 'playbook_analysis', rawJson)
+  }
 
   let result: Record<string, unknown>
   try {

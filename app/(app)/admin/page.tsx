@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { getCurrentMembership } from '@/lib/auth/roles'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -62,11 +63,19 @@ export default async function AdminPage() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-[var(--brand-navy)]">Users &amp; Roles</h1>
-        <p className="mt-1 text-sm text-[var(--brand-muted)]">
-          {membership.organizations?.name ?? 'Your organization'} · manage who can access PlayScout and what they can do.
-        </p>
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-[var(--brand-navy)]">Users &amp; Roles</h1>
+          <p className="mt-1 text-sm text-[var(--brand-muted)]">
+            {membership.organizations?.name ?? 'Your organization'} · manage who can access PlayScout and what they can do.
+          </p>
+        </div>
+        <Link
+          href="/admin/usage"
+          className="flex-shrink-0 text-sm font-semibold text-[var(--brand-navy)] border border-[var(--brand-border)] rounded-lg px-3 py-2 hover:bg-[var(--brand-bg)] transition-colors"
+        >
+          AI Usage
+        </Link>
       </div>
       <AdminUsersClient
         initialMembers={members}

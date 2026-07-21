@@ -5,6 +5,7 @@ import { PositionAnalysisInputSchema } from '@/lib/intelligence/schemas'
 import { getVideoFramesBase64 } from '@/lib/intelligence/get-frames'
 import { createClient } from '@/lib/supabase/server'
 import { requireTeamMember, WRITE_ROLES } from '@/lib/auth/require-team-member'
+import { guardAIRequest } from '@/lib/ai/guard'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -26,6 +27,9 @@ export async function POST(req: NextRequest) {
     const access = await requireTeamMember(input.teamId, { writeRoles: WRITE_ROLES })
     if (access.error) return access.error
 
+    const blocked = await guardAIRequest(supabase, user.id, input.teamId)
+    if (blocked) return blocked
+
     let frames = input.frames
     if (!frames.length && input.videoId) {
       frames = await getVideoFramesBase64(input.videoId)
@@ -37,7 +41,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const result = await analyzePosition({ ...input, frames })
+    const result = await analyzePosition({ ...input, frames }, user.id, supabase)
 
     // Save to DB
     const { data: saved, error } = await supabase

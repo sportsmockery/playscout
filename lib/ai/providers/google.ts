@@ -12,6 +12,11 @@ function getClient(): GoogleGenAI {
   return new GoogleGenAI({ apiKey })
 }
 
+export interface GeminiResult {
+  text: string
+  usage: { inputTokens: number; outputTokens: number }
+}
+
 export async function analyzeFramesWithGemini(
   systemPrompt: string,
   frames: string[],
@@ -19,7 +24,7 @@ export async function analyzeFramesWithGemini(
   userText?: string,
   model: string = GEMINI_MODEL,
   mimeType: string = 'image/jpeg'
-): Promise<string> {
+): Promise<GeminiResult> {
   const client = getClient()
   const parts: object[] = frames.map((frame) => {
     const base64Data = frame.includes(',') ? frame.split(',')[1] : frame
@@ -37,5 +42,11 @@ export async function analyzeFramesWithGemini(
       temperature: 0.2,
     },
   })
-  return response.text ?? ''
+  return {
+    text: response.text ?? '',
+    usage: {
+      inputTokens: response.usageMetadata?.promptTokenCount ?? 0,
+      outputTokens: response.usageMetadata?.candidatesTokenCount ?? 0,
+    },
+  }
 }

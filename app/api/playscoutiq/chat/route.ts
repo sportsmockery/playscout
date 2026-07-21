@@ -5,6 +5,8 @@ import { buildPlayScoutIQPrompt } from '@/lib/intelligence/playscoutiq-prompt';
 import { getRelevantMemory } from '@/lib/intelligence/memory';
 import { getRoute } from '@/lib/ai/model-router';
 import { requireTeamMember } from '@/lib/auth/require-team-member';
+import { recordUsage } from '@/lib/ai/record-usage';
+import { guardAIRequest } from '@/lib/ai/guard';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -42,6 +44,9 @@ export async function POST(req: NextRequest) {
     if (access.error) return access.error;
   }
 
+  const blocked = await guardAIRequest(supabase, user.id, teamId);
+  if (blocked) return blocked;
+
   // Pull RAG memory if teamId provided
   let memoryContext = '';
   if (teamId) {
@@ -66,12 +71,15 @@ export async function POST(req: NextRequest) {
   });
 
   // SSE streaming response
+  const route = getRoute('quick_question');
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
+      let inputTokens = 0;
+      let outputTokens = 0;
       try {
         const response = await anthropic.messages.create({
-          model: getRoute('quick_question').model,
+          model: route.model,
           max_tokens: 2048,
           system: systemPrompt,
           messages: messages.map((m: { role: 'user' | 'assistant'; content: string }) => ({
@@ -82,6 +90,12 @@ export async function POST(req: NextRequest) {
         });
 
         for await (const event of response) {
+          if (event.type === 'message_start') {
+            inputTokens = event.message.usage.input_tokens;
+          }
+          if (event.type === 'message_delta') {
+            outputTokens = event.usage.output_tokens;
+          }
           if (
             event.type === 'content_block_delta' &&
             event.delta.type === 'text_delta'
@@ -92,6 +106,16 @@ export async function POST(req: NextRequest) {
           if (event.type === 'message_stop') {
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'done' })}\n\n`));
           }
+        }
+
+        // No teamId means a general (no-team-context) chat — there's no
+        // team to attribute the cost to, so this usage goes untracked
+        // rather than guessing an organization.
+        if (teamId) {
+          await recordUsage(supabase, {
+            teamId, userId: user.id, jobType: 'quick_question',
+            provider: route.provider, model: route.model, inputTokens, outputTokens,
+          });
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Stream error';

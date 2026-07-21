@@ -1,5 +1,7 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { analyzeFramesWithGemini } from '@/lib/ai/providers/google'
 import { getRoute } from '@/lib/ai/model-router'
+import { recordUsage, hashCacheKey, getCachedResponse, setCachedResponse } from '@/lib/ai/record-usage'
 import { buildQBIQSystemPrompt, QBIQ_RESPONSE_SCHEMA } from './modules/qbiq'
 import { buildOLIQSystemPrompt, OLIQ_RESPONSE_SCHEMA } from './modules/oliq'
 import { buildTEAMIQSystemPrompt, TEAMIQ_RESPONSE_SCHEMA } from './modules/teamiq'
@@ -18,7 +20,11 @@ const MODULE_MAP: Record<string, ModuleConfig> = {
   MISTAKEIQ: { buildPrompt: buildMISTAKEIQSystemPrompt, schema: MISTAKEIQ_RESPONSE_SCHEMA },
 }
 
-export async function analyzePosition(input: PositionAnalysisInput): Promise<PositionAnalysisResult> {
+export async function analyzePosition(
+  input: PositionAnalysisInput,
+  userId: string,
+  supabase: SupabaseClient
+): Promise<PositionAnalysisResult> {
   const config = MODULE_MAP[input.moduleKey]
   if (!config) throw new Error(`Unknown module: ${input.moduleKey}`)
 
@@ -27,7 +33,28 @@ export async function analyzePosition(input: PositionAnalysisInput): Promise<Pos
   // all through the same job type so the model choice has one source of
   // truth (lib/ai/model-router.ts) instead of being hardcoded per provider.
   const route = getRoute('frame_observation')
-  const rawJson = await analyzeFramesWithGemini(systemPrompt, input.frames, config.schema, undefined, route.model)
+
+  const cacheHash = hashCacheKey('frame_observation', `${input.moduleKey}:${systemPrompt}`, input.frames)
+  const cached = await getCachedResponse<string>(supabase, cacheHash)
+
+  let rawJson: string
+  if (cached != null) {
+    rawJson = cached
+    await recordUsage(supabase, {
+      teamId: input.teamId, userId, jobType: 'frame_observation',
+      provider: route.provider, model: route.model,
+      inputTokens: 0, outputTokens: 0, cacheHit: true,
+    })
+  } else {
+    const result = await analyzeFramesWithGemini(systemPrompt, input.frames, config.schema, undefined, route.model)
+    rawJson = result.text
+    await recordUsage(supabase, {
+      teamId: input.teamId, userId, jobType: 'frame_observation',
+      provider: route.provider, model: route.model,
+      inputTokens: result.usage.inputTokens, outputTokens: result.usage.outputTokens,
+    })
+    await setCachedResponse(supabase, cacheHash, 'frame_observation', rawJson)
+  }
 
   let parsed: Record<string, unknown>
   try {

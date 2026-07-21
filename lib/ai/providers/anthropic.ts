@@ -14,13 +14,21 @@ export async function streamClaude(
   return anthropic.messages.stream({ model, max_tokens: maxTokens, system, messages })
 }
 
+export interface ClaudeResult {
+  text: string
+  usage: { inputTokens: number; outputTokens: number }
+}
+
 export async function callClaude(
   model: string,
   system: string,
   messages: Array<{ role: 'user' | 'assistant'; content: string }>,
   maxTokens = 2048
-): Promise<string> {
+): Promise<ClaudeResult> {
   const response = await anthropic.messages.create({ model, max_tokens: maxTokens, system, messages })
   const block = response.content[0]
-  return block.type === 'text' ? block.text : ''
+  return {
+    text: block.type === 'text' ? block.text : '',
+    usage: { inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens },
+  }
 }
