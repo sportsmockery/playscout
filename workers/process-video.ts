@@ -27,14 +27,70 @@ import {
   probeDurationSeconds,
   extractFrameAt,
   extractEvenlySpacedFrames,
+  detectSceneCuts,
+  buildSegments,
+  extractFramesPerSegment,
   ensureDir,
   TARGET_WIDTH,
+  SCENE_DETECTION_MAX_DURATION_SECONDS,
+  type ExtractedFrame,
 } from './lib/ffmpeg'
 
 const WORKER_ID = process.env.WORKER_ID ?? 'playscout-worker-001'
 const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS ?? 5000)
 const FRAME_COUNT = Number(process.env.FRAME_COUNT ?? 16)
 const CLAIMABLE_STATUSES = ['queued', 'retrying']
+
+// Scene-cut segmentation tuning — see the doc comment on detectSceneCuts in
+// lib/ffmpeg.ts for why this only applies to edited/highlight video, not
+// continuous game footage.
+const MIN_SEGMENTS_FOR_SEGMENTED_MODE = 3
+const MAX_AVG_SEGMENT_SECONDS = 60
+const FRAMES_PER_SEGMENT = 4
+const MAX_SEGMENTED_TOTAL_FRAMES = 200
+
+/**
+ * Decides between segment-aware extraction (edited/highlight video — dense
+ * per-clip coverage) and the original evenly-spaced-across-duration
+ * extraction (continuous footage, or anything too long to be worth a full
+ * scene-detection decode pass). Never throws — any failure in scene
+ * detection just falls back to the original behavior rather than failing
+ * the whole job over a coverage optimization.
+ */
+async function extractFrames(
+  videoPath: string,
+  durationSeconds: number,
+  outDir: string,
+): Promise<{ frames: ExtractedFrame[]; mode: 'segmented' | 'evenly_spaced'; segments?: number }> {
+  if (durationSeconds > SCENE_DETECTION_MAX_DURATION_SECONDS) {
+    const frames = await extractEvenlySpacedFrames(videoPath, durationSeconds, FRAME_COUNT, outDir)
+    return { frames, mode: 'evenly_spaced' }
+  }
+
+  try {
+    const cuts = await detectSceneCuts(videoPath)
+    const segments = buildSegments(cuts, durationSeconds)
+    const avgSegmentSeconds = durationSeconds / segments.length
+
+    if (segments.length < MIN_SEGMENTS_FOR_SEGMENTED_MODE || avgSegmentSeconds > MAX_AVG_SEGMENT_SECONDS) {
+      // Too few/too-long segments to be an edited video — real continuous
+      // footage, or one that just has a couple of scene changes in it.
+      const frames = await extractEvenlySpacedFrames(videoPath, durationSeconds, FRAME_COUNT, outDir)
+      return { frames, mode: 'evenly_spaced' }
+    }
+
+    const framesPerSegment = Math.max(
+      1,
+      Math.min(FRAMES_PER_SEGMENT, Math.floor(MAX_SEGMENTED_TOTAL_FRAMES / segments.length)),
+    )
+    const frames = await extractFramesPerSegment(videoPath, segments, framesPerSegment, outDir)
+    return { frames, mode: 'segmented', segments: segments.length }
+  } catch (err) {
+    log('scene detection failed, falling back to evenly-spaced extraction', err instanceof Error ? err.message : err)
+    const frames = await extractEvenlySpacedFrames(videoPath, durationSeconds, FRAME_COUNT, outDir)
+    return { frames, mode: 'evenly_spaced' }
+  }
+}
 
 interface Job {
   id: string
@@ -174,8 +230,14 @@ async function runPipeline(supabase: SupabaseClient, job: Job) {
     }
 
     const effectiveDuration = duration ?? FRAME_COUNT + 1 // fall back to 1 fps-ish spread
-    const frames = await extractEvenlySpacedFrames(videoPath, effectiveDuration, FRAME_COUNT, framesDir)
+    const extraction = await extractFrames(videoPath, effectiveDuration, framesDir)
+    const frames = extraction.frames
     if (!frames.length) throw new Error('No frames could be extracted from the video')
+    log(
+      extraction.mode === 'segmented'
+        ? `job ${job.id}: segmented extraction — ${extraction.segments} detected cuts, ${frames.length} frames`
+        : `job ${job.id}: evenly-spaced extraction — ${frames.length} frames`
+    )
 
     // ── Building Timeline ───────────────────────────────────────────
     await setJobProgress(supabase, job.id, 80, 'Building Timeline')
