@@ -973,5 +973,7 @@ Full reference: `FOOTBALL_KNOWLEDGE_BASE.md`
 
 ### Key files
 - `FOOTBALL_KNOWLEDGE_BASE.md` — full knowledge base with drills, schemes, safety, tendencies, glossary
+- `IQ_ANALYSIS_KNOWLEDGE_BASE.md` — deep analysis-layer reference: every IQ module's rubric (dimensions, weights, frame-evidence markers, benchmarks, drills), the team-intelligence model (profile fields, offensive/defensive style taxonomies, tendency library, sample-size rollup, team memory), and the play-intelligence model (play-sequence anatomy, formation library, down-and-distance framing, result taxonomy, frame-to-evidence mapping). Aligned to `lib/intelligence/modules/*`.
 - `PLAYSCOUTIQ_SPEC.md` — System A + System B architecture, API routes, RAG memory, model routing
+- `PLAYBOOKIQ_BUILD.md` — PlaybookIQ module build instructions (file parsing, schema, routes)
 - `CLAUDE.md` — this file — master build instructions
