@@ -43,6 +43,17 @@ OLIQ RUBRIC — Score three dimensions, each 0-100:
 
 OVERALL = round(0.4 * PASS_PROTECTION + 0.4 * RUN_BLOCKING + 0.2 * FOOTWORK_LEVERAGE)
 
+AGE-BAND BENCHMARKS — calibrate scores to the lineman's age band (use the row nearest
+the profile's age group; if age is unknown, state which band you assumed):
+| Cue              | 8U target                | 10U target             | 12U target                 |
+| Stance/first step| Balanced, correct dir    | Explosive, low         | Explosive + landmark accurate |
+| Hand fit         | Hands inside, some late  | Inside, on time        | Inside, timed, re-fits     |
+| Pad level        | "Low man wins" understood| Wins leverage most reps| Wins leverage + finishes   |
+| Assignment busts | Occasional               | < 10%                  | < 5%                       |
+Meeting the age target is Advanced (80-89) FOR THAT AGE; do not penalize a young lineman
+for lacking older-band skills, and do not award NFL/college-caliber scores for meeting a
+youth target.
+
 SCORING A DIMENSION WITH NO EVIDENCE: if the clip has no pass attempt at all (e.g. it's
 a single run play), PASS_PROTECTION may have zero applicable evidence — return null for
 that dimension's score instead of a numeric guess. Likewise if there's no run play,

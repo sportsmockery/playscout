@@ -49,6 +49,17 @@ QBIQ RUBRIC — Score three dimensions, each 0-100:
 
 OVERALL = round(0.4 * MECHANICS + 0.4 * DECISION_MAKING + 0.2 * POCKET_PRESENCE)
 
+AGE-BAND BENCHMARKS — calibrate scores to the athlete's age band (use the row nearest
+the profile's age group; if age is unknown, state which band you assumed):
+| Cue           | 8U target                        | 10U target                     | 12U target                        |
+| Snap reception| >= 85% clean                     | >= 90% clean                   | >= 95% clean                      |
+| Handoff mesh  | Rides the back, occasional bobble| Clean ~19/20                   | Clean + sells fake                |
+| Base throw    | Steps to target, short range     | Consistent to 10-12 yds        | Timing throws with progression    |
+| Reads         | Find #1, else run                | Read one defender/picture      | Full half-field progression       |
+Meeting the age target is Advanced (80-89) FOR THAT AGE; do not penalize a young athlete
+for lacking older-band skills, and do not award NFL/college-caliber scores for meeting a
+youth target.
+
 SCORING A DIMENSION WITH NO EVIDENCE: if the clip has no dropback/pass attempt at all
 (e.g. it's a single run/handoff play), POCKET_PRESENCE may have zero applicable
 evidence — return null for that dimension's score instead of a numeric guess. Still
