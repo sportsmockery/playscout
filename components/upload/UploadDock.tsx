@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import Link from 'next/link';
 import {
   CheckCircle2,
@@ -34,8 +34,18 @@ const STATUS_LABEL: Record<UploadItem['status'], string> = {
   cancelled: 'Cancelled',
 };
 
-function ItemRow({ item }: { item: UploadItem }) {
-  const { retry, cancel, remove } = useUploadDock();
+interface ItemRowProps {
+  item: UploadItem;
+  onRetry: (id: string) => void;
+  onCancel: (id: string) => void;
+  onRemove: (id: string) => void;
+}
+
+// Prop-driven and memoized: with a batch of 100 clips, a progress tick on one
+// upload should re-render only that row, not all 100. Pulling the actions in as
+// (stable) props instead of reading context here is what makes the memo hold —
+// a context consumer would re-render on every provider update regardless.
+const ItemRow = memo(function ItemRow({ item, onRetry, onCancel, onRemove }: ItemRowProps) {
   const inFlight = item.status === 'uploading' || item.status === 'finalizing' || item.status === 'queued';
 
   return (
@@ -89,7 +99,7 @@ function ItemRow({ item }: { item: UploadItem }) {
         <div className="shrink-0 flex items-center gap-1">
           {item.status === 'failed' && (
             <button
-              onClick={() => retry(item.id)}
+              onClick={() => onRetry(item.id)}
               className="p-1 text-[var(--brand-muted)] hover:text-[var(--brand-navy)]"
               title="Retry"
             >
@@ -98,7 +108,7 @@ function ItemRow({ item }: { item: UploadItem }) {
           )}
           {inFlight ? (
             <button
-              onClick={() => cancel(item.id)}
+              onClick={() => onCancel(item.id)}
               className="p-1 text-[var(--brand-muted)] hover:text-red-600"
               title="Cancel"
             >
@@ -106,7 +116,7 @@ function ItemRow({ item }: { item: UploadItem }) {
             </button>
           ) : (
             <button
-              onClick={() => remove(item.id)}
+              onClick={() => onRemove(item.id)}
               className="p-1 text-[var(--brand-muted)] hover:text-[var(--brand-ink)]"
               title="Dismiss"
             >
@@ -117,10 +127,11 @@ function ItemRow({ item }: { item: UploadItem }) {
       </div>
     </li>
   );
-}
+});
 
 export default function UploadDock() {
-  const { items, activeCount, overallProgress, etaSeconds, clearFinished } = useUploadDock();
+  const { items, activeCount, overallProgress, etaSeconds, clearFinished, retry, cancel, remove } =
+    useUploadDock();
   const [collapsed, setCollapsed] = useState(false);
 
   if (items.length === 0) return null;
@@ -176,7 +187,13 @@ export default function UploadDock() {
       {!collapsed && (
         <ul className="max-h-72 overflow-y-auto">
           {items.map((item) => (
-            <ItemRow key={item.id} item={item} />
+            <ItemRow
+              key={item.id}
+              item={item}
+              onRetry={retry}
+              onCancel={cancel}
+              onRemove={remove}
+            />
           ))}
         </ul>
       )}

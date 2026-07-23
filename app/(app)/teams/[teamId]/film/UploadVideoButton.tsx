@@ -2,7 +2,9 @@
 
 import { useMemo, useRef, useState } from 'react';
 import { Upload, X, Film, Plus } from 'lucide-react';
-import { useUploadDock, MAX_FILE_BYTES } from '@/components/upload/UploadDockProvider';
+import { useUploadDock, MAX_FILE_BYTES, MAX_BATCH_FILES } from '@/components/upload/UploadDockProvider';
+
+const MAX_FILE_GB = Math.round(MAX_FILE_BYTES / (1024 * 1024 * 1024));
 
 interface Props {
   teamId: string;
@@ -66,6 +68,7 @@ export default function UploadVideoButton({ teamId, teamName }: Props) {
 
   const validFiles = useMemo(() => pending.filter((p) => !p.tooBig), [pending]);
   const hasOversize = pending.some((p) => p.tooBig);
+  const overBatch = validFiles.length > MAX_BATCH_FILES;
 
   function startUploads() {
     if (validFiles.length === 0) return;
@@ -122,7 +125,7 @@ export default function UploadVideoButton({ teamId, teamName }: Props) {
                 {pending.length > 0 ? 'Add more videos' : 'Click or drop videos to select'}
               </p>
               <p className="text-xs text-[var(--brand-muted)] mt-1">
-                MP4, MOV, AVI up to 4GB each · select multiple
+                MP4, MOV, AVI up to {MAX_FILE_GB}GB each · up to {MAX_BATCH_FILES} at once
               </p>
               <input
                 ref={inputRef}
@@ -166,7 +169,7 @@ export default function UploadVideoButton({ teamId, teamName }: Props) {
                         />
                         <p className="text-[10px] text-[var(--brand-muted)] truncate">
                           {p.file.name} · {formatBytes(p.file.size)}
-                          {p.tooBig && <span className="text-red-600 font-semibold"> · exceeds 4GB</span>}
+                          {p.tooBig && <span className="text-red-600 font-semibold"> · exceeds {MAX_FILE_GB}GB</span>}
                         </p>
                       </div>
                       <button
@@ -183,7 +186,14 @@ export default function UploadVideoButton({ teamId, teamName }: Props) {
 
             {hasOversize && (
               <p className="mt-3 text-xs text-red-600">
-                Files over 4GB will be skipped.
+                Files over {MAX_FILE_GB}GB will be skipped.
+              </p>
+            )}
+
+            {overBatch && (
+              <p className="mt-3 text-xs text-amber-600">
+                That&apos;s a lot of film — {validFiles.length} clips. They&apos;ll upload a few at a
+                time in the background and may take a while.
               </p>
             )}
 

@@ -15,10 +15,24 @@ import { createClient as createBrowserClient } from '@/lib/supabase/client';
 
 // Supabase Storage resumable (TUS) uploads must use a 6MB chunk size.
 const TUS_CHUNK_SIZE = 6 * 1024 * 1024;
-export const MAX_FILE_BYTES = 4 * 1024 * 1024 * 1024; // 4GB — Mode 2 full-game ceiling
-// Upload a few clips at a time. Coaches often batch 10–20 single-play Hudl
-// downloads; a small concurrency keeps the UI responsive without saturating
-// the connection so badly that any single large file stalls.
+// 12GB ceiling — comfortably fits a single 90-minute 1080p game film (that's a
+// ~18 Mbps bitrate ceiling, well above typical youth sideline film). TUS
+// resumable uploads support far larger, but 12GB is the biggest single file a
+// coach should realistically need here.
+//
+// NOTE: Supabase enforces min(this bucket's file_size_limit, the project-wide
+// global storage limit). Migration 20260723000000 pins the videos bucket to
+// 12GB, but the project's *global* limit (Dashboard → Storage → Settings) must
+// also be ≥12GB or large uploads are still rejected server-side.
+export const MAX_FILE_BYTES = 12 * 1024 * 1024 * 1024; // 12GB
+// Soft ceiling on a single batch. Coaches can drop a whole game of single-play
+// Hudl clips at once; 100 is the supported target. Larger selections still work
+// (the queue drains them gradually) but we warn so expectations are set.
+export const MAX_BATCH_FILES = 100;
+// Upload a few clips at a time. Coaches often batch dozens of single-play Hudl
+// downloads; a small concurrency keeps the UI responsive and each file's ETA
+// meaningful without saturating the connection so badly that any single large
+// file stalls. Applies whether it's 100 short clips or one 90-minute game.
 const MAX_CONCURRENT = 3;
 
 export type UploadStatus =
