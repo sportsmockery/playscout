@@ -1,186 +1,83 @@
 'use client';
 
-import { useState, useRef } from 'react';
-import { useRouter } from 'next/navigation';
-import Uppy from '@uppy/core';
-import Tus from '@uppy/tus';
-import { createClient as createBrowserClient } from '@/lib/supabase/client';
-import { Upload, X, Film } from 'lucide-react';
+import { useMemo, useRef, useState } from 'react';
+import { Upload, X, Film, Plus } from 'lucide-react';
+import { useUploadDock, MAX_FILE_BYTES } from '@/components/upload/UploadDockProvider';
 
 interface Props {
   teamId: string;
+  teamName?: string;
   variant?: 'default' | 'primary';
 }
 
-// Supabase Storage resumable (TUS) uploads must use a 6MB chunk size.
-const TUS_CHUNK_SIZE = 6 * 1024 * 1024;
-const MAX_FILE_BYTES = 4 * 1024 * 1024 * 1024; // 4GB — matches Mode 2 full-game ceiling
+interface PendingFile {
+  id: string;
+  file: File;
+  title: string;
+  tooBig: boolean;
+}
 
-export default function UploadVideoButton({ teamId }: Props) {
-  const router = useRouter();
-  const supabase = createBrowserClient();
+function formatBytes(bytes: number) {
+  if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+  if (bytes >= 1024 * 1024) return `${Math.round(bytes / (1024 * 1024))} MB`;
+  return `${Math.round(bytes / 1024)} KB`;
+}
+
+let rowId = 0;
+
+export default function UploadVideoButton({ teamId, teamName }: Props) {
+  const { enqueue } = useUploadDock();
   const [open, setOpen] = useState(false);
-  const [file, setFile] = useState<File | null>(null);
-  const [title, setTitle] = useState('');
-  const [uploading, setUploading] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [error, setError] = useState('');
+  const [pending, setPending] = useState<PendingFile[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  function addFiles(fileList: FileList | null) {
+    if (!fileList || fileList.length === 0) return;
+    const next: PendingFile[] = Array.from(fileList).map((file) => {
+      rowId += 1;
+      return {
+        id: `row_${rowId}`,
+        file,
+        title: file.name.replace(/\.[^.]+$/, ''),
+        tooBig: file.size > MAX_FILE_BYTES,
+      };
+    });
+    setPending((prev) => [...prev, ...next]);
+  }
+
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    setFile(f);
-    setError('');
-    if (!title) setTitle(f.name.replace(/\.[^.]+$/, ''));
+    addFiles(e.target.files);
+    // Reset so re-selecting the same file still fires onChange.
+    e.target.value = '';
   }
 
-  function resetForm() {
+  function updateTitle(id: string, title: string) {
+    setPending((prev) => prev.map((p) => (p.id === id ? { ...p, title } : p)));
+  }
+
+  function removeRow(id: string) {
+    setPending((prev) => prev.filter((p) => p.id !== id));
+  }
+
+  function reset() {
     setOpen(false);
-    setFile(null);
-    setTitle('');
-    setProgress(0);
-    setUploading(false);
-    setError('');
+    setPending([]);
   }
 
-  async function handleUpload(e: React.FormEvent) {
-    e.preventDefault();
-    if (!file || uploading) return;
+  const validFiles = useMemo(() => pending.filter((p) => !p.tooBig), [pending]);
+  const hasOversize = pending.some((p) => p.tooBig);
 
-    if (file.size > MAX_FILE_BYTES) {
-      setError('File is larger than the 4GB limit.');
-      return;
-    }
-
-    setUploading(true);
-    setError('');
-    setProgress(0);
-
-    // Auth: we need both the user id (for the upload record) and the access
-    // token (for the resumable upload endpoint's Authorization header).
-    const { data: { session } } = await supabase.auth.getSession();
-    const user = session?.user;
-    if (!session || !user) {
-      setError('Your session has expired. Please sign in again.');
-      setUploading(false);
-      return;
-    }
-
-    // 1. Create the upload-tracking record up front so we always have an id
-    //    for the storage object path and can record failures against it.
-    const { data: uploadRecord, error: insertErr } = await supabase
-      .from('video_uploads')
-      .insert({
-        team_id: teamId,
-        user_id: user.id,
-        original_filename: file.name,
-        file_size_bytes: file.size,
-        mime_type: file.type || 'video/mp4',
-        storage_bucket: 'videos',
-        upload_status: 'uploading',
-      })
-      .select()
-      .single();
-
-    if (insertErr || !uploadRecord) {
-      setError(insertErr?.message ?? 'Could not start the upload.');
-      setUploading(false);
-      return;
-    }
-
-    const ext = file.name.split('.').pop() || 'mp4';
-    const objectName = `${teamId}/${uploadRecord.id}.${ext}`;
-
-    // Browsers report .mov/.mp4 phone footage as video/quicktime — Chrome
-    // and Firefox refuse to play that Content-Type in a <video> tag even
-    // though the underlying H.264/AAC bitstream is fine. Store it as
-    // video/mp4 instead so playback actually works cross-browser.
-    const storageContentType = file.type === 'video/quicktime' ? 'video/mp4' : (file.type || 'video/mp4');
-
-    // 2. Resumable (TUS) upload straight to Supabase Storage — never through a
-    //    Next.js route. Large game film can be paused/resumed and reports real
-    //    progress.
-    const uppy = new Uppy({ autoProceed: false, allowMultipleUploadBatches: false });
-    uppy.use(Tus, {
-      endpoint: `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/upload/resumable`,
-      headers: {
-        authorization: `Bearer ${session.access_token}`,
-        apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        'x-upsert': 'true',
-      },
-      chunkSize: TUS_CHUNK_SIZE,
-      allowedMetaFields: ['bucketName', 'objectName', 'contentType', 'cacheControl'],
-      removeFingerprintOnSuccess: true,
-    });
-
-    uppy.addFile({
-      name: objectName,
-      type: storageContentType,
-      data: file,
-      meta: {
-        bucketName: 'videos',
-        objectName,
-        contentType: storageContentType,
-        cacheControl: '3600',
-      },
-    });
-
-    uppy.on('progress', (pct) => setProgress(pct));
-
-    async function markFailed(message: string) {
-      await supabase
-        .from('video_uploads')
-        .update({ upload_status: 'failed', error_message: message })
-        .eq('id', uploadRecord!.id);
-    }
-
-    let result;
-    try {
-      result = await uppy.upload();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Upload failed.';
-      await markFailed(message);
-      setError(message);
-      setUploading(false);
-      return;
-    }
-
-    if (!result || result.failed?.length || !result.successful?.length) {
-      const message = result?.failed?.[0]?.error ?? 'Upload failed.';
-      await markFailed(message);
-      setError(message);
-      setUploading(false);
-      return;
-    }
-
-    // 3. Finalize server-side: create the video row, mark the upload complete,
-    //    and queue the processing pipeline.
-    const res = await fetch('/api/videos/complete-upload', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        uploadId: uploadRecord.id,
-        storagePath: objectName,
+  function startUploads() {
+    if (validFiles.length === 0) return;
+    enqueue(
+      validFiles.map((p) => ({
+        file: p.file,
+        title: p.title.trim() || p.file.name,
         teamId,
-        title: title || file.name,
-      }),
-    });
-
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      const message = body.error ?? 'Could not finalize the upload.';
-      await markFailed(message);
-      setError(message);
-      setUploading(false);
-      return;
-    }
-
-    setProgress(100);
-    setTimeout(() => {
-      resetForm();
-      router.refresh();
-    }, 500);
+        teamName,
+      })),
+    );
+    reset();
   }
 
   return (
@@ -195,104 +92,121 @@ export default function UploadVideoButton({ teamId }: Props) {
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
-            <div className="flex items-center justify-between mb-5">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between mb-1">
               <h2 className="font-bold text-[var(--brand-navy)] text-lg">Upload Film</h2>
               <button
-                onClick={resetForm}
-                disabled={uploading}
-                className="p-1 text-[var(--brand-muted)] hover:text-[var(--brand-ink)] disabled:opacity-40"
+                onClick={reset}
+                className="p-1 text-[var(--brand-muted)] hover:text-[var(--brand-ink)]"
               >
                 <X size={20} />
               </button>
             </div>
+            <p className="text-xs text-[var(--brand-muted)] mb-4">
+              Add one clip or a whole batch — a drive, a series, or a full game of single plays.
+              Uploads keep running while you use the rest of PlayScout.
+            </p>
 
-            <form onSubmit={handleUpload} className="space-y-4">
-              {/* Drop zone */}
-              <div
-                onClick={() => !uploading && inputRef.current?.click()}
-                className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors ${
-                  file
-                    ? 'border-[var(--brand-navy)] bg-[var(--brand-navy)]/5'
-                    : 'border-[var(--brand-border-strong)] hover:border-[var(--brand-navy)] hover:bg-[var(--brand-bg)]'
-                }`}
-              >
-                <Film size={28} className="mx-auto mb-2 text-[var(--brand-muted)]" />
-                {file ? (
-                  <p className="text-sm font-semibold text-[var(--brand-navy)]">{file.name}</p>
-                ) : (
-                  <>
-                    <p className="text-sm font-semibold text-[var(--brand-ink)]">Click to select video</p>
-                    <p className="text-xs text-[var(--brand-muted)] mt-1">MP4, MOV, AVI up to 4GB</p>
-                  </>
-                )}
-                <input
-                  ref={inputRef}
-                  type="file"
-                  accept="video/*"
-                  className="hidden"
-                  disabled={uploading}
-                  onChange={handleFileChange}
-                />
-              </div>
+            {/* Drop / select zone */}
+            <div
+              onClick={() => inputRef.current?.click()}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                addFiles(e.dataTransfer.files);
+              }}
+              className="border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors border-[var(--brand-border-strong)] hover:border-[var(--brand-navy)] hover:bg-[var(--brand-bg)]"
+            >
+              <Film size={26} className="mx-auto mb-2 text-[var(--brand-muted)]" />
+              <p className="text-sm font-semibold text-[var(--brand-ink)]">
+                {pending.length > 0 ? 'Add more videos' : 'Click or drop videos to select'}
+              </p>
+              <p className="text-xs text-[var(--brand-muted)] mt-1">
+                MP4, MOV, AVI up to 4GB each · select multiple
+              </p>
+              <input
+                ref={inputRef}
+                type="file"
+                accept="video/*"
+                multiple
+                className="hidden"
+                onChange={handleFileChange}
+              />
+            </div>
 
-              <div>
-                <label className="block text-xs font-medium text-[var(--brand-ink)] mb-1">Title</label>
-                <input
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="e.g. Week 3 Game Film"
-                  disabled={uploading}
-                  className="w-full px-3 py-2.5 rounded-lg border border-[var(--brand-border)] bg-white text-[var(--brand-ink)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--brand-navy)] focus:border-transparent disabled:opacity-60"
-                />
-              </div>
-
-              {uploading && (
-                <div>
-                  <div className="flex items-center justify-between text-xs text-[var(--brand-muted)] mb-1">
-                    <span>Uploading {file?.name}</span>
-                    <span>{progress}%</span>
-                  </div>
-                  <div className="w-full h-2 bg-[var(--brand-border)] rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-[var(--brand-navy)] transition-all duration-300"
-                      style={{ width: `${progress}%` }}
-                    />
-                  </div>
+            {/* Selected files */}
+            {pending.length > 0 && (
+              <div className="mt-4 flex-1 overflow-y-auto -mx-1 px-1">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-semibold text-[var(--brand-ink)]">
+                    {pending.length} file{pending.length !== 1 ? 's' : ''} selected
+                  </span>
+                  <button
+                    onClick={() => setPending([])}
+                    className="text-[11px] text-[var(--brand-muted)] hover:text-red-600"
+                  >
+                    Remove all
+                  </button>
                 </div>
-              )}
-
-              {error && (
-                <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                  {error}
-                </p>
-              )}
-
-              <div className="flex gap-3 pt-1">
-                <button
-                  type="button"
-                  onClick={resetForm}
-                  className="flex-1 py-2.5 rounded-lg border border-[var(--brand-border)] text-sm font-semibold text-[var(--brand-muted)] hover:bg-[var(--brand-bg)] transition-colors disabled:opacity-40"
-                  disabled={uploading}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={!file || uploading}
-                  className="flex-1 flex items-center justify-center gap-2 bg-[var(--brand-navy)] text-white font-semibold py-2.5 rounded-lg hover:bg-[var(--brand-navy-dark)] transition-colors disabled:opacity-60"
-                >
-                  {uploading ? (
-                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  ) : (
-                    <>
-                      <Upload size={15} />
-                      Upload
-                    </>
-                  )}
-                </button>
+                <ul className="space-y-2">
+                  {pending.map((p) => (
+                    <li
+                      key={p.id}
+                      className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 ${
+                        p.tooBig ? 'border-red-200 bg-red-50' : 'border-[var(--brand-border)]'
+                      }`}
+                    >
+                      <Film size={15} className="shrink-0 text-[var(--brand-muted)]" />
+                      <div className="min-w-0 flex-1">
+                        <input
+                          value={p.title}
+                          onChange={(e) => updateTitle(p.id, e.target.value)}
+                          className="w-full bg-transparent text-sm font-medium text-[var(--brand-ink)] focus:outline-none"
+                          placeholder="Title"
+                        />
+                        <p className="text-[10px] text-[var(--brand-muted)] truncate">
+                          {p.file.name} · {formatBytes(p.file.size)}
+                          {p.tooBig && <span className="text-red-600 font-semibold"> · exceeds 4GB</span>}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => removeRow(p.id)}
+                        className="shrink-0 p-1 text-[var(--brand-muted)] hover:text-red-600"
+                      >
+                        <X size={14} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
               </div>
-            </form>
+            )}
+
+            {hasOversize && (
+              <p className="mt-3 text-xs text-red-600">
+                Files over 4GB will be skipped.
+              </p>
+            )}
+
+            <div className="flex gap-3 pt-4 mt-auto">
+              <button
+                type="button"
+                onClick={reset}
+                className="flex-1 py-2.5 rounded-lg border border-[var(--brand-border)] text-sm font-semibold text-[var(--brand-muted)] hover:bg-[var(--brand-bg)] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={startUploads}
+                disabled={validFiles.length === 0}
+                className="flex-1 flex items-center justify-center gap-2 bg-[var(--brand-navy)] text-white font-semibold py-2.5 rounded-lg hover:bg-[var(--brand-navy-dark)] transition-colors disabled:opacity-50"
+              >
+                {pending.length > 1 ? <Plus size={15} /> : <Upload size={15} />}
+                {validFiles.length > 1
+                  ? `Upload ${validFiles.length} videos`
+                  : 'Upload'}
+              </button>
+            </div>
           </div>
         </div>
       )}
