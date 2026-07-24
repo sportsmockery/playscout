@@ -206,7 +206,7 @@ interface PositionAnalysisResult {
 | `TEAMIQ` | Team Intelligence | Team | Google · gemini-2.5-pro | **Live** | §4.3 |
 | `MISTAKEIQ` | Mistake Intelligence | Play | Google · gemini-2.5-pro | **Live** | §4.4 |
 | `PLAYBOOKIQ` | Playbook Intelligence | Document | Anthropic · claude-opus | **Live** | §4.5 |
-| `RBIQ` | Running Back Intelligence | Player | Google · gemini-2.5-pro | Planned | §5.1 |
+| `RBIQ` | Running Back Intelligence | Player | Google · gemini-2.5-pro | **Live** | §4.6 |
 | `WRIQ` | Receiver Intelligence | Player | Google · gemini-2.5-pro | Planned | §5.2 |
 | `DLIQ` | Defensive Line Intelligence | Player | Google · gemini-2.5-pro | Planned | §5.3 |
 | `LBIQ` | Linebacker Intelligence | Player | Google · gemini-2.5-pro | Planned | §5.4 |
@@ -503,6 +503,72 @@ penalizes over-complexity hard for young teams (youth should carry ≤ ~15 core 
 never invents plays not in the text; a missing section (e.g. no special teams) is reported as
 a weakness, not fabricated.
 
+### 4.6 RBIQ — Running Back Intelligence
+
+**File:** `lib/intelligence/modules/rbiq.ts` · **Weights:** vision_decision 40 / ball_security 35 / footwork_contact 25
+
+RBIQ grades a single running back on a clip. Like QBIQ/OLIQ it receives an optional
+`ATHLETE PROFILE` and calibrates to age; when several backs share the backfield and the
+subject can't be uniquely identified, the model states which back it graded and why.
+
+#### Dimension 1 — VISION_DECISION (40%)
+
+*Reading the front and choosing the right lane.*
+
+| Sub-cue | What "good" looks like (youth) | Frame markers to read |
+|---|---|---|
+| Read the block/landmark | Eyes on the key block, not the ball | Mesh → first-step frames |
+| Correct gap | Hits the designed hole | Attack frames vs. OL split |
+| Press then cut | Presses the hole to hold the defender, then cuts | Mid-run sequence |
+| Patience vs. bouncing | Stays downhill instead of bouncing everything outside | Path across frames |
+| Follow the lead | Runs off the lead blocker's hip | Lead-block frames |
+| Cutback | Finds the backside lane when frontside is closed | Late-run frames |
+
+#### Dimension 2 — BALL_SECURITY (35%)
+
+*Protecting the football.*
+
+| Sub-cue | What "good" looks like (youth) | Frame markers to read |
+|---|---|---|
+| High-and-tight | Ball pinned high against ribs | Carry frames |
+| Correct arm | Ball in the arm away from the nearest defender | Carry vs. defender position |
+| Two hands in traffic | Covers up entering the pile | Contact/pile frames |
+| Through contact | Ball secure at the point of contact and after | Contact + finish frames |
+| No exposure | Ball not swinging loose on cuts/spins | Cut frames |
+
+#### Dimension 3 — FOOTWORK_CONTACT (25%)
+
+*How the run is finished.*
+
+| Sub-cue | What "good" looks like (youth) | Frame markers to read |
+|---|---|---|
+| Path/landmark accuracy | Hits the aiming point | First-step → attack frames |
+| One-cut decisiveness | Plants and goes — no dancing | Cut frames |
+| Pad level | Runs behind the pads, low | Contact frames |
+| Falls forward | Finishes north–south, gains yards after contact | Finish frames |
+| Balance/effort | Stays up through arm tackles | Post-contact frames |
+
+> **Null handling:** if the back never carries the ball (pass-pro or route only),
+> `ball_security` — and possibly `vision_decision` — return `null` with a reasoning string,
+> and the remaining dimensions reweight proportionally.
+
+#### RBIQ age benchmarks
+
+| Cue | 8U target | 10U target | 12U target |
+|---|---|---|---|
+| Ball security | High-and-tight, occasional loose | Correct arm, secure in traffic | Secures through contact + pile |
+| Vision/gap | Follows the hole | Reads one block, one cut | Presses then cuts, finds cutback |
+| Footwork | North–south, falls forward | Decisive one-cut | One-cut + finishes through contact |
+
+#### RBIQ drill library
+
+- Mesh ladder (clean exchange, footwork off the QB)
+- Cone off-tackle entries (aiming point, one-cut)
+- Two-ball security carries (high-and-tight, correct arm)
+- Traffic gauntlet — *no collisions at young ages* (cover-up, protect through contact)
+- Press-and-cut read drill (vision, patience vs. bouncing)
+- Finish-through-the-bag (pad level, falling forward)
+
 ---
 
 ## 5. Planned Module Specifications
@@ -511,19 +577,11 @@ These modules are named in `IntelligenceModuleKey` but not yet built. Each spec 
 the three weighted dimensions, sub-cues, and drill direction so a future build slots straight
 into the universal framework (§2) and result envelope (§2.6).
 
-### 5.1 RBIQ — Running Back Intelligence (Player)
+> **RBIQ has shipped** — it moved from this section to the Live Module Reference at
+> [§4.6](#46-rbiq--running-back-intelligence). The specs below are the remaining planned
+> modules.
 
-| Dimension (weight) | Sub-cues |
-|---|---|
-| `vision_decision` (40%) | Reads the block/landmark, hits the right gap, presses then cuts, patience vs. bouncing everything outside |
-| `ball_security` (35%) | High-and-tight carry, correct arm (away from defender), two hands in traffic, protects through contact |
-| `footwork_contact` (25%) | Path landmark accuracy, one-cut decisiveness, pad level through contact, finishing north–south |
-
-*Null:* no carry in clip → score only what's visible (e.g. pass-pro or route). *Drills:* mesh
-ladder, cone off-tackle entries, two-ball security, traffic gauntlet (no collisions at young
-ages).
-
-### 5.2 WRIQ — Receiver Intelligence (Player)
+### 5.1 WRIQ — Receiver Intelligence (Player)
 
 | Dimension (weight) | Sub-cues |
 |---|---|
@@ -534,7 +592,7 @@ ages).
 *Drills:* tennis-ball eyes, line routes to cones, over-the-shoulder tracking, stalk-block
 fit-and-freeze.
 
-### 5.3 DLIQ — Defensive Line Intelligence (Player)
+### 5.2 DLIQ — Defensive Line Intelligence (Player)
 
 | Dimension (weight) | Sub-cues |
 |---|---|
@@ -544,7 +602,7 @@ fit-and-freeze.
 
 *Drills:* get-off stick, step-and-shock on shield, read-block mirror, cone pursuit.
 
-### 5.4 LBIQ — Linebacker Intelligence (Player)
+### 5.3 LBIQ — Linebacker Intelligence (Player)
 
 | Dimension (weight) | Sub-cues |
 |---|---|
@@ -554,7 +612,7 @@ fit-and-freeze.
 
 *Drills:* shuffle-read-react, cone scrape, fit-and-freeze, angle tackle.
 
-### 5.5 DBIQ — Defensive Back Intelligence (Player)
+### 5.4 DBIQ — Defensive Back Intelligence (Player)
 
 | Dimension (weight) | Sub-cues |
 |---|---|
@@ -564,7 +622,7 @@ fit-and-freeze.
 
 *Drills:* W-drill, pedal-break-drive, zone-landmark cones, over-the-shoulder locate.
 
-### 5.6 SCOUTIQ — Opponent Scout Intelligence (Team)
+### 5.5 SCOUTIQ — Opponent Scout Intelligence (Team)
 
 Aggregates TEAMIQ + MISTAKEIQ results across multiple opponent clips into a **scouting
 report** for game-week prep. Not a fresh-frame module — it reasons over stored evidence
@@ -573,7 +631,7 @@ confidence and sample size, defensive vulnerabilities, "what to attack" call she
 situational tells (3rd-and-short, red zone), and an explicit **evidence-sufficiency** note
 (how many plays the report is built on).
 
-### 5.7 PRACTICEIQ — Practice Plan Intelligence (Team)
+### 5.6 PRACTICEIQ — Practice Plan Intelligence (Team)
 
 Turns the team's weakest observed dimensions and most frequent mistakes into a **week of
 practice plans** using the microcycle and daily template in `FOOTBALL_KNOWLEDGE_BASE.md`.

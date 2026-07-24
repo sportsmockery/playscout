@@ -2,7 +2,7 @@ import { getTeamById, getRecentAnalysis, getTeamTendencies } from '@/lib/db/quer
 import type { PositionAnalysisResult } from '@/lib/db/types';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ArrowLeft, Brain, Zap, Shield, TrendingUp, AlertTriangle, ArrowRight, BookOpen } from 'lucide-react';
+import { ArrowLeft, Brain, Zap, Gauge, Shield, TrendingUp, AlertTriangle, ArrowRight, BookOpen } from 'lucide-react';
 
 type AnalysisWithPlayer = PositionAnalysisResult & {
   players: { first_name: string; last_name: string; primary_position: string } | null
@@ -23,6 +23,15 @@ const MODULES = [
     bg: 'bg-blue-50',
     desc: 'Mechanics, decision-making, footwork, and film tendency analysis.',
     href: (id: string) => `/teams/${id}/modules/qbiq`,
+  },
+  {
+    name: 'RBIQ',
+    label: 'Running Back Intelligence',
+    icon: Gauge,
+    color: 'text-rose-600',
+    bg: 'bg-rose-50',
+    desc: 'Vision and gap reads, ball security, one-cut footwork, and finishing through contact.',
+    href: (id: string) => `/teams/${id}/modules/rbiq`,
   },
   {
     name: 'OLIQ',

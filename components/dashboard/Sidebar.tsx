@@ -13,6 +13,7 @@ import {
   Shield,
   ShieldCheck,
   Zap,
+  Gauge,
   TrendingUp,
   AlertTriangle,
   BookOpen,
@@ -27,6 +28,7 @@ interface NavItem {
 
 const MODULE_ITEMS: NavItem[] = [
   { label: 'QBIQ', href: 'qbiq', icon: Zap },
+  { label: 'RBIQ', href: 'rbiq', icon: Gauge },
   { label: 'OLIQ', href: 'oliq', icon: Shield },
   { label: 'TeamIQ', href: 'teamiq', icon: TrendingUp },
   { label: 'MistakeIQ', href: 'mistakeiq', icon: AlertTriangle },
