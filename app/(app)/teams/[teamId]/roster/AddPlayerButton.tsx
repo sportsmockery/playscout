@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { createClient as createBrowserClient } from '@/lib/supabase/client';
 import { Plus, X } from 'lucide-react';
@@ -17,6 +18,16 @@ export default function AddPlayerButton({ teamId, variant = 'default' }: Props) 
   const supabase = createBrowserClient();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // Lock background scroll while the modal is open.
+  useEffect(() => {
+    if (!open) return;
+    const original = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = original;
+    };
+  }, [open]);
   const [form, setForm] = useState({
     firstName: '',
     lastName: '',
@@ -65,7 +76,13 @@ export default function AddPlayerButton({ teamId, variant = 'default' }: Props) 
         Add Player
       </button>
 
-      {open && (
+      {/* Portal to <body>: rendered inline, this `fixed` overlay would resolve
+          its containing block against the nearest ancestor with a
+          `backdrop-filter`/`transform` (the empty-state `.glass-card`), which
+          mis-sizes it ("cutoff") and repaints the semi-transparent backdrop
+          over the blurred card in a loop ("flicker"). `open` starts false, so
+          the portal never renders during SSR. */}
+      {open && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-5">
@@ -155,7 +172,8 @@ export default function AddPlayerButton({ teamId, variant = 'default' }: Props) 
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );

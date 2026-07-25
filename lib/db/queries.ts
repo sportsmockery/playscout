@@ -58,6 +58,32 @@ export async function getRecentAnalyses(userId: string, limit = 5): Promise<Posi
   return data ?? []
 }
 
+/**
+ * Dashboard headline stats across every team the user can see: the true total
+ * number of analyses run (not capped like getRecentAnalyses) and the average
+ * overall IQ score. avgScore is null when there are no scored analyses yet, so
+ * the UI can show a dash instead of a misleading 0.
+ */
+export async function getAnalysisStats(userId: string): Promise<{ count: number; avgScore: number | null }> {
+  const supabase = await createClient()
+  const teamIds = await getUserTeamIds(supabase, userId)
+  if (!teamIds.length) return { count: 0, avgScore: null }
+
+  const { data, count } = await supabase
+    .from('position_analysis_results')
+    .select('overall_score', { count: 'exact' })
+    .in('team_id', teamIds)
+
+  const scores = (data ?? [])
+    .map((r) => r.overall_score)
+    .filter((s): s is number => typeof s === 'number')
+  const avgScore = scores.length
+    ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
+    : null
+
+  return { count: count ?? 0, avgScore }
+}
+
 export async function getTeamsByOrg(organizationId: string): Promise<Team[]> {
   const supabase = await createClient()
   const { data } = await supabase.from('teams').select('*').eq('organization_id', organizationId).order('created_at', { ascending: false })

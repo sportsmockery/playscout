@@ -14,6 +14,7 @@ interface Props {
   rbs: Player[];
   videos: Video[];
   pastAnalyses: PositionAnalysisResult[];
+  initialVideoId?: string;
 }
 
 interface AnalysisResult {
@@ -43,9 +44,11 @@ const DIMENSIONS: Array<[keyof AnalysisResult['position_scores'], string]> = [
   ['footwork_contact', 'Footwork & Contact'],
 ];
 
-export default function RBIQClient({ teamId, teamName, ageGroup, rbs, videos, pastAnalyses }: Props) {
+export default function RBIQClient({ teamId, teamName, ageGroup, rbs, videos, pastAnalyses, initialVideoId }: Props) {
   const [selectedRB, setSelectedRB] = useState<Player | null>(rbs[0] ?? null);
-  const [selectedVideo, setSelectedVideo] = useState<Video | null>(videos[0] ?? null);
+  const [selectedVideo, setSelectedVideo] = useState<Video | null>(
+    (initialVideoId ? videos.find((v) => v.id === initialVideoId) : null) ?? videos[0] ?? null,
+  );
   const [quickClipFrames, setQuickClipFrames] = useState<string[] | null>(null);
   const [context, setContext] = useState('');
   const [loading, setLoading] = useState(false);

@@ -14,6 +14,7 @@ interface Props {
   qbs: Player[];
   videos: Video[];
   pastAnalyses: PositionAnalysisResult[];
+  initialVideoId?: string;
 }
 
 interface AnalysisResult {
@@ -43,9 +44,11 @@ const DIMENSIONS: Array<[keyof AnalysisResult['position_scores'], string]> = [
   ['pocket_presence', 'Pocket Presence'],
 ];
 
-export default function QBIQClient({ teamId, teamName, ageGroup, qbs, videos, pastAnalyses }: Props) {
+export default function QBIQClient({ teamId, teamName, ageGroup, qbs, videos, pastAnalyses, initialVideoId }: Props) {
   const [selectedQB, setSelectedQB] = useState<Player | null>(qbs[0] ?? null);
-  const [selectedVideo, setSelectedVideo] = useState<Video | null>(videos[0] ?? null);
+  const [selectedVideo, setSelectedVideo] = useState<Video | null>(
+    (initialVideoId ? videos.find((v) => v.id === initialVideoId) : null) ?? videos[0] ?? null,
+  );
   const [quickClipFrames, setQuickClipFrames] = useState<string[] | null>(null);
   const [context, setContext] = useState('');
   const [loading, setLoading] = useState(false);
