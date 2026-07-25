@@ -27,14 +27,14 @@ export default function PlayScoutIQBubble({ defaultTeamId }: { defaultTeamId?: s
       {/* Chat panel */}
       {open && (
         <div className="fixed bottom-24 left-4 sm:left-6 z-[60] w-[calc(100vw-2rem)] sm:w-[380px] h-[70vh] max-h-[600px] animate-in fade-in slide-in-from-bottom-2 duration-150">
-          <PlayScoutIQ teamId={teamId} />
+          <PlayScoutIQ teamId={teamId} title="Play Scout" />
         </div>
       )}
 
       {/* Launcher bubble */}
       <button
         onClick={() => setOpen((o) => !o)}
-        aria-label={open ? 'Close PlayScoutIQ' : 'Open PlayScoutIQ'}
+        aria-label={open ? 'Close Play Scout' : 'Open Play Scout'}
         aria-expanded={open}
         className="fixed bottom-6 left-6 z-[60] w-14 h-14 rounded-full shadow-[0_8px_30px_rgba(17,24,39,0.25)] flex items-center justify-center transition-transform hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-white/40"
         style={{ background: 'var(--sidebar-bg)' }}

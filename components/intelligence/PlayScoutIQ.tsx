@@ -16,6 +16,8 @@ interface Props {
   teamName?: string;
   ageGroup?: string;
   recentAnalysis?: string;
+  /** Display name shown in the header, placeholder, and footer. */
+  title?: string;
   /** If true, renders as a full-page panel. If false, renders as a floating sidebar widget. */
   fullPage?: boolean;
 }
@@ -67,7 +69,7 @@ function generateId() {
   return Math.random().toString(36).slice(2, 9);
 }
 
-export default function PlayScoutIQ({ teamId, teamName, ageGroup, recentAnalysis, fullPage = false }: Props) {
+export default function PlayScoutIQ({ teamId, teamName, ageGroup, recentAnalysis, title = 'PlayScoutIQ', fullPage = false }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
@@ -191,7 +193,7 @@ export default function PlayScoutIQ({ teamId, teamName, ageGroup, recentAnalysis
             <Image src="/logo.svg" alt="" width={20} height={22} />
           </div>
           <div>
-            <p className="font-bold text-sm leading-none">PlayScoutIQ</p>
+            <p className="font-bold text-sm leading-none">{title}</p>
             {teamName && (
               <p className="text-xs text-white/60 mt-0.5">{teamName}</p>
             )}
@@ -297,7 +299,7 @@ export default function PlayScoutIQ({ teamId, teamName, ageGroup, recentAnalysis
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask PlayScoutIQ..."
+            placeholder={`Ask ${title}...`}
             rows={1}
             disabled={streaming}
             className="flex-1 resize-none px-3 py-2.5 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-bg)] text-[var(--brand-ink)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--brand-navy)] focus:border-transparent transition-all placeholder:text-[var(--brand-muted)] disabled:opacity-60 max-h-32"
@@ -317,7 +319,7 @@ export default function PlayScoutIQ({ teamId, teamName, ageGroup, recentAnalysis
           </button>
         </div>
         <p className="text-xs text-[var(--brand-muted)] mt-1.5 text-center">
-          PlayScoutIQ · Powered by Claude
+          {title} · Powered by Claude
         </p>
       </div>
     </div>
