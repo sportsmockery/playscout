@@ -41,29 +41,41 @@ interface SidebarProps {
   isAdmin?: boolean;
 }
 
-export default function Sidebar({ teamId: teamIdProp, defaultTeamId, isAdmin }: SidebarProps) {
+export default function Sidebar({ teamId: teamIdProp, isAdmin }: SidebarProps) {
   const pathname = usePathname();
 
-  // Film Library and the module pages only exist scoped to a team
-  // (/teams/[teamId]/film, /teams/[teamId]/modules/qbiq, ...) — there's no
-  // team-agnostic route for either. Prefer the team in the current URL;
-  // outside a team-scoped page (dashboard, /teams list), fall back to the
-  // user's most recently created team so nav is one click, not a detour
-  // through the team picker every time.
-  const pathTeamId = pathname.match(/^\/teams\/([^/]+)/)?.[1];
-  const teamId = teamIdProp ?? pathTeamId ?? defaultTeamId;
+  // Film Library, the team Intelligence hub, and the IQ modules only exist
+  // scoped to a team. They are site-wide features but always operate ON a
+  // specific team, so they appear as nav options only once the coach is
+  // actually inside a team workspace (a /teams/[id]/... route) — not on the
+  // dashboard or the teams list, where a module link would have no team to
+  // act on. `defaultTeamId` is kept only as a last-resort fallback when a
+  // team layout explicitly hands us one.
+  const rawPathTeam = pathname.match(/^\/teams\/([^/]+)/)?.[1];
+  // "/teams/new" is the create-team form, not a team workspace.
+  const pathTeamId = rawPathTeam && rawPathTeam !== 'new' ? rawPathTeam : undefined;
+  const activeTeamId = teamIdProp ?? pathTeamId ?? undefined;
 
+  // PlayScoutIQ now lives in the floating chat bubble (bottom-left, mounted in
+  // AppShell), so it no longer needs a sidebar entry.
   const topItems: NavItem[] = [
     { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { label: 'Teams', href: '/teams', icon: Users },
-    { label: 'Film Library', href: teamId ? `/teams/${teamId}/film` : '/teams', icon: Film },
-    { label: 'Intelligence', href: '/intelligence', icon: Brain },
   ];
 
-  const teamModuleItems: NavItem[] = MODULE_ITEMS.map((item) => ({
-    ...item,
-    href: teamId ? `/teams/${teamId}/modules/${item.href}` : '/teams',
-  }));
+  const teamItems: NavItem[] = activeTeamId
+    ? [
+        { label: 'Film Library', href: `/teams/${activeTeamId}/film`, icon: Film },
+        { label: 'Intelligence', href: `/teams/${activeTeamId}/intelligence`, icon: Brain },
+      ]
+    : [];
+
+  const teamModuleItems: NavItem[] = activeTeamId
+    ? MODULE_ITEMS.map((item) => ({
+        ...item,
+        href: `/teams/${activeTeamId}/modules/${item.href}`,
+      }))
+    : [];
 
   function isActive(href: string) {
     if (href === '/dashboard') return pathname === '/dashboard';
@@ -107,26 +119,51 @@ export default function Sidebar({ teamId: teamIdProp, defaultTeamId, isAdmin }: 
           </Link>
         ))}
 
-        {/* Modules group */}
-        <div className="pt-4 pb-1 px-2">
-          <p className="text-xs font-semibold uppercase tracking-widest text-white/30">
-            Modules
-          </p>
-        </div>
+        {/* Team workspace — only once a team is selected. IQ modules operate
+            on a specific team, so they surface here, not in the global nav. */}
+        {activeTeamId ? (
+          <>
+            <div className="pt-4 pb-1 px-2">
+              <p className="text-xs font-semibold uppercase tracking-widest text-white/30">
+                Team
+              </p>
+            </div>
 
-        {teamModuleItems.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={cn(
-              'sidebar-nav-item pl-4',
-              isActive(item.href) && 'active'
-            )}
-          >
-            <item.icon size={16} className="flex-shrink-0 sidebar-icon" />
-            <span>{item.label}</span>
-          </Link>
-        ))}
+            {teamItems.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn('sidebar-nav-item', isActive(item.href) && 'active')}
+              >
+                <item.icon size={18} className="flex-shrink-0 sidebar-icon" />
+                <span>{item.label}</span>
+              </Link>
+            ))}
+
+            <div className="pt-4 pb-1 px-2">
+              <p className="text-xs font-semibold uppercase tracking-widest text-white/30">
+                IQ Modules
+              </p>
+            </div>
+
+            {teamModuleItems.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn('sidebar-nav-item pl-4', isActive(item.href) && 'active')}
+              >
+                <item.icon size={16} className="flex-shrink-0 sidebar-icon" />
+                <span>{item.label}</span>
+              </Link>
+            ))}
+          </>
+        ) : (
+          <div className="pt-4 px-3">
+            <p className="text-xs text-white/40 leading-relaxed">
+              Select a team to open its film library and IQ modules.
+            </p>
+          </div>
+        )}
       </nav>
 
       {/* Bottom — admin (owners/admins only) + settings */}
@@ -141,7 +178,7 @@ export default function Sidebar({ teamId: teamIdProp, defaultTeamId, isAdmin }: 
           </Link>
         )}
         <Link
-          href={teamId ? `/teams/${teamId}/settings` : '/teams'}
+          href={activeTeamId ? `/teams/${activeTeamId}/settings` : '/settings'}
           className={cn(
             'sidebar-nav-item',
             pathname.endsWith('/settings') && 'active'
