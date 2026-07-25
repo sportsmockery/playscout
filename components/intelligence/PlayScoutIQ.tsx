@@ -187,8 +187,8 @@ export default function PlayScoutIQ({ teamId, teamName, ageGroup, recentAnalysis
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--brand-border)] bg-[var(--brand-navy)] text-white">
         <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-full bg-white flex items-center justify-center p-1">
-            <Image src="/logo.svg" alt="" width={16} height={18} />
+          <div className="w-7 h-7 rounded-full flex items-center justify-center">
+            <Image src="/logo.svg" alt="" width={20} height={22} />
           </div>
           <div>
             <p className="font-bold text-sm leading-none">PlayScoutIQ</p>
@@ -245,8 +245,8 @@ export default function PlayScoutIQ({ teamId, teamName, ageGroup, recentAnalysis
             className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             {msg.role === 'assistant' && (
-              <div className="w-6 h-6 rounded-full bg-white ring-1 ring-black/5 flex items-center justify-center mr-2 flex-shrink-0 mt-0.5 p-1">
-                <Image src="/logo.svg" alt="" width={14} height={15} />
+              <div className="w-6 h-6 rounded-full bg-[var(--brand-navy)] flex items-center justify-center mr-2 flex-shrink-0 mt-0.5">
+                <Image src="/logo.svg" alt="" width={16} height={17} />
               </div>
             )}
             <div

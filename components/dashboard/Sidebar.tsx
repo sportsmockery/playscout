@@ -17,7 +17,6 @@ import {
   TrendingUp,
   AlertTriangle,
   BookOpen,
-  Sparkles,
 } from 'lucide-react';
 
 interface NavItem {
@@ -57,10 +56,11 @@ export default function Sidebar({ teamId: teamIdProp, isAdmin }: SidebarProps) {
   const pathTeamId = rawPathTeam && rawPathTeam !== 'new' ? rawPathTeam : undefined;
   const activeTeamId = teamIdProp ?? pathTeamId ?? undefined;
 
+  // PlayScoutIQ now lives in the floating chat bubble (bottom-left, mounted in
+  // AppShell), so it no longer needs a sidebar entry.
   const topItems: NavItem[] = [
     { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { label: 'Teams', href: '/teams', icon: Users },
-    { label: 'PlayScoutIQ', href: '/intelligence', icon: Sparkles },
   ];
 
   const teamItems: NavItem[] = activeTeamId
