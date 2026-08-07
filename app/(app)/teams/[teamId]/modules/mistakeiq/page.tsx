@@ -12,10 +12,13 @@ export async function generateMetadata({ params }: { params: Promise<{ teamId: s
 
 export default async function MistakeIQPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ teamId: string }>;
+  searchParams: Promise<{ videoId?: string }>;
 }) {
   const { teamId } = await params;
+  const { videoId } = await searchParams;
   const [team, videos, pastAnalyses] = await Promise.all([
     getTeamById(teamId),
     getVideosByTeam(teamId),
@@ -59,6 +62,7 @@ export default async function MistakeIQPage({
         awayJerseyColor={team.away_jersey_color ?? undefined}
         videos={readyVideos}
         pastAnalyses={mistakeAnalyses}
+        initialVideoId={videoId}
       />
     </div>
   );

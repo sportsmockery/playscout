@@ -1,6 +1,6 @@
 import { createClient as createServerClient } from '@/lib/supabase/server';
 import Link from 'next/link';
-import { getTeams, getRecentAnalyses, getVideoCount } from '@/lib/db/queries';
+import { getTeams, getRecentAnalyses, getVideoCount, getAnalysisStats } from '@/lib/db/queries';
 import { Users, Film, Brain, Zap, ArrowRight, Plus } from 'lucide-react';
 
 export const metadata = { title: 'Dashboard' };
@@ -9,10 +9,11 @@ export default async function DashboardPage() {
   const supabase = await createServerClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  const [teams, analyses, filmSessionCount] = await Promise.all([
+  const [teams, analyses, filmSessionCount, analysisStats] = await Promise.all([
     getTeams(user!.id),
     getRecentAnalyses(user!.id, 5),
     getVideoCount(),
+    getAnalysisStats(user!.id),
   ]);
 
   const displayName = user?.user_metadata?.full_name?.split(' ')[0] ?? 'Coach';
@@ -57,14 +58,14 @@ export default async function DashboardPage() {
           },
           {
             label: 'Analyses Run',
-            value: analyses?.length ?? 0,
+            value: analysisStats.count,
             icon: Brain,
             color: 'text-[var(--brand-navy)]',
             bg: 'bg-[#485995]/10',
           },
           {
             label: 'IQ Score Avg',
-            value: '—',
+            value: analysisStats.avgScore ?? '—',
             icon: Zap,
             color: 'text-amber-600',
             bg: 'bg-amber-50',

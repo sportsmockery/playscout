@@ -18,6 +18,7 @@ interface Props {
   awayJerseyColor?: string;
   videos: Video[];
   pastAnalyses: PositionAnalysisResult[];
+  initialVideoId?: string;
 }
 
 interface TeamIQTendency {
@@ -118,8 +119,11 @@ export default function TeamIQClient({
   awayJerseyColor,
   videos,
   pastAnalyses,
+  initialVideoId,
 }: Props) {
-  const [selectedVideo, setSelectedVideo] = useState<Video | null>(videos[0] ?? null);
+  const [selectedVideo, setSelectedVideo] = useState<Video | null>(
+    (initialVideoId ? videos.find((v) => v.id === initialVideoId) : null) ?? videos[0] ?? null,
+  );
   const [quickClipFrames, setQuickClipFrames] = useState<string[] | null>(null);
   const [jerseyChoice, setJerseyChoice] = useState<JerseyChoice>(
     homeJerseyColor ? 'home' : awayJerseyColor ? 'away' : 'unknown'

@@ -5,6 +5,9 @@ import Image from 'next/image';
 import Sidebar from './Sidebar';
 import { Menu, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import UploadDockProvider from '@/components/upload/UploadDockProvider';
+import UploadDock from '@/components/upload/UploadDock';
+import PlayScoutIQBubble from '@/components/intelligence/PlayScoutIQBubble';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -17,6 +20,7 @@ export default function AppShell({ children, teamId, defaultTeamId, isAdmin }: A
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   return (
+    <UploadDockProvider>
     <div className="flex h-screen overflow-hidden bg-[var(--brand-bg)]">
       {/* Desktop sidebar */}
       <div className="hidden lg:flex print:hidden">
@@ -62,6 +66,13 @@ export default function AppShell({ children, teamId, defaultTeamId, isAdmin }: A
           {children}
         </main>
       </div>
+
+      {/* Persistent upload progress — survives navigation within /app */}
+      <UploadDock />
+
+      {/* Floating PlayScoutIQ assistant — bottom-left on every page */}
+      <PlayScoutIQBubble defaultTeamId={defaultTeamId} />
     </div>
+    </UploadDockProvider>
   );
 }

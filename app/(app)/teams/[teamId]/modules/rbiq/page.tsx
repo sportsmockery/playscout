@@ -1,16 +1,16 @@
 import { getTeamById, getPlayersByTeam, getVideosByTeam, getRecentAnalysis } from '@/lib/db/queries';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ArrowLeft, Shield } from 'lucide-react';
-import OLIQClient from './OLIQClient';
+import { ArrowLeft, Gauge } from 'lucide-react';
+import RBIQClient from './RBIQClient';
 
 export async function generateMetadata({ params }: { params: Promise<{ teamId: string }> }) {
   const { teamId } = await params;
   const team = await getTeamById(teamId);
-  return { title: `OLIQ — ${team?.name ?? 'Team'}` };
+  return { title: `RBIQ — ${team?.name ?? 'Team'}` };
 }
 
-export default async function OLIQPage({
+export default async function RBIQPage({
   params,
   searchParams,
 }: {
@@ -28,11 +28,9 @@ export default async function OLIQPage({
 
   if (!team) notFound();
 
-  const olPlayers = players.filter((p) =>
-    ['OL', 'C', 'OG', 'OT'].includes(p.primary_position ?? '')
-  );
+  const rbs = players.filter((p) => p.primary_position === 'RB');
   const completedVideos = videos.filter((v) => v.status === 'ready_for_review' || v.status === 'analysis_complete');
-  const olAnalyses = pastAnalyses.filter((a) => a.module_key === 'OLIQ');
+  const rbAnalyses = pastAnalyses.filter((a) => a.module_key === 'RBIQ');
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
@@ -47,22 +45,22 @@ export default async function OLIQPage({
       </div>
 
       <div className="flex items-center gap-3 mb-8">
-        <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center">
-          <Shield size={20} className="text-emerald-600" />
+        <div className="w-10 h-10 rounded-xl bg-rose-100 flex items-center justify-center">
+          <Gauge size={20} className="text-rose-600" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold text-[var(--brand-navy)]">OLIQ</h1>
-          <p className="text-[var(--brand-muted)] text-sm">Offensive Line Intelligence Module</p>
+          <h1 className="text-2xl font-bold text-[var(--brand-navy)]">RBIQ</h1>
+          <p className="text-[var(--brand-muted)] text-sm">Running Back Intelligence Module</p>
         </div>
       </div>
 
-      <OLIQClient
+      <RBIQClient
         teamId={teamId}
         teamName={team.name}
         ageGroup={team.age_group ?? undefined}
-        olPlayers={olPlayers}
+        rbs={rbs}
         videos={completedVideos}
-        pastAnalyses={olAnalyses}
+        pastAnalyses={rbAnalyses}
         initialVideoId={videoId}
       />
     </div>

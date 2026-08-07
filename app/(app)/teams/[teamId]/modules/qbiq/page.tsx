@@ -12,10 +12,13 @@ export async function generateMetadata({ params }: { params: Promise<{ teamId: s
 
 export default async function QBIQPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ teamId: string }>;
+  searchParams: Promise<{ videoId?: string }>;
 }) {
   const { teamId } = await params;
+  const { videoId } = await searchParams;
   const [team, players, videos, pastAnalyses] = await Promise.all([
     getTeamById(teamId),
     getPlayersByTeam(teamId),
@@ -58,6 +61,7 @@ export default async function QBIQPage({
         qbs={qbs}
         videos={completedVideos}
         pastAnalyses={qbAnalyses}
+        initialVideoId={videoId}
       />
     </div>
   );

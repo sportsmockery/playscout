@@ -15,6 +15,7 @@ interface Props {
   olPlayers: Player[];
   videos: Video[];
   pastAnalyses: PositionAnalysisResult[];
+  initialVideoId?: string;
 }
 
 interface OLResult {
@@ -44,8 +45,10 @@ const DIMENSIONS: Array<[keyof OLResult['position_scores'], string]> = [
   ['footwork_leverage', 'Footwork & Leverage'],
 ];
 
-export default function OLIQClient({ teamId, teamName, ageGroup, olPlayers, videos, pastAnalyses }: Props) {
-  const [selectedVideo, setSelectedVideo] = useState<Video | null>(videos[0] ?? null);
+export default function OLIQClient({ teamId, teamName, ageGroup, olPlayers, videos, pastAnalyses, initialVideoId }: Props) {
+  const [selectedVideo, setSelectedVideo] = useState<Video | null>(
+    (initialVideoId ? videos.find((v) => v.id === initialVideoId) : null) ?? videos[0] ?? null,
+  );
   const [quickClipFrames, setQuickClipFrames] = useState<string[] | null>(null);
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
   const [context, setContext] = useState('');

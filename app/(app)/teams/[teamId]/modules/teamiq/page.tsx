@@ -12,10 +12,13 @@ export async function generateMetadata({ params }: { params: Promise<{ teamId: s
 
 export default async function TeamIQPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ teamId: string }>;
+  searchParams: Promise<{ videoId?: string }>;
 }) {
   const { teamId } = await params;
+  const { videoId } = await searchParams;
   const [team, videos, pastAnalyses] = await Promise.all([
     getTeamById(teamId),
     getVideosByTeam(teamId),
@@ -61,6 +64,7 @@ export default async function TeamIQPage({
         awayJerseyColor={team.away_jersey_color ?? undefined}
         videos={readyVideos}
         pastAnalyses={teamAnalyses}
+        initialVideoId={videoId}
       />
     </div>
   );

@@ -1,8 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
-import { Zap, ChevronDown, AlertCircle } from 'lucide-react';
+import { Gauge, ChevronDown, AlertCircle } from 'lucide-react';
 import type { Player, Video, PositionAnalysisResult } from '@/lib/db/types';
 import EvidenceFrames from '@/components/intelligence/EvidenceFrames';
 import QuickClipUpload from '@/components/intelligence/QuickClipUpload';
@@ -12,7 +11,7 @@ interface Props {
   teamId: string;
   teamName: string;
   ageGroup?: string;
-  qbs: Player[];
+  rbs: Player[];
   videos: Video[];
   pastAnalyses: PositionAnalysisResult[];
   initialVideoId?: string;
@@ -21,14 +20,14 @@ interface Props {
 interface AnalysisResult {
   overall_score: number;
   position_scores: {
-    mechanics: number | null;
-    decision_making: number | null;
-    pocket_presence: number | null;
+    vision_decision: number | null;
+    ball_security: number | null;
+    footwork_contact: number | null;
   };
   reasoning: {
-    mechanics: string;
-    decision_making: string;
-    pocket_presence: string;
+    vision_decision: string;
+    ball_security: string;
+    footwork_contact: string;
   };
   strengths: string[];
   weaknesses: string[];
@@ -40,13 +39,13 @@ interface AnalysisResult {
 }
 
 const DIMENSIONS: Array<[keyof AnalysisResult['position_scores'], string]> = [
-  ['mechanics', 'Mechanics'],
-  ['decision_making', 'Decision Making'],
-  ['pocket_presence', 'Pocket Presence'],
+  ['vision_decision', 'Vision & Decision'],
+  ['ball_security', 'Ball Security'],
+  ['footwork_contact', 'Footwork & Contact'],
 ];
 
-export default function QBIQClient({ teamId, teamName, ageGroup, qbs, videos, pastAnalyses, initialVideoId }: Props) {
-  const [selectedQB, setSelectedQB] = useState<Player | null>(qbs[0] ?? null);
+export default function RBIQClient({ teamId, teamName, ageGroup, rbs, videos, pastAnalyses, initialVideoId }: Props) {
+  const [selectedRB, setSelectedRB] = useState<Player | null>(rbs[0] ?? null);
   const [selectedVideo, setSelectedVideo] = useState<Video | null>(
     (initialVideoId ? videos.find((v) => v.id === initialVideoId) : null) ?? videos[0] ?? null,
   );
@@ -79,19 +78,19 @@ export default function QBIQClient({ teamId, teamName, ageGroup, qbs, videos, pa
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          moduleKey: 'QBIQ',
+          moduleKey: 'RBIQ',
           teamId,
-          playerId: selectedQB?.id,
+          playerId: selectedRB?.id,
           videoId: selectedVideo?.id,
           frames: quickClipFrames ?? undefined,
           coachNote: context || undefined,
-          player: selectedQB
+          player: selectedRB
             ? {
-                name: `${selectedQB.first_name ?? ''} ${selectedQB.last_name ?? ''}`.trim() || undefined,
-                position: selectedQB.primary_position ?? undefined,
-                jersey_number: selectedQB.jersey_number != null ? String(selectedQB.jersey_number) : undefined,
+                name: `${selectedRB.first_name ?? ''} ${selectedRB.last_name ?? ''}`.trim() || undefined,
+                position: selectedRB.primary_position ?? undefined,
+                jersey_number: selectedRB.jersey_number != null ? String(selectedRB.jersey_number) : undefined,
                 age_group: ageGroup,
-                notes: selectedQB.notes ?? undefined,
+                notes: selectedRB.notes ?? undefined,
               }
             : undefined,
           team: {
@@ -127,23 +126,23 @@ export default function QBIQClient({ teamId, teamName, ageGroup, qbs, videos, pa
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-medium text-[var(--brand-ink)] mb-1.5">
-                Quarterback
+                Running Back
               </label>
-              {qbs.length === 0 ? (
+              {rbs.length === 0 ? (
                 <p className="text-xs text-[var(--brand-muted)] bg-amber-50 border border-amber-200 rounded-lg p-2">
-                  No QBs on roster. Add players with position QB first.
+                  No RBs on roster. Add players with position RB first.
                 </p>
               ) : (
                 <div className="relative">
                   <select
-                    value={selectedQB?.id ?? ''}
-                    onChange={(e) => setSelectedQB(qbs.find((q) => q.id === e.target.value) ?? null)}
+                    value={selectedRB?.id ?? ''}
+                    onChange={(e) => setSelectedRB(rbs.find((r) => r.id === e.target.value) ?? null)}
                     className={selectClass}
                   >
-                    <option value="">Select QB</option>
-                    {qbs.map((q) => (
-                      <option key={q.id} value={q.id}>
-                        #{q.jersey_number} {q.first_name} {q.last_name}
+                    <option value="">Select RB</option>
+                    {rbs.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        #{r.jersey_number} {r.first_name} {r.last_name}
                       </option>
                     ))}
                   </select>
@@ -188,7 +187,7 @@ export default function QBIQClient({ teamId, teamName, ageGroup, qbs, videos, pa
               <textarea
                 value={context}
                 onChange={(e) => setContext(e.target.value)}
-                placeholder="e.g. 'Works with shotgun snap, struggles with under-center mechanics'"
+                placeholder="e.g. 'Downhill runner, works on pressing the hole before cutting'"
                 rows={3}
                 className="w-full px-3 py-2.5 rounded-lg border border-[var(--brand-border)] bg-white text-[var(--brand-ink)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--brand-navy)] focus:border-transparent transition-all resize-none placeholder:text-[var(--brand-muted)]"
               />
@@ -206,8 +205,8 @@ export default function QBIQClient({ teamId, teamName, ageGroup, qbs, videos, pa
                 </>
               ) : (
                 <>
-                  <Zap size={16} />
-                  Run QBIQ Analysis
+                  <Gauge size={16} />
+                  Run RBIQ Analysis
                 </>
               )}
             </button>
@@ -222,21 +221,16 @@ export default function QBIQClient({ teamId, teamName, ageGroup, qbs, videos, pa
             </h2>
             <ul className="space-y-2">
               {pastAnalyses.map((a) => (
-                <li key={a.id} className="border-b border-[var(--brand-border)] last:border-0">
-                  <Link
-                    href={`/analysis/${a.id}`}
-                    className="flex items-center justify-between text-sm py-1.5 hover:text-[var(--brand-navy)] transition-colors"
-                  >
-                    <span className="text-[var(--brand-muted)]">
-                      {new Date(a.created_at).toLocaleDateString()}
-                    </span>
-                    <span className={`font-bold ${
-                      (a.overall_score ?? 0) >= 80 ? 'text-emerald-600' :
-                      (a.overall_score ?? 0) >= 60 ? 'text-amber-600' : 'text-red-600'
-                    }`}>
-                      {a.overall_score ?? '—'}
-                    </span>
-                  </Link>
+                <li key={a.id} className="flex items-center justify-between text-sm py-1.5 border-b border-[var(--brand-border)] last:border-0">
+                  <span className="text-[var(--brand-muted)]">
+                    {new Date(a.created_at).toLocaleDateString()}
+                  </span>
+                  <span className={`font-bold ${
+                    (a.overall_score ?? 0) >= 80 ? 'text-emerald-600' :
+                    (a.overall_score ?? 0) >= 60 ? 'text-amber-600' : 'text-red-600'
+                  }`}>
+                    {a.overall_score ?? '—'}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -255,10 +249,10 @@ export default function QBIQClient({ teamId, teamName, ageGroup, qbs, videos, pa
 
         {loading && !result && (
           <div className="glass-card p-10 text-center">
-            <div className="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center mx-auto mb-4">
-              <Zap size={28} className="text-blue-600 animate-pulse" />
+            <div className="w-16 h-16 rounded-full bg-rose-100 flex items-center justify-center mx-auto mb-4">
+              <Gauge size={28} className="text-rose-600 animate-pulse" />
             </div>
-            <p className="font-semibold text-[var(--brand-navy)] mb-1">Running QBIQ Analysis</p>
+            <p className="font-semibold text-[var(--brand-navy)] mb-1">Running RBIQ Analysis</p>
             <p className="text-sm text-[var(--brand-muted)]">Analyzing film frames with Gemini...</p>
           </div>
         )}
@@ -303,9 +297,9 @@ export default function QBIQClient({ teamId, teamName, ageGroup, qbs, videos, pa
                   </div>
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-[var(--brand-navy)]">Overall QBIQ Score</h2>
+                  <h2 className="text-xl font-bold text-[var(--brand-navy)]">Overall RBIQ Score</h2>
                   <p className="text-sm text-[var(--brand-muted)] mt-1">
-                    {selectedQB ? `${selectedQB.first_name} ${selectedQB.last_name}` : 'Quarterback'}
+                    {selectedRB ? `${selectedRB.first_name} ${selectedRB.last_name}` : 'Running Back'}
                   </p>
                   <div className="grid grid-cols-1 gap-1 mt-3">
                     {DIMENSIONS.map(([key, label]) => (
@@ -340,7 +334,7 @@ export default function QBIQClient({ teamId, teamName, ageGroup, qbs, videos, pa
             <div className="space-y-3">
               {DIMENSIONS.map(([key, label]) => (
                 <div key={key} className="glass-card p-5">
-                  <p className="text-blue-600 text-xs font-bold uppercase tracking-wide mb-1">{label}</p>
+                  <p className="text-rose-600 text-xs font-bold uppercase tracking-wide mb-1">{label}</p>
                   <p className="text-sm text-[var(--brand-ink)] leading-relaxed">{result.reasoning[key]}</p>
                 </div>
               ))}
@@ -395,11 +389,11 @@ export default function QBIQClient({ teamId, teamName, ageGroup, qbs, videos, pa
         {!result && !loading && !error && (
           <div className="glass-card p-16 text-center">
             <div className="w-16 h-16 rounded-full bg-[var(--brand-navy)]/10 flex items-center justify-center mx-auto mb-4">
-              <Zap size={28} className="text-[var(--brand-navy)]" />
+              <Gauge size={28} className="text-[var(--brand-navy)]" />
             </div>
-            <h3 className="font-bold text-[var(--brand-navy)] text-lg mb-2">QBIQ Ready</h3>
+            <h3 className="font-bold text-[var(--brand-navy)] text-lg mb-2">RBIQ Ready</h3>
             <p className="text-[var(--brand-muted)] text-sm">
-              Select film, and optionally a quarterback, then run the analysis.
+              Select film, and optionally a running back, then run the analysis.
             </p>
           </div>
         )}
