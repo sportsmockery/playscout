@@ -16,6 +16,7 @@ import {
   TrendingUp,
   AlertTriangle,
   BookOpen,
+  Crosshair,
 } from 'lucide-react';
 
 interface NavItem {
@@ -30,6 +31,7 @@ const MODULE_ITEMS: NavItem[] = [
   { label: 'OLIQ', href: 'oliq', icon: Shield },
   { label: 'TeamIQ', href: 'teamiq', icon: TrendingUp },
   { label: 'MistakeIQ', href: 'mistakeiq', icon: AlertTriangle },
+  { label: 'ScoutIQ', href: 'scoutiq', icon: Crosshair },
   { label: 'PlaybookIQ', href: 'playbookiq', icon: BookOpen },
 ];
 

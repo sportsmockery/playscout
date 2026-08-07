@@ -2,7 +2,8 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import Image from 'next/image';
-import { Send, RefreshCw, Sparkles } from 'lucide-react';
+import Link from 'next/link';
+import { Send, RefreshCw, Sparkles, Crosshair } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
 interface Message {
@@ -16,58 +17,76 @@ interface Props {
   teamName?: string;
   ageGroup?: string;
   recentAnalysis?: string;
+  /** Whether this team has any players on the roster yet. */
+  hasRoster?: boolean;
+  /** Whether this team has any saved film analyses yet — gates team-specific starters. */
+  hasAnalyses?: boolean;
   /** If true, renders as a full-page panel. If false, renders as a floating sidebar widget. */
   fullPage?: boolean;
 }
 
-// Starter questions span the full range of what youth coaches actually ask.
-// Rotated randomly so coaches see different suggestions each session.
-const ALL_STARTER_QUESTIONS = [
-  // Scheme & strategy
+// General questions always available regardless of what data the team has.
+const GENERAL_STARTER_QUESTIONS = [
   'What offensive schemes exploit a 5-3 defense at 10U?',
   'What base defense should I run for a 10U team?',
   'How do I stop a team that runs jet sweep every play?',
-  'What plays work best when the other team has a dominant DT?',
-  'How do I attack a 6-2 defense with a spread formation?',
-  'When should I blitz vs. drop into coverage at youth level?',
-  // Practice planning
   'Build me a 90-minute practice plan for Tuesday',
   'We only have 60 minutes today — what do I cut?',
-  'How do I structure the first practice of the season?',
-  'How many plays should I install per week at 10U?',
-  // Player development
   'How do I teach a 10-year-old QB to throw a spiral?',
-  'My running back keeps fumbling — what drill fixes it?',
   'How do I teach safe tackling technique to beginners?',
-  'What footwork drills are best for youth offensive linemen?',
-  // Game day
   'What halftime adjustments do I make if we\'re getting gashed on the edge?',
-  'We\'re down two scores with 4 minutes left — what do I do?',
-  'How do I manage the clock at the end of the first half?',
-  // Scouting
-  'What tendencies should I look for in opponent film?',
-  'We\'re playing a Wing-T team next week — what do I need to know?',
-  'How do I build a simple scouting report for my staff?',
-  // Safety & rules
   'How many contact practices can we have per week at 10U?',
   'What drills are prohibited at youth level?',
-  'What do I do if a player takes a hit to the head?',
-  // Roster & culture
   'Playing time is causing parent problems — how do I handle it?',
-  'I have a dominant athlete — where should I play him?',
   'How do I keep kids motivated when we\'re on a losing streak?',
 ];
 
-// Pick 4 random starters per session
-const STARTER_QUESTIONS = ALL_STARTER_QUESTIONS
-  .sort(() => Math.random() - 0.5)
-  .slice(0, 4);
+// Shown once film has been analyzed — these actually have evidence behind them.
+const TEAM_SPECIFIC_STARTER_QUESTIONS = [
+  'What are our biggest weaknesses based on our film?',
+  'What should we work on at practice this week based on our tendencies?',
+  'What mistakes keep showing up in our recent film?',
+  'What is our biggest strength we should keep leaning on?',
+];
+
+// Shown when a team is selected but has no film analyzed yet — points the
+// coach at the thing that would unlock team-specific answers.
+const NO_EVIDENCE_STARTER_QUESTIONS = [
+  'What should I upload first to get real insight on my team?',
+  'How does PlayScout turn film into a scouting report?',
+];
+
+// Shown when a team is selected but has no roster yet.
+const NO_ROSTER_STARTER_QUESTIONS = [
+  'Why should I add my roster before running film analysis?',
+];
+
+function buildStarterQuestions(opts: { teamId?: string; hasAnalyses?: boolean; hasRoster?: boolean }): string[] {
+  if (!opts.teamId) {
+    return [...GENERAL_STARTER_QUESTIONS].sort(() => Math.random() - 0.5).slice(0, 4);
+  }
+  const pool = opts.hasAnalyses
+    ? [...TEAM_SPECIFIC_STARTER_QUESTIONS, ...GENERAL_STARTER_QUESTIONS]
+    : [...NO_EVIDENCE_STARTER_QUESTIONS, ...(opts.hasRoster ? [] : NO_ROSTER_STARTER_QUESTIONS), ...GENERAL_STARTER_QUESTIONS];
+  return [...pool].sort(() => Math.random() - 0.5).slice(0, 4);
+}
+
+// Matches the citation phrasing the system prompt instructs the model to
+// use for evidence-backed claims (e.g. "Based on 14 plays analyzed...").
+const CITATION_PATTERN = /Based on (\d+)\s+(plays?|clips?|analyses)\s+analyzed/i;
+
+function findCitation(content: string): string | null {
+  const match = content.match(CITATION_PATTERN);
+  if (!match) return null;
+  return `Based on ${match[1]} ${match[2].toLowerCase()} analyzed`;
+}
 
 function generateId() {
   return Math.random().toString(36).slice(2, 9);
 }
 
-export default function PlayScoutIQ({ teamId, teamName, ageGroup, recentAnalysis, fullPage = false }: Props) {
+export default function PlayScoutIQ({ teamId, teamName, ageGroup, recentAnalysis, hasRoster, hasAnalyses, fullPage = false }: Props) {
+  const [starterQuestions] = useState(() => buildStarterQuestions({ teamId, hasAnalyses, hasRoster }));
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
@@ -142,6 +161,16 @@ export default function PlayScoutIQ({ teamId, teamName, ageGroup, recentAnalysis
                   m.id === assistantId
                     ? { ...m, content: m.content + event.text }
                     : m
+                )
+              );
+            }
+            // Output guard tripped server-side (see guardChatOutput) —
+            // replace whatever partial text streamed so far with the safe
+            // response instead of appending to it.
+            if (event.type === 'redacted' && event.text) {
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantId ? { ...m, content: event.text } : m
                 )
               );
             }
@@ -226,7 +255,7 @@ export default function PlayScoutIQ({ teamId, teamName, ageGroup, recentAnalysis
               Coaching strategy, film analysis, player development, practice planning — I&apos;m here.
             </p>
             <div className="grid grid-cols-1 gap-2 w-full max-w-sm">
-              {STARTER_QUESTIONS.map((q) => (
+              {starterQuestions.map((q) => (
                 <button
                   key={q}
                   onClick={() => sendMessage(q)}
@@ -235,6 +264,15 @@ export default function PlayScoutIQ({ teamId, teamName, ageGroup, recentAnalysis
                   {q}
                 </button>
               ))}
+              {teamId && (
+                <Link
+                  href={`/teams/${teamId}/modules/scoutiq`}
+                  className="flex items-center justify-center gap-1.5 text-left text-xs font-semibold p-2.5 rounded-lg border border-[var(--brand-gold)]/50 bg-[var(--brand-gold)]/10 hover:bg-[var(--brand-gold)]/20 text-[var(--brand-navy)] transition-all"
+                >
+                  <Crosshair size={13} />
+                  Scout this week&apos;s opponent
+                </Link>
+              )}
             </div>
           </div>
         )}
@@ -259,6 +297,11 @@ export default function PlayScoutIQ({ teamId, teamName, ageGroup, recentAnalysis
               {msg.role === 'assistant' ? (
                 msg.content ? (
                   <div className="prose-chat">
+                    {findCitation(msg.content) && (
+                      <span className="inline-flex items-center gap-1 mb-1.5 rounded-full bg-[var(--brand-gold)]/15 border border-[var(--brand-gold)]/40 px-2 py-0.5 text-[11px] font-semibold text-[var(--brand-navy)]">
+                        {findCitation(msg.content)}
+                      </span>
+                    )}
                     <ReactMarkdown>{msg.content}</ReactMarkdown>
                     {streaming && msg === messages[messages.length - 1] && (
                       <span className="inline-block w-1.5 h-4 bg-[var(--brand-navy)] ml-0.5 animate-pulse rounded-sm" />

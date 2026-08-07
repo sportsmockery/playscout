@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { AlertTriangle, AlertCircle, ChevronDown } from 'lucide-react';
 import type { Video, PositionAnalysisResult } from '@/lib/db/types';
 import EvidenceFrames from '@/components/intelligence/EvidenceFrames';
@@ -34,7 +35,28 @@ interface MistakeIQResult {
   summary: string;
   confidence: number;
   evidence_frames: number[];
+  head_contact_flag?: { flagged: boolean; note: string };
+  mistakes?: MistakeIQMistake[];
 }
+
+interface MistakeIQMistake {
+  title: string;
+  severity: 'minor' | 'moderate' | 'major' | 'game_changing';
+  category: string;
+  description: string;
+  likely_impact: string;
+  correction: string;
+  drill?: string;
+  evidence_frames?: number[];
+  confidence: number;
+}
+
+const SEVERITY_STYLES: Record<MistakeIQMistake['severity'], string> = {
+  minor: 'bg-slate-100 text-slate-700 border-slate-300',
+  moderate: 'bg-amber-100 text-amber-700 border-amber-300',
+  major: 'bg-orange-100 text-orange-700 border-orange-300',
+  game_changing: 'bg-red-100 text-red-700 border-red-300',
+};
 
 const DIMENSIONS: Array<[keyof MistakeIQResult['position_scores'], string]> = [
   ['assignment_integrity', 'Assignment Integrity'],
@@ -221,16 +243,21 @@ export default function MistakeIQClient({
             </h2>
             <ul className="space-y-2">
               {pastAnalyses.map((a) => (
-                <li key={a.id} className="flex items-center justify-between text-sm py-1.5 border-b border-[var(--brand-border)] last:border-0">
-                  <span className="text-[var(--brand-muted)]">
-                    {new Date(a.created_at).toLocaleDateString()}
-                  </span>
-                  <span className={`font-bold ${
-                    (a.overall_score ?? 0) >= 80 ? 'text-emerald-600' :
-                    (a.overall_score ?? 0) >= 60 ? 'text-amber-600' : 'text-red-600'
-                  }`}>
-                    {a.overall_score ?? '—'}
-                  </span>
+                <li key={a.id} className="border-b border-[var(--brand-border)] last:border-0">
+                  <Link
+                    href={`/analysis/${a.id}`}
+                    className="flex items-center justify-between text-sm py-1.5 hover:text-[var(--brand-navy)] transition-colors"
+                  >
+                    <span className="text-[var(--brand-muted)]">
+                      {new Date(a.created_at).toLocaleDateString()}
+                    </span>
+                    <span className={`font-bold ${
+                      (a.overall_score ?? 0) >= 80 ? 'text-emerald-600' :
+                      (a.overall_score ?? 0) >= 60 ? 'text-amber-600' : 'text-red-600'
+                    }`}>
+                      {a.overall_score ?? '—'}
+                    </span>
+                  </Link>
                 </li>
               ))}
             </ul>
@@ -259,6 +286,20 @@ export default function MistakeIQClient({
 
         {result && !loading && (
           <div className="space-y-5">
+            {result.head_contact_flag?.flagged && (
+              <div className="rounded-lg border-2 border-red-500 bg-red-50 p-4 flex items-start gap-3">
+                <AlertTriangle size={22} className="text-red-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-bold text-red-700 text-sm uppercase tracking-wide">
+                    Possible Head Contact — Concussion Protocol
+                  </p>
+                  <p className="text-sm text-red-700 mt-1">{result.head_contact_flag.note}</p>
+                  <p className="text-xs text-red-600 mt-2">
+                    This is not a diagnosis. Evaluate the player per your league&apos;s concussion protocol before they return to play.
+                  </p>
+                </div>
+              </div>
+            )}
             <div className="glass-card p-6">
               <div className="flex items-center gap-6">
                 <div className="relative w-24 h-24 flex-shrink-0">
@@ -308,6 +349,32 @@ export default function MistakeIQClient({
               <div className="glass-card p-5">
                 <h3 className="font-bold text-[var(--brand-navy)] mb-2 text-sm uppercase tracking-wide">Summary</h3>
                 <p className="text-sm text-[var(--brand-ink)] leading-relaxed whitespace-pre-wrap">{result.summary}</p>
+              </div>
+            )}
+
+            {result.mistakes && result.mistakes.length > 0 && (
+              <div className="glass-card p-5">
+                <h3 className="font-bold text-[var(--brand-navy)] mb-3 text-sm uppercase tracking-wide">Mistakes Identified</h3>
+                <div className="space-y-4">
+                  {result.mistakes.map((m, i) => (
+                    <div key={i} className="border border-[var(--brand-border)] rounded-lg p-4">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <h4 className="font-semibold text-[var(--brand-ink)] text-sm">{m.title}</h4>
+                        <span className={`text-xs font-bold uppercase px-2 py-0.5 rounded-full border ${SEVERITY_STYLES[m.severity]}`}>
+                          {m.severity.replace('_', ' ')}
+                        </span>
+                      </div>
+                      <p className="text-xs text-[var(--brand-muted)] mt-1 uppercase tracking-wide">{m.category.replace(/_/g, ' ')}</p>
+                      <p className="text-sm text-[var(--brand-ink)] mt-2">{m.description}</p>
+                      <p className="text-sm text-[var(--brand-muted)] mt-1"><span className="font-medium text-[var(--brand-ink)]">Likely impact: </span>{m.likely_impact}</p>
+                      <p className="text-sm text-[var(--brand-muted)] mt-1"><span className="font-medium text-[var(--brand-ink)]">Correction: </span>{m.correction}</p>
+                      {m.drill && (
+                        <p className="text-sm text-[var(--brand-muted)] mt-1"><span className="font-medium text-[var(--brand-ink)]">Drill: </span>{m.drill}</p>
+                      )}
+                      <p className="text-xs text-[var(--brand-muted)] mt-2">Confidence: {Math.round(m.confidence * 100)}%</p>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 

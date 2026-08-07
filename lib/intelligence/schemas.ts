@@ -29,12 +29,22 @@ export const PositionAnalysisInputSchema = z.object({
     defensive_style: z.string().optional(),
     jersey_color: z.string().optional(),
     side_of_ball: z.enum(['offense', 'defense', 'both', 'unknown']).optional(),
+    game_type: z.enum(['flag', 'tackle', 'rookie_tackle']).optional(),
   }).optional(),
   playSequence: z.object({
     down: z.number().optional(),
     distance: z.number().optional(),
     yard_line: z.string().optional(),
     coach_label: z.string().optional(),
+  }).optional(),
+  // SCOUTIQ only — the opponent is the analysis SUBJECT, distinct from
+  // `team` (the coach's own team, used as context/anchoring, never graded).
+  opponentId: z.string().optional(),
+  opponent: z.object({
+    name: z.string().optional(),
+    age_group: z.string().optional(),
+    jersey_color: z.string().optional(),
+    notes: z.string().optional(),
   }).optional(),
 })
 
@@ -48,6 +58,38 @@ export type PositionAnalysisInput = z.infer<typeof PositionAnalysisInputSchema>
  * ground truth. See CLAUDE.md rule 5: "Zod validation on inputs AND AI
  * outputs."
  */
+// A single frequency/tendency observation — not a quality score. rate is a
+// 0-1 share of observed plays where applicable (e.g. "runs right"); null
+// when the tendency isn't a rate (e.g. a one-off formation note).
+export const TendencySchema = z.object({
+  tendency_type: z.string(),
+  label: z.string(),
+  rate: z.number().nullable().optional(),
+  confidence: z.number(),
+  sample_size: z.number(),
+  description: z.string(),
+})
+export type Tendency = z.infer<typeof TendencySchema>
+
+export const MISTAKE_CATEGORIES = [
+  'missed_assignment', 'missed_block', 'missed_contain', 'wrong_gap_fit',
+  'bad_pursuit_angle', 'poor_tackling_leverage', 'turnover_risk', 'snap_mesh_issue',
+  'alignment_error', 'coverage_bust', 'penalty_risk', 'poor_effort', 'clock_situation_error',
+] as const
+
+export const MistakeItemSchema = z.object({
+  title: z.string(),
+  severity: z.enum(['minor', 'moderate', 'major', 'game_changing']),
+  category: z.string(),
+  description: z.string(),
+  likely_impact: z.string(),
+  correction: z.string(),
+  drill: z.string().optional(),
+  evidence_frames: z.array(z.number()).optional(),
+  confidence: z.number(),
+})
+export type MistakeItem = z.infer<typeof MistakeItemSchema>
+
 export const PositionAnalysisOutputSchema = z.object({
   overall_score: z.number(),
   position_scores: z.record(z.string(), z.number().nullable()),
@@ -59,6 +101,40 @@ export const PositionAnalysisOutputSchema = z.object({
   confidence: z.number().optional(),
   evidence_frames: z.array(z.number()).optional(),
   plays_observed: z.number().optional(),
+  head_contact_flag: z.object({ flagged: z.boolean(), note: z.string() }).optional(),
+  // TEAMIQ / SCOUTIQ structured breakdown — frequency tendencies, never
+  // presented as 0-100 quality scores (that's a category error: how often a
+  // team does something isn't how well they do it).
+  offensive_tendencies: z.array(TendencySchema).optional(),
+  defensive_tendencies: z.array(TendencySchema).optional(),
+  formations: z.array(z.object({
+    name: z.string(),
+    side: z.string().optional(),
+    note: z.string().optional(),
+  })).optional(),
+  explosive_plays: z.array(z.object({
+    cause: z.string(),
+    description: z.string(),
+    evidence_frames: z.array(z.number()).optional(),
+  })).optional(),
+  situational_tells: z.array(z.object({
+    situation: z.string(),
+    tell: z.string(),
+    confidence: z.number().optional(),
+  })).optional(),
+  attack_points: z.array(z.string()).optional(),
+  // MISTAKEIQ per-mistake taxonomy — written one row per item to
+  // mistake_events (see lib/intelligence/persist-intelligence.ts).
+  mistakes: z.array(MistakeItemSchema).optional(),
+  // SCOUTIQ only — weak/target players on the OPPONENT. Anti-hallucination:
+  // identify by legible jersey number when visible, otherwise by position/
+  // alignment/description only — never invent a number.
+  target_players: z.array(z.object({
+    identifier: z.string(),
+    reason: z.string(),
+    confidence: z.number(),
+    evidence_frames: z.array(z.number()).optional(),
+  })).optional(),
 })
 
 export interface PositionAnalysisResult {
@@ -75,6 +151,15 @@ export interface PositionAnalysisResult {
   confidence: number
   evidence_frames: number[]
   plays_observed?: number
+  head_contact_flag?: { flagged: boolean; note: string }
+  offensive_tendencies?: Tendency[]
+  defensive_tendencies?: Tendency[]
+  formations?: { name: string; side?: string; note?: string }[]
+  explosive_plays?: { cause: string; description: string; evidence_frames?: number[] }[]
+  situational_tells?: { situation: string; tell: string; confidence?: number }[]
+  attack_points?: string[]
+  mistakes?: MistakeItem[]
+  target_players?: { identifier: string; reason: string; confidence: number; evidence_frames?: number[] }[]
   model: string
   framesAnalyzed: number
 }

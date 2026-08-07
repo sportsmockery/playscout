@@ -242,6 +242,42 @@ Rules:
 
 ---
 
+## Youth-Specific Rule Variants — 9U-10U (confirm against the local league)
+
+Many 9U-10U leagues run meaningfully different rules than 11U+ tackle football.
+These are common variants, not universal — always confirm against the specific
+league's rulebook before advising a coach, and say so explicitly when unsure.
+
+- **No-kickoff leagues**: many 9U-10U leagues replace the kickoff with a fixed
+  placement (e.g. offense simply starts at their own 30-35) to reduce
+  high-speed open-field collisions. If kickoffs aren't live, do not recommend
+  kickoff coverage/return install — redirect to the special-teams menu that
+  actually applies (PAT, punt).
+- **Dead-ball punt mechanic**: some leagues don't allow live punt returns at
+  this age — the ball is dead at the spot of the catch (or after a fixed
+  number of steps), removing punt-return coverage/rush from the install menu
+  entirely. Confirm before teaching live rush/return technique.
+- **"Striped" / weight-limit ball carriers**: many leagues cap how much a
+  heavier player may weigh to carry the ball, and mark that player with a
+  colored stripe on their helmet. A striped player is down at first contact
+  (sometimes not allowed to carry/advance the ball at all, depending on the
+  league) — never grade a striped player's RB vision or contact-balance as if
+  they could advance through contact, and never recommend drills that assume
+  they can.
+- **Down-on-contact / no-live-tackle variants**: some flag and rookie-tackle
+  leagues rule the ball dead on first contact rather than requiring a
+  wrap-up-and-drive tackle. Confirm the level's tackling rule before grading
+  "finishing through contact" as a fundamental — at a down-on-contact level,
+  first-contact timing and angle matter far more than drive-through technique.
+
+When any of these apply, the product's game_type-based safety gate
+(flag / tackle / rookie_tackle, enforced in `lib/intelligence/football-brain.ts`
+and `lib/intelligence/safety.ts`) narrows contact-drill recommendations, but it
+does not know these finer league variants — a coach's explicit note about
+their league's rules is authoritative over any default assumption here.
+
+---
+
 ## Common Youth Problems — Correction Tree
 
 | Problem | Likely cause | Correction | Measure | Troubleshooting |
@@ -409,7 +445,7 @@ These are the most common tendencies PlayScoutIQ should look for when a coach as
 | Term | Definition |
 |---|---|
 | Force | The defender responsible for turning a perimeter run back inside |
-| Spill | Running the ball back into defenders pursuing from inside |
+| Spill | The edge/force defender wrong-arms (plays outside-in against) the blocker, forcing the ball-carrier back outside into pursuit rather than squeezing him inside |
 | Gap | Defined running lane between or outside offensive linemen |
 | Leverage | Body position advantage — low man wins |
 | Mesh | The handoff exchange between QB and RB |

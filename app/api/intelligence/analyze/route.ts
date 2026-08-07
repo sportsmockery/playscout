@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { analyzePosition } from '@/lib/intelligence/analyze-position'
 import { saveToTeamMemory } from '@/lib/intelligence/memory'
+import { persistMistakeEvents, persistTeamTendencies } from '@/lib/intelligence/persist-intelligence'
 import { PositionAnalysisInputSchema } from '@/lib/intelligence/schemas'
 import { getVideoFramesBase64 } from '@/lib/intelligence/get-frames'
 import { createClient } from '@/lib/supabase/server'
@@ -60,7 +61,23 @@ export async function POST(req: NextRequest) {
         drills: result.drills,
         summary: result.summary,
         frames_analyzed: result.framesAnalyzed,
-        evidence: { frames: result.evidence_frames, confidence: result.confidence, plays_observed: result.plays_observed },
+        evidence: {
+          frames: result.evidence_frames,
+          confidence: result.confidence,
+          plays_observed: result.plays_observed,
+          head_contact_flag: result.head_contact_flag ?? null,
+          // TEAMIQ/SCOUTIQ structured breakdown — not columns of its own,
+          // but needs to survive here so ScoutIQ Stage 2 aggregation (and a
+          // reopened saved report) can read the full per-clip tendencies,
+          // not just the generic score/summary above.
+          offensive_tendencies: result.offensive_tendencies ?? null,
+          defensive_tendencies: result.defensive_tendencies ?? null,
+          formations: result.formations ?? null,
+          explosive_plays: result.explosive_plays ?? null,
+          situational_tells: result.situational_tells ?? null,
+          attack_points: result.attack_points ?? null,
+          target_players: result.target_players ?? null,
+        },
         model_provider: 'google',
         model_name: result.model,
       })
@@ -77,6 +94,19 @@ export async function POST(req: NextRequest) {
         { error: `Analysis completed but could not be saved: ${error.message}` },
         { status: 500 }
       )
+    }
+
+    // Make the module's structured breakdown live, not just the generic
+    // position_analysis_results row: MistakeIQ's per-mistake taxonomy and
+    // TeamIQ's tendencies previously vanished after one render.
+    if (input.moduleKey === 'MISTAKEIQ') {
+      await persistMistakeEvents(supabase, { teamId: input.teamId, playSequenceId: input.playSequenceId }, result.mistakes)
+    }
+    if (input.moduleKey === 'TEAMIQ') {
+      await persistTeamTendencies(supabase, input.teamId, {
+        offensive: result.offensive_tendencies,
+        defensive: result.defensive_tendencies,
+      })
     }
 
     // Save to team memory (async, non-blocking)

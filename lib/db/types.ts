@@ -6,6 +6,8 @@ export type VideoStatus = 'uploaded' | 'processing' | 'partially_ready' | 'ready
 export type UploadStatus = 'created' | 'uploading' | 'uploaded' | 'failed' | 'cancelled'
 export type JobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'retrying'
 export type MistakeSeverity = 'minor' | 'moderate' | 'major' | 'game_changing'
+export type GameType = 'flag' | 'tackle' | 'rookie_tackle'
+export type FilmType = 'self' | 'opponent'
 
 export interface Organization { id: string; name: string; created_by: string | null; created_at: string }
 export interface OrganizationMember { id: string; organization_id: string; user_id: string; role: UserRole; created_at: string }
@@ -15,7 +17,13 @@ export interface Team {
   season?: string | null; league?: string | null; level?: string | null; state?: string | null
   offensive_style?: string | null; defensive_style?: string | null
   home_jersey_color?: string | null; away_jersey_color?: string | null
+  game_type?: GameType | null
   notes?: string | null; created_at: string
+}
+
+export interface Opponent {
+  id: string; team_id: string; name: string; age_group?: string | null
+  next_game_date?: string | null; notes?: string | null; created_at: string
 }
 
 export interface Player {
@@ -30,6 +38,7 @@ export interface Video {
   source_type?: 'upload' | 'hudl_link' | 'external_url'; source_url?: string | null
   storage_path?: string | null; thumbnail_path?: string | null; duration_seconds?: number | null
   file_size?: number | null; mime_type?: string | null
+  film_type?: FilmType; opponent_id?: string | null
   status?: VideoStatus | null; processing_status?: string | null; error_message?: string | null; created_at: string
 }
 
@@ -153,5 +162,24 @@ export interface OutputCorrection {
   model: string | null
   prompt_version: string | null
   corrected_by: string | null
+  created_at: string
+}
+
+export interface ScoutReport {
+  id: string
+  team_id: string
+  opponent_id: string
+  based_on_video_ids: string[]
+  offensive_tendencies?: Json | null
+  defensive_tendencies?: Json | null
+  formations?: Json | null
+  plays?: Json | null
+  target_players?: Json | null
+  situational_tells?: Json | null
+  game_plan?: Json | null
+  evidence_sufficiency?: Json | null
+  summary?: string | null
+  model_provider?: string | null
+  model_name?: string | null
   created_at: string
 }

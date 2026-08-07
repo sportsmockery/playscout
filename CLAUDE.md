@@ -51,27 +51,38 @@ PlayScout never says "AI watched your game." It says:
 Never hardcode a single model. Route by job type:
 
 ```typescript
-// lib/ai/model-router.ts
-export type AIJob =
+// lib/ai/model-router.ts — actual current routing (kept in sync with source)
+export type AIJobType =
   | 'frame_observation'
   | 'sequence_analysis'
   | 'assignment_grading'
   | 'mistake_detection'
   | 'tendency_update'
-  | 'report_generation';
+  | 'report_generation'
+  | 'quick_question'
+  | 'deep_analysis'
+  | 'practice_plan'
+  | 'game_strategy'
+  | 'football_knowledge';
 
-// Default routing
-const DEFAULT_ROUTES: Record<AIJob, { provider: string; model: string }> = {
+export const MODEL_ROUTES: Record<AIJobType, { provider: string; model: string }> = {
   frame_observation:   { provider: 'google',    model: 'gemini-2.5-pro' },
   sequence_analysis:   { provider: 'google',    model: 'gemini-2.5-pro' },
-  assignment_grading:  { provider: 'anthropic', model: 'claude-opus-4' },
-  mistake_detection:   { provider: 'anthropic', model: 'claude-opus-4' },
-  tendency_update:     { provider: 'openai',    model: 'gpt-4o' },
-  report_generation:   { provider: 'anthropic', model: 'claude-opus-4' },
+  assignment_grading:  { provider: 'google',    model: 'gemini-2.5-pro' },
+  mistake_detection:   { provider: 'google',    model: 'gemini-2.5-pro' },
+  tendency_update:     { provider: 'anthropic', model: 'claude-sonnet-4-5' },
+  report_generation:   { provider: 'anthropic', model: 'claude-opus-4-5' },
+  quick_question:      { provider: 'anthropic', model: 'claude-sonnet-4-5' },
+  deep_analysis:       { provider: 'anthropic', model: 'claude-opus-4-5' },
+  practice_plan:       { provider: 'anthropic', model: 'claude-opus-4-5' },
+  game_strategy:       { provider: 'anthropic', model: 'claude-opus-4-5' },
+  football_knowledge:  { provider: 'perplexity', model: 'sonar-pro' },
 };
 ```
 
-Providers: `lib/ai/providers/openai.ts`, `anthropic.ts`, `google.ts`, `perplexity.ts`
+Note: `analyze-position.ts` currently routes every module (QBIQ/OLIQ/TEAMIQ/MISTAKEIQ/SCOUTIQ) through the single `frame_observation` job type rather than per-module job types — one source of truth for the frame-analysis model choice.
+
+Providers: `lib/ai/providers/anthropic.ts`, `google.ts`, `perplexity.ts`, `openai.ts` (embeddings only — `text-embedding-3-small` for team-memory RAG, not a chat/analysis model)
 
 ---
 
@@ -666,9 +677,11 @@ playscout/
     api/
       videos/complete-upload/route.ts
       intelligence/analyze/route.ts   # Shared module router
-      qbiq/analyze/route.ts
-      oliq/analyze/route.ts
-      oliq/extract/route.ts           # Server FFmpeg extraction
+      # NOTE: QBIQ/OLIQ/TEAMIQ/MISTAKEIQ/SCOUTIQ all actually run through the
+      # single shared intelligence/analyze/route.ts above — there is no
+      # separate qbiq/analyze or oliq/analyze route. Server-side FFmpeg
+      # extraction lives in workers/lib/ffmpeg.ts (used by the Mode-2 worker,
+      # not a Vercel route — large video processing never runs on Vercel).
   components/
     ui/                     # shadcn/ui components
     marketing/              # Hero, FeatureCard, IntelligenceModuleCard
@@ -689,8 +702,9 @@ playscout/
       football-brain.ts     # FOOTBALL_BRAIN_SYSTEM base prompt
       modules/              # qbiq.ts, oliq.ts, teamiq.ts, mistakeiq.ts
     video/
-      frame-extraction.ts   # Browser-side canvas extraction
-      server-extract.ts     # FFmpeg extraction (from OLIQ reference)
+      frame-extraction.ts   # Browser-side canvas extraction (Mode 1 quick clips)
+      # Server-side (Mode 2) extraction is workers/lib/ffmpeg.ts, not lib/video/ —
+      # it runs in the Railway worker, never in a Next.js/Vercel route.
       create-sequences.ts
       hudl-ingestion.ts
     db/
@@ -917,9 +931,9 @@ Reads System B's output. Converses with coaches. Never watches video. Only reaso
 | Frame analysis (System B) | Google | `gemini-2.5-pro` |
 | Assignment grading (System B) | Google | `gemini-2.5-pro` |
 | Quick coach Q&A (System A) | Anthropic | `claude-sonnet-4-5` |
-| Deep trend analysis (System A) | Anthropic | `claude-opus-4` |
-| Practice plan generation (System A) | Anthropic | `claude-opus-4` |
-| Game strategy (System A) | Anthropic | `claude-opus-4` |
+| Deep trend analysis (System A) | Anthropic | `claude-opus-4-5` |
+| Practice plan generation (System A) | Anthropic | `claude-opus-4-5` |
+| Game strategy (System A) | Anthropic | `claude-opus-4-5` |
 | Football rules / scheme knowledge (System A) | Perplexity | `sonar-pro` |
 | Memory embeddings (bridge) | OpenAI | `text-embedding-3-small` |
 

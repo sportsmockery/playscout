@@ -19,7 +19,7 @@ export default function AppShell({ children, teamId, defaultTeamId, isAdmin }: A
   return (
     <div className="flex h-screen overflow-hidden bg-[var(--brand-bg)]">
       {/* Desktop sidebar */}
-      <div className="hidden lg:flex">
+      <div className="hidden lg:flex print:hidden">
         <Sidebar teamId={teamId} defaultTeamId={defaultTeamId} isAdmin={isAdmin} />
       </div>
 
@@ -32,7 +32,7 @@ export default function AppShell({ children, teamId, defaultTeamId, isAdmin }: A
       )}
       <div
         className={cn(
-          'fixed inset-y-0 left-0 z-50 lg:hidden transition-transform duration-300',
+          'fixed inset-y-0 left-0 z-50 lg:hidden print:hidden transition-transform duration-300',
           mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >
@@ -40,9 +40,9 @@ export default function AppShell({ children, teamId, defaultTeamId, isAdmin }: A
       </div>
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden print:overflow-visible">
         {/* Mobile header */}
-        <header className="flex lg:hidden items-center justify-between px-4 py-3 border-b bg-gradient-to-r from-[var(--brand-navy)]/[0.06] via-white to-[var(--brand-navy)]/[0.03]">
+        <header className="flex lg:hidden print:hidden items-center justify-between px-4 py-3 border-b bg-gradient-to-r from-[var(--brand-navy)]/[0.06] via-white to-[var(--brand-navy)]/[0.03]">
           <button
             onClick={() => setMobileSidebarOpen(!mobileSidebarOpen)}
             className="p-2 rounded-lg text-[var(--brand-navy)] hover:bg-[var(--brand-bg)] transition-colors"

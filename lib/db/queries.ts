@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import type { Team, Player, Video, PositionAnalysisResult, TeamTendency, MistakeEvent, Playbook, PlaybookAnalysis, PlaybookPlay } from './types'
+import type { Team, Player, Video, PositionAnalysisResult, TeamTendency, MistakeEvent, Playbook, PlaybookAnalysis, PlaybookPlay, PlaySequence, Opponent, ScoutReport } from './types'
 
 // Alias for server component compatibility
 export const createServerClient = createClient
@@ -86,6 +86,75 @@ export async function getVideoById(videoId: string): Promise<Video | null> {
   const supabase = await createClient()
   const { data } = await supabase.from('videos').select('*').eq('id', videoId).single()
   return data
+}
+
+export async function getAnalysisById(analysisId: string): Promise<PositionAnalysisResult | null> {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('position_analysis_results')
+    .select('*, players(first_name, last_name, primary_position), teams(name)')
+    .eq('id', analysisId)
+    .maybeSingle()
+  return data
+}
+
+export async function getOpponentsByTeam(teamId: string): Promise<Opponent[]> {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('opponents')
+    .select('*')
+    .eq('team_id', teamId)
+    .order('next_game_date', { ascending: true, nullsFirst: false })
+  return data ?? []
+}
+
+export async function getOpponentById(opponentId: string): Promise<Opponent | null> {
+  const supabase = await createClient()
+  const { data } = await supabase.from('opponents').select('*').eq('id', opponentId).maybeSingle()
+  return data
+}
+
+export async function getVideosByOpponent(teamId: string, opponentId: string): Promise<Video[]> {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('videos')
+    .select('*')
+    .eq('team_id', teamId)
+    .eq('opponent_id', opponentId)
+    .order('created_at', { ascending: false })
+  return data ?? []
+}
+
+export async function getScoutReportsByOpponent(opponentId: string): Promise<ScoutReport[]> {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('scout_reports')
+    .select('*')
+    .eq('opponent_id', opponentId)
+    .order('created_at', { ascending: false })
+  return data ?? []
+}
+
+export async function getLatestScoutReport(teamId: string): Promise<ScoutReport | null> {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('scout_reports')
+    .select('*')
+    .eq('team_id', teamId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  return data
+}
+
+export async function getPlaySequencesByVideo(videoId: string): Promise<PlaySequence[]> {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('play_sequences')
+    .select('*')
+    .eq('video_id', videoId)
+    .order('sequence_number', { ascending: true })
+  return data ?? []
 }
 
 export async function getRecentAnalysis(teamId: string, limit = 10): Promise<PositionAnalysisResult[]> {

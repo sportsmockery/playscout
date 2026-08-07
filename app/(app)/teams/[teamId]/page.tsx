@@ -96,6 +96,8 @@ export default async function TeamDetailPage({
             { name: 'OLIQ', href: `/teams/${teamId}/modules/oliq`, color: 'bg-emerald-50 text-emerald-600' },
             { name: 'TeamIQ', href: `/teams/${teamId}/modules/teamiq`, color: 'bg-purple-50 text-purple-600' },
             { name: 'MistakeIQ', href: `/teams/${teamId}/modules/mistakeiq`, color: 'bg-orange-50 text-orange-600' },
+            { name: 'ScoutIQ', href: `/teams/${teamId}/modules/scoutiq`, color: 'bg-red-50 text-red-600' },
+            { name: 'PlaybookIQ', href: `/teams/${teamId}/modules/playbookiq`, color: 'bg-indigo-50 text-indigo-600' },
           ].map((mod) => (
             <Link
               key={mod.name}

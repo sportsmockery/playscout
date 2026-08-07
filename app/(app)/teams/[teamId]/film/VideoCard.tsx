@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Film, Play, Clock } from 'lucide-react';
@@ -13,10 +13,40 @@ function formatDuration(seconds?: number | null) {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+const STATUS_POLL_MS = 4000;
+
 export default function VideoCard({ teamId, video }: { teamId: string; video: Video }) {
   const router = useRouter();
   const [retrying, setRetrying] = useState(false);
   const [error, setError] = useState('');
+  const [liveStatus, setLiveStatus] = useState<{ currentStep: string | null; progress: number | null } | null>(null);
+
+  useEffect(() => {
+    if (video.status !== 'processing') return;
+    let cancelled = false;
+
+    async function poll() {
+      try {
+        const res = await fetch(`/api/videos/${video.id}/status`);
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        if (cancelled) return;
+        setLiveStatus({ currentStep: data.currentStep, progress: data.progress });
+        if (data.videoStatus !== 'processing') {
+          router.refresh();
+        }
+      } catch {
+        // transient — next poll will retry
+      }
+    }
+
+    poll();
+    const interval = setInterval(poll, STATUS_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [video.id, video.status, router]);
 
   async function retry() {
     if (retrying) return;
@@ -49,8 +79,10 @@ export default function VideoCard({ teamId, video }: { teamId: string; video: Vi
             </div>
           </div>
           {video.status === 'processing' && (
-            <div className="absolute top-2 right-2 bg-amber-500 text-white text-xs font-semibold px-2 py-0.5 rounded-full">
-              Processing
+            <div className="absolute top-2 right-2 bg-amber-500 text-white text-xs font-semibold px-2 py-0.5 rounded-full max-w-[70%] truncate">
+              {liveStatus?.currentStep
+                ? `${liveStatus.currentStep}${typeof liveStatus.progress === 'number' ? ` ${Math.round(liveStatus.progress)}%` : ''}`
+                : 'Processing'}
             </div>
           )}
           {(video.status === 'ready_for_review' || video.status === 'analysis_complete') && (

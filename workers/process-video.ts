@@ -34,12 +34,21 @@ import {
   TARGET_WIDTH,
   SCENE_DETECTION_MAX_DURATION_SECONDS,
   type ExtractedFrame,
+  type Segment,
 } from './lib/ffmpeg'
 
 const WORKER_ID = process.env.WORKER_ID ?? 'playscout-worker-001'
 const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS ?? 5000)
 const FRAME_COUNT = Number(process.env.FRAME_COUNT ?? 16)
 const CLAIMABLE_STATUSES = ['queued', 'retrying']
+
+// A job stuck in `running` this long almost certainly means its worker died
+// mid-job (crash, OOM, deploy) without ever calling failJob — locked_at was
+// written on claim but nothing ever clears it in that case, so without a
+// reaper the job (and the coach's upload) would be stuck forever. Set well
+// above any realistic single-video processing time.
+const STUCK_JOB_TIMEOUT_MS = Number(process.env.STUCK_JOB_TIMEOUT_MS ?? 20 * 60 * 1000)
+const REAP_EVERY_N_POLLS = 12 // ~once/minute at the default 5s poll interval
 
 // Scene-cut segmentation tuning — see the doc comment on detectSceneCuts in
 // lib/ffmpeg.ts for why this only applies to edited/highlight video, not
@@ -61,7 +70,7 @@ async function extractFrames(
   videoPath: string,
   durationSeconds: number,
   outDir: string,
-): Promise<{ frames: ExtractedFrame[]; mode: 'segmented' | 'evenly_spaced'; segments?: number }> {
+): Promise<{ frames: ExtractedFrame[]; mode: 'segmented' | 'evenly_spaced'; segments?: Segment[] }> {
   if (durationSeconds > SCENE_DETECTION_MAX_DURATION_SECONDS) {
     const frames = await extractEvenlySpacedFrames(videoPath, durationSeconds, FRAME_COUNT, outDir)
     return { frames, mode: 'evenly_spaced' }
@@ -84,7 +93,7 @@ async function extractFrames(
       Math.min(FRAMES_PER_SEGMENT, Math.floor(MAX_SEGMENTED_TOTAL_FRAMES / segments.length)),
     )
     const frames = await extractFramesPerSegment(videoPath, segments, framesPerSegment, outDir)
-    return { frames, mode: 'segmented', segments: segments.length }
+    return { frames, mode: 'segmented', segments }
   } catch (err) {
     log('scene detection failed, falling back to evenly-spaced extraction', err instanceof Error ? err.message : err)
     const frames = await extractEvenlySpacedFrames(videoPath, durationSeconds, FRAME_COUNT, outDir)
@@ -166,6 +175,30 @@ async function claimNextJob(supabase: SupabaseClient): Promise<Job | null> {
   return null
 }
 
+/**
+ * Reclaims jobs stuck in `running` past STUCK_JOB_TIMEOUT_MS — locked_at is
+ * written on claim (claimNextJob) but was, until now, never read by
+ * anything, so a worker that died mid-job left its job (and the coach's
+ * video) stuck indefinitely. Re-queues for retry if attempts remain,
+ * otherwise fails the job and its video outright so the existing
+ * failed-video retry button (app/api/videos/[videoId]/retry) can recover it.
+ */
+async function reapStuckJobs(supabase: SupabaseClient) {
+  const cutoff = new Date(Date.now() - STUCK_JOB_TIMEOUT_MS).toISOString()
+  const { data: stuck } = await supabase
+    .from('video_processing_jobs')
+    .select('id, video_id, team_id, job_type, status, attempts, max_attempts')
+    .eq('status', 'running')
+    .lt('locked_at', cutoff)
+
+  if (!stuck?.length) return
+
+  for (const job of stuck as Job[]) {
+    log(`reaping stuck job ${job.id} (locked past ${STUCK_JOB_TIMEOUT_MS}ms)`)
+    await failJob(supabase, job, new Error('Job timed out — worker likely died mid-run'))
+  }
+}
+
 async function downloadVideoToDisk(
   supabase: SupabaseClient,
   storagePath: string,
@@ -229,13 +262,21 @@ async function runPipeline(supabase: SupabaseClient, job: Job) {
       }
     }
 
-    const effectiveDuration = duration ?? FRAME_COUNT + 1 // fall back to 1 fps-ish spread
-    const extraction = await extractFrames(videoPath, effectiveDuration, framesDir)
+    // ffprobe failing to read a duration almost always means the file is
+    // corrupt or unreadable — silently treating it as ~16 seconds (the old
+    // `FRAME_COUNT + 1` fallback) meant a broken full-game upload "analyzed
+    // successfully" against only its first few seconds with no indication
+    // anything was wrong. Fail loud instead so the coach sees a real error
+    // and can re-upload, rather than an incomplete report they'd trust.
+    if (!duration) {
+      throw new Error('Could not determine video duration (ffprobe failed) — the file may be corrupt or in an unsupported format.')
+    }
+    const extraction = await extractFrames(videoPath, duration, framesDir)
     const frames = extraction.frames
     if (!frames.length) throw new Error('No frames could be extracted from the video')
     log(
       extraction.mode === 'segmented'
-        ? `job ${job.id}: segmented extraction — ${extraction.segments} detected cuts, ${frames.length} frames`
+        ? `job ${job.id}: segmented extraction — ${extraction.segments?.length ?? 0} detected cuts, ${frames.length} frames`
         : `job ${job.id}: evenly-spaced extraction — ${frames.length} frames`
     )
 
@@ -271,6 +312,23 @@ async function runPipeline(supabase: SupabaseClient, job: Job) {
 
     const { error: insErr } = await supabase.from('video_frames').insert(frameRows)
     if (insErr) throw new Error(`Frame insert failed: ${insErr.message}`)
+
+    // Only segmented (edited/highlight) extraction has real play boundaries
+    // to seed — continuous game footage has no scene cuts, so there's
+    // nothing here for the coach to confirm/correct until they mark plays
+    // manually. Idempotent on retry, same as video_frames above.
+    await supabase.from('play_sequences').delete().eq('video_id', job.video_id)
+    if (extraction.mode === 'segmented' && extraction.segments?.length) {
+      const playSequenceRows = extraction.segments.map((seg, i) => ({
+        video_id: job.video_id,
+        team_id: job.team_id,
+        sequence_number: i + 1,
+        start_time_seconds: seg.startSeconds,
+        end_time_seconds: seg.endSeconds,
+      }))
+      const { error: seqErr } = await supabase.from('play_sequences').insert(playSequenceRows)
+      if (seqErr) log(`job ${job.id}: play_sequences insert failed (non-fatal)`, seqErr.message)
+    }
 
     // ── Ready for Review ────────────────────────────────────────────
     await supabase
@@ -337,7 +395,17 @@ async function main() {
     })
   }
 
+  let pollCount = 0
   while (!shuttingDown) {
+    pollCount++
+    if (pollCount % REAP_EVERY_N_POLLS === 0) {
+      try {
+        await reapStuckJobs(supabase)
+      } catch (err) {
+        log('reap error', err instanceof Error ? err.message : err)
+      }
+    }
+
     let job: Job | null = null
     try {
       job = await claimNextJob(supabase)

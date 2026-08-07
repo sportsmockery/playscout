@@ -2,7 +2,7 @@ import { getTeamById, getRecentAnalysis, getTeamTendencies } from '@/lib/db/quer
 import type { PositionAnalysisResult } from '@/lib/db/types';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ArrowLeft, Brain, Zap, Shield, TrendingUp, AlertTriangle, ArrowRight, BookOpen } from 'lucide-react';
+import { ArrowLeft, Brain, Zap, Shield, TrendingUp, AlertTriangle, ArrowRight, BookOpen, Crosshair } from 'lucide-react';
 
 type AnalysisWithPlayer = PositionAnalysisResult & {
   players: { first_name: string; last_name: string; primary_position: string } | null
@@ -50,6 +50,15 @@ const MODULES = [
     bg: 'bg-orange-50',
     desc: 'Turnovers, penalties, missed assignments, and blown coverages.',
     href: (id: string) => `/teams/${id}/modules/mistakeiq`,
+  },
+  {
+    name: 'ScoutIQ',
+    label: 'Opponent Scout Intelligence',
+    icon: Crosshair,
+    color: 'text-red-600',
+    bg: 'bg-red-50',
+    desc: 'Scout opponent film for tendencies and target players, then generate a game plan.',
+    href: (id: string) => `/teams/${id}/modules/scoutiq`,
   },
   {
     name: 'PlaybookIQ',
@@ -144,19 +153,21 @@ export default async function IntelligencePage({
               </thead>
               <tbody>
                 {analyses.map((a) => (
-                  <tr key={a.id} className="border-b border-[var(--brand-border)] last:border-0 hover:bg-[var(--brand-bg)] transition-colors">
+                  <tr key={a.id} className="border-b border-[var(--brand-border)] last:border-0 hover:bg-[var(--brand-bg)] transition-colors cursor-pointer">
                     <td className="py-3 pr-4">
-                      <span className="text-sm font-semibold text-[var(--brand-navy)]">
+                      <Link href={`/analysis/${a.id}`} className="block text-sm font-semibold text-[var(--brand-navy)]">
                         {a.module_key?.toUpperCase()}
-                      </span>
+                      </Link>
                     </td>
                     <td className="py-3 pr-4 text-sm text-[var(--brand-muted)]">
-                      {(a as AnalysisWithPlayer).players
-                        ? `${(a as AnalysisWithPlayer).players!.first_name} ${(a as AnalysisWithPlayer).players!.last_name}`
-                        : '—'}
+                      <Link href={`/analysis/${a.id}`} className="block">
+                        {(a as AnalysisWithPlayer).players
+                          ? `${(a as AnalysisWithPlayer).players!.first_name} ${(a as AnalysisWithPlayer).players!.last_name}`
+                          : '—'}
+                      </Link>
                     </td>
                     <td className="py-3 pr-4">
-                      <span className={`text-sm font-bold ${
+                      <Link href={`/analysis/${a.id}`} className={`block text-sm font-bold ${
                         (a.overall_score ?? 0) >= 80
                           ? 'text-emerald-600'
                           : (a.overall_score ?? 0) >= 60
@@ -164,10 +175,12 @@ export default async function IntelligencePage({
                           : 'text-red-600'
                       }`}>
                         {a.overall_score ?? '—'}
-                      </span>
+                      </Link>
                     </td>
                     <td className="py-3 text-sm text-[var(--brand-muted)]">
-                      {new Date(a.created_at).toLocaleDateString()}
+                      <Link href={`/analysis/${a.id}`} className="block">
+                        {new Date(a.created_at).toLocaleDateString()}
+                      </Link>
                     </td>
                   </tr>
                 ))}

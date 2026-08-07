@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft, UserCircle } from 'lucide-react';
 import AddPlayerButton from './AddPlayerButton';
+import PlayerActions from './PlayerActions';
 
 export async function generateMetadata({ params }: { params: Promise<{ teamId: string }> }) {
   const { teamId } = await params;
@@ -124,9 +125,7 @@ export default async function RosterPage({
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <button className="text-xs text-[var(--brand-muted)] hover:text-[var(--brand-navy)] transition-colors">
-                      Edit
-                    </button>
+                    <PlayerActions player={player} />
                   </td>
                 </tr>
               ))}

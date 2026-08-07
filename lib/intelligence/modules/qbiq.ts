@@ -1,9 +1,10 @@
-import { FOOTBALL_BRAIN_SYSTEM } from '../football-brain'
+import { FOOTBALL_BRAIN_SYSTEM, buildGameTypeContext } from '../football-brain'
 import { Type } from '@google/genai'
 import type { PositionAnalysisInput } from '../schemas'
 
 export function buildQBIQSystemPrompt(input: PositionAnalysisInput): string {
   const { player, team, playSequence, coachNote } = input
+  const gameTypeContext = buildGameTypeContext(team?.game_type)
 
   const playerProfile = player && (player.name || player.position)
     ? `ATHLETE PROFILE:
@@ -30,6 +31,7 @@ Calibrate expectations to this athlete's age and level — never use NFL/college
 You are QBIQ — Quarterback Intelligence.
 ${playerProfile}
 ${teamContext}
+${gameTypeContext}
 ${playContext}
 ${noteContext}
 

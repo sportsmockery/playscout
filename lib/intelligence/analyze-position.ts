@@ -6,7 +6,9 @@ import { buildQBIQSystemPrompt, QBIQ_RESPONSE_SCHEMA } from './modules/qbiq'
 import { buildOLIQSystemPrompt, OLIQ_RESPONSE_SCHEMA } from './modules/oliq'
 import { buildTEAMIQSystemPrompt, TEAMIQ_RESPONSE_SCHEMA } from './modules/teamiq'
 import { buildMISTAKEIQSystemPrompt, MISTAKEIQ_RESPONSE_SCHEMA } from './modules/mistakeiq'
+import { buildSCOUTIQSystemPrompt, SCOUTIQ_RESPONSE_SCHEMA } from './modules/scoutiq'
 import { PositionAnalysisOutputSchema, type PositionAnalysisInput, type PositionAnalysisResult } from './schemas'
+import { applyDrillSafetyFilter, scrubProhibitedDrillMentions } from './safety'
 
 type ModuleConfig = {
   buildPrompt: (input: PositionAnalysisInput) => string
@@ -18,6 +20,7 @@ const MODULE_MAP: Record<string, ModuleConfig> = {
   OLIQ:      { buildPrompt: buildOLIQSystemPrompt,      schema: OLIQ_RESPONSE_SCHEMA },
   TEAMIQ:    { buildPrompt: buildTEAMIQSystemPrompt,    schema: TEAMIQ_RESPONSE_SCHEMA },
   MISTAKEIQ: { buildPrompt: buildMISTAKEIQSystemPrompt, schema: MISTAKEIQ_RESPONSE_SCHEMA },
+  SCOUTIQ:   { buildPrompt: buildSCOUTIQSystemPrompt,   schema: SCOUTIQ_RESPONSE_SCHEMA },
 }
 
 export async function analyzePosition(
@@ -28,7 +31,21 @@ export async function analyzePosition(
   const config = MODULE_MAP[input.moduleKey]
   if (!config) throw new Error(`Unknown module: ${input.moduleKey}`)
 
-  const systemPrompt = config.buildPrompt(input)
+  // game_type drives the flag/tackle contact-drill safety gate — fetched
+  // authoritatively from the DB rather than trusted from the client, since
+  // a client-supplied value here would let a caller bypass the gate.
+  const { data: teamRow } = await supabase
+    .from('teams')
+    .select('game_type')
+    .eq('id', input.teamId)
+    .maybeSingle()
+  const gameType = teamRow?.game_type as 'flag' | 'tackle' | 'rookie_tackle' | null | undefined
+  const inputWithGameType: PositionAnalysisInput = {
+    ...input,
+    team: input.team ? { ...input.team, game_type: gameType ?? undefined } : input.team,
+  }
+
+  const systemPrompt = config.buildPrompt(inputWithGameType)
   // Every module here is a frame-based structured-output call — route them
   // all through the same job type so the model choice has one source of
   // truth (lib/ai/model-router.ts) instead of being hardcoded per provider.
@@ -73,17 +90,37 @@ export async function analyzePosition(
   }
   const parsed = result.data
 
+  // Belt-and-suspenders: the prompt already bans these, but scrub the
+  // structured output too before it can reach a coach's screen.
+  const { drills: safeDrills } = applyDrillSafetyFilter(parsed.drills, gameType)
+  const safeMistakes = parsed.mistakes?.map((m) => {
+    const correction = scrubProhibitedDrillMentions(m.correction)
+    const drill = m.drill
+      ? applyDrillSafetyFilter([m.drill], gameType).drills[0]
+      : m.drill
+    return { ...m, correction, drill }
+  })
+
   return {
     overall_score: parsed.overall_score,
     position_scores: parsed.position_scores,
     reasoning: parsed.reasoning,
     strengths: parsed.strengths,
     weaknesses: parsed.weaknesses,
-    drills: parsed.drills,
+    drills: safeDrills,
     summary: parsed.summary,
     confidence: parsed.confidence ?? 0.7,
     evidence_frames: parsed.evidence_frames ?? [],
     plays_observed: parsed.plays_observed,
+    head_contact_flag: parsed.head_contact_flag,
+    offensive_tendencies: parsed.offensive_tendencies,
+    defensive_tendencies: parsed.defensive_tendencies,
+    formations: parsed.formations,
+    explosive_plays: parsed.explosive_plays,
+    situational_tells: parsed.situational_tells,
+    attack_points: parsed.attack_points,
+    mistakes: safeMistakes,
+    target_players: parsed.target_players,
     model: route.model,
     framesAnalyzed: input.frames.length,
   }

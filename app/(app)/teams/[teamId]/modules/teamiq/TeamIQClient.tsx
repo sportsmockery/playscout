@@ -1,10 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { TrendingUp, AlertCircle, ChevronDown } from 'lucide-react';
+import Link from 'next/link';
+import { TrendingUp, AlertCircle, ChevronDown, Target } from 'lucide-react';
 import type { Video, PositionAnalysisResult } from '@/lib/db/types';
 import EvidenceFrames from '@/components/intelligence/EvidenceFrames';
 import QuickClipUpload from '@/components/intelligence/QuickClipUpload';
+import AnalysisCorrections from '@/components/intelligence/AnalysisCorrections';
 
 interface Props {
   teamId: string;
@@ -18,18 +20,47 @@ interface Props {
   pastAnalyses: PositionAnalysisResult[];
 }
 
+interface TeamIQTendency {
+  tendency_type: string;
+  label: string;
+  rate: number | null;
+  confidence: number;
+  sample_size: number;
+  description: string;
+}
+
+interface TeamIQFormation {
+  name: string;
+  side?: string;
+  note?: string;
+}
+
+interface TeamIQExplosivePlay {
+  cause: string;
+  description: string;
+  evidence_frames?: number[];
+}
+
+interface TeamIQSituationalTell {
+  situation: string;
+  tell: string;
+  confidence?: number;
+}
+
 interface TeamIQResult {
   overall_score: number;
   position_scores: {
-    offensive_tendency: number | null;
-    defensive_tendency: number | null;
     execution_consistency: number | null;
   };
   reasoning: {
-    offensive_tendency: string;
-    defensive_tendency: string;
     execution_consistency: string;
   };
+  offensive_tendencies: TeamIQTendency[];
+  defensive_tendencies: TeamIQTendency[];
+  formations: TeamIQFormation[];
+  explosive_plays: TeamIQExplosivePlay[];
+  situational_tells: TeamIQSituationalTell[];
+  attack_points: string[];
   strengths: string[];
   weaknesses: string[];
   drills: string[];
@@ -40,8 +71,6 @@ interface TeamIQResult {
 }
 
 const DIMENSIONS: Array<[keyof TeamIQResult['position_scores'], string]> = [
-  ['offensive_tendency', 'Offensive Tendency'],
-  ['defensive_tendency', 'Defensive Tendency'],
   ['execution_consistency', 'Execution Consistency'],
 ];
 
@@ -54,6 +83,30 @@ const SIDE_OPTIONS: Array<[SideChoice, string]> = [
   ['both', 'Both'],
   ['unknown', 'Not sure'],
 ];
+
+function TendencyPanel({ title, tendencies }: { title: string; tendencies: TeamIQTendency[] }) {
+  return (
+    <div className="glass-card p-5">
+      <h3 className="font-bold text-[var(--brand-navy)] mb-3 text-sm uppercase tracking-wide">{title}</h3>
+      <ul className="space-y-3">
+        {tendencies.map((t, i) => (
+          <li key={i} className="text-sm">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-semibold text-[var(--brand-ink)]">{t.label}</span>
+              {typeof t.rate === 'number' && (
+                <span className="text-xs font-bold text-purple-600">{Math.round(t.rate * 100)}%</span>
+              )}
+            </div>
+            <p className="text-xs text-[var(--brand-muted)] mt-0.5">{t.description}</p>
+            <p className="text-xs text-[var(--brand-muted)] mt-0.5">
+              Confidence: {Math.round(t.confidence * 100)}% · Sample: {t.sample_size} {t.sample_size === 1 ? 'play' : 'plays'}
+            </p>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 export default function TeamIQClient({
   teamId,
@@ -75,6 +128,7 @@ export default function TeamIQClient({
   const [coachNote, setCoachNote] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<TeamIQResult | null>(null);
+  const [analysisId, setAnalysisId] = useState<string | null>(null);
   const [error, setError] = useState('');
 
   const resolvedJerseyColor =
@@ -95,6 +149,7 @@ export default function TeamIQClient({
     setLoading(true);
     setError('');
     setResult(null);
+    setAnalysisId(null);
 
     try {
       const res = await fetch('/api/intelligence/analyze', {
@@ -120,6 +175,7 @@ export default function TeamIQClient({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Analysis failed');
       setResult(data.result);
+      setAnalysisId(data.analysisId ?? null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Analysis failed');
     } finally {
@@ -267,16 +323,21 @@ export default function TeamIQClient({
             </h2>
             <ul className="space-y-2">
               {pastAnalyses.map((a) => (
-                <li key={a.id} className="flex items-center justify-between text-sm py-1.5 border-b border-[var(--brand-border)] last:border-0">
-                  <span className="text-[var(--brand-muted)]">
-                    {new Date(a.created_at).toLocaleDateString()}
-                  </span>
-                  <span className={`font-bold ${
-                    (a.overall_score ?? 0) >= 80 ? 'text-emerald-600' :
-                    (a.overall_score ?? 0) >= 60 ? 'text-amber-600' : 'text-red-600'
-                  }`}>
-                    {a.overall_score ?? '—'}
-                  </span>
+                <li key={a.id} className="border-b border-[var(--brand-border)] last:border-0">
+                  <Link
+                    href={`/analysis/${a.id}`}
+                    className="flex items-center justify-between text-sm py-1.5 hover:text-[var(--brand-navy)] transition-colors"
+                  >
+                    <span className="text-[var(--brand-muted)]">
+                      {new Date(a.created_at).toLocaleDateString()}
+                    </span>
+                    <span className={`font-bold ${
+                      (a.overall_score ?? 0) >= 80 ? 'text-emerald-600' :
+                      (a.overall_score ?? 0) >= 60 ? 'text-amber-600' : 'text-red-600'
+                    }`}>
+                      {a.overall_score ?? '—'}
+                    </span>
+                  </Link>
                 </li>
               ))}
             </ul>
@@ -305,6 +366,23 @@ export default function TeamIQClient({
 
         {result && !loading && (
           <div className="space-y-5">
+            <AnalysisCorrections
+              analysisId={analysisId}
+              result={result}
+              dimensions={DIMENSIONS}
+              onSaved={(patch) =>
+                setResult((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        ...patch,
+                        position_scores: { ...prev.position_scores, ...(patch.position_scores as Partial<TeamIQResult['position_scores']> | undefined) },
+                      }
+                    : prev
+                )
+              }
+            />
+
             <div className="glass-card p-6">
               <div className="flex items-center gap-6">
                 <div className="relative w-24 h-24 flex-shrink-0">
@@ -373,6 +451,81 @@ export default function TeamIQClient({
               <div className="glass-card p-5">
                 <h3 className="font-bold text-[var(--brand-navy)] mb-2 text-sm uppercase tracking-wide">Summary</h3>
                 <p className="text-sm text-[var(--brand-ink)] leading-relaxed whitespace-pre-wrap">{result.summary}</p>
+              </div>
+            )}
+
+            {(result.offensive_tendencies?.length > 0 || result.defensive_tendencies?.length > 0) && (
+              <div className="grid md:grid-cols-2 gap-5">
+                {result.offensive_tendencies?.length > 0 && (
+                  <TendencyPanel title="Offensive Tendencies" tendencies={result.offensive_tendencies} />
+                )}
+                {result.defensive_tendencies?.length > 0 && (
+                  <TendencyPanel title="Defensive Tendencies" tendencies={result.defensive_tendencies} />
+                )}
+              </div>
+            )}
+
+            {result.formations?.length > 0 && (
+              <div className="glass-card p-5">
+                <h3 className="font-bold text-[var(--brand-navy)] mb-3 text-sm uppercase tracking-wide">Formations Observed</h3>
+                <div className="flex flex-wrap gap-2">
+                  {result.formations.map((f, i) => (
+                    <span key={i} className="inline-flex flex-col rounded-lg bg-[var(--brand-bg)] border border-[var(--brand-border)] px-3 py-2">
+                      <span className="text-sm font-semibold text-[var(--brand-ink)]">
+                        {f.name}{f.side ? ` (${f.side})` : ''}
+                      </span>
+                      {f.note && <span className="text-xs text-[var(--brand-muted)] mt-0.5">{f.note}</span>}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {result.explosive_plays?.length > 0 && (
+              <div className="glass-card p-5">
+                <h3 className="font-bold text-[var(--brand-navy)] mb-3 text-sm uppercase tracking-wide">Explosive Play Causes</h3>
+                <ul className="space-y-3">
+                  {result.explosive_plays.map((p, i) => (
+                    <li key={i} className="text-sm">
+                      <span className="font-semibold text-[var(--brand-ink)]">{p.cause}: </span>
+                      <span className="text-[var(--brand-ink)]">{p.description}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {result.situational_tells?.length > 0 && (
+              <div className="glass-card p-5">
+                <h3 className="font-bold text-[var(--brand-navy)] mb-3 text-sm uppercase tracking-wide">Situational Tells</h3>
+                <ul className="space-y-2">
+                  {result.situational_tells.map((t, i) => (
+                    <li key={i} className="text-sm">
+                      <span className="font-semibold text-[var(--brand-ink)]">{t.situation}: </span>
+                      <span className="text-[var(--brand-ink)]">{t.tell}</span>
+                      {typeof t.confidence === 'number' && (
+                        <span className="text-xs text-[var(--brand-muted)]"> ({Math.round(t.confidence * 100)}% confidence)</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {result.attack_points?.length > 0 && (
+              <div className="glass-card p-5 border border-[var(--brand-gold)]/40">
+                <h3 className="font-bold text-[var(--brand-navy)] mb-3 text-sm uppercase tracking-wide flex items-center gap-2">
+                  <Target size={16} className="text-[var(--brand-gold)]" />
+                  What To Attack
+                </h3>
+                <ul className="space-y-2">
+                  {result.attack_points.map((a, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm text-[var(--brand-ink)]">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[var(--brand-gold)] flex-shrink-0 mt-1.5" />
+                      {a}
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
 

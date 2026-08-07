@@ -64,16 +64,26 @@ export default async function VideoDetailPage({
       </div>
 
       <div className="glass-card p-6">
-        <h1 className="text-xl font-bold text-[var(--brand-navy)] mb-1">{video.title}</h1>
-        <div className="flex items-center gap-4 text-sm text-[var(--brand-muted)]">
-          {video.duration_seconds && (
-            <span className="flex items-center gap-1">
-              <Clock size={14} />
-              {formatDuration(video.duration_seconds)}
-            </span>
-          )}
-          <span className="capitalize">{video.status?.replace(/_/g, ' ') ?? 'Unknown status'}</span>
-          <span>{new Date(video.created_at).toLocaleDateString()}</span>
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h1 className="text-xl font-bold text-[var(--brand-navy)] mb-1">{video.title}</h1>
+            <div className="flex items-center gap-4 text-sm text-[var(--brand-muted)]">
+              {video.duration_seconds && (
+                <span className="flex items-center gap-1">
+                  <Clock size={14} />
+                  {formatDuration(video.duration_seconds)}
+                </span>
+              )}
+              <span className="capitalize">{video.status?.replace(/_/g, ' ') ?? 'Unknown status'}</span>
+              <span>{new Date(video.created_at).toLocaleDateString()}</span>
+            </div>
+          </div>
+          <Link
+            href={`/teams/${teamId}/film/${videoId}/plays`}
+            className="text-sm font-semibold text-white bg-[var(--brand-navy)] px-4 py-2 rounded-lg hover:bg-[var(--brand-navy-dark)] transition-colors"
+          >
+            Review Play Sequences
+          </Link>
         </div>
       </div>
     </div>

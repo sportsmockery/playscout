@@ -25,7 +25,7 @@ export default function AddPlayerButton({ teamId, variant = 'default' }: Props) 
     grade: '',
   });
 
-  async function handleAdd(e: React.FormEvent) {
+  async function handleAdd(e: React.FormEvent, keepOpen = false) {
     e.preventDefault();
     setLoading(true);
 
@@ -40,9 +40,13 @@ export default function AddPlayerButton({ teamId, variant = 'default' }: Props) 
     });
 
     if (!error) {
-      setOpen(false);
       setForm({ firstName: '', lastName: '', jersey: '', position: '', grade: '' });
-      router.refresh();
+      if (keepOpen) {
+        router.refresh();
+      } else {
+        setOpen(false);
+        router.refresh();
+      }
     }
 
     setLoading(false);
@@ -139,9 +143,17 @@ export default function AddPlayerButton({ teamId, variant = 'default' }: Props) 
                 <button
                   type="button"
                   onClick={() => setOpen(false)}
-                  className="flex-1 py-2.5 rounded-lg border border-[var(--brand-border)] text-sm font-semibold text-[var(--brand-muted)] hover:bg-[var(--brand-bg)] transition-colors"
+                  className="py-2.5 px-3 rounded-lg border border-[var(--brand-border)] text-sm font-semibold text-[var(--brand-muted)] hover:bg-[var(--brand-bg)] transition-colors"
                 >
                   Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={(e) => handleAdd(e, true)}
+                  className="flex-1 flex items-center justify-center gap-2 border border-[var(--brand-navy)] text-[var(--brand-navy)] font-semibold py-2.5 rounded-lg hover:bg-[var(--brand-navy)]/5 transition-colors disabled:opacity-60"
+                >
+                  Save & Add Another
                 </button>
                 <button
                   type="submit"

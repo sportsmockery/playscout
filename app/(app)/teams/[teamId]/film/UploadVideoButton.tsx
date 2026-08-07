@@ -10,13 +10,16 @@ import { Upload, X, Film } from 'lucide-react';
 interface Props {
   teamId: string;
   variant?: 'default' | 'primary';
+  /** When set, the uploaded video is tagged film_type='opponent' for this opponent (ScoutIQ). */
+  opponentId?: string;
+  buttonLabel?: string;
 }
 
 // Supabase Storage resumable (TUS) uploads must use a 6MB chunk size.
 const TUS_CHUNK_SIZE = 6 * 1024 * 1024;
 const MAX_FILE_BYTES = 4 * 1024 * 1024 * 1024; // 4GB — matches Mode 2 full-game ceiling
 
-export default function UploadVideoButton({ teamId }: Props) {
+export default function UploadVideoButton({ teamId, opponentId, buttonLabel }: Props) {
   const router = useRouter();
   const supabase = createBrowserClient();
   const [open, setOpen] = useState(false);
@@ -164,6 +167,7 @@ export default function UploadVideoButton({ teamId }: Props) {
         storagePath: objectName,
         teamId,
         title: title || file.name,
+        opponentId,
       }),
     });
 
@@ -190,7 +194,7 @@ export default function UploadVideoButton({ teamId }: Props) {
         className="flex items-center gap-2 bg-[var(--brand-navy)] text-white text-sm font-semibold px-4 py-2.5 rounded-lg hover:bg-[var(--brand-navy-dark)] transition-colors"
       >
         <Upload size={16} />
-        Upload Film
+        {buttonLabel ?? 'Upload Film'}
       </button>
 
       {open && (

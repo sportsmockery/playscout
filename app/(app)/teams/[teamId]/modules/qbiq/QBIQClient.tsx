@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { Zap, ChevronDown, AlertCircle } from 'lucide-react';
 import type { Player, Video, PositionAnalysisResult } from '@/lib/db/types';
 import EvidenceFrames from '@/components/intelligence/EvidenceFrames';
@@ -218,16 +219,21 @@ export default function QBIQClient({ teamId, teamName, ageGroup, qbs, videos, pa
             </h2>
             <ul className="space-y-2">
               {pastAnalyses.map((a) => (
-                <li key={a.id} className="flex items-center justify-between text-sm py-1.5 border-b border-[var(--brand-border)] last:border-0">
-                  <span className="text-[var(--brand-muted)]">
-                    {new Date(a.created_at).toLocaleDateString()}
-                  </span>
-                  <span className={`font-bold ${
-                    (a.overall_score ?? 0) >= 80 ? 'text-emerald-600' :
-                    (a.overall_score ?? 0) >= 60 ? 'text-amber-600' : 'text-red-600'
-                  }`}>
-                    {a.overall_score ?? '—'}
-                  </span>
+                <li key={a.id} className="border-b border-[var(--brand-border)] last:border-0">
+                  <Link
+                    href={`/analysis/${a.id}`}
+                    className="flex items-center justify-between text-sm py-1.5 hover:text-[var(--brand-navy)] transition-colors"
+                  >
+                    <span className="text-[var(--brand-muted)]">
+                      {new Date(a.created_at).toLocaleDateString()}
+                    </span>
+                    <span className={`font-bold ${
+                      (a.overall_score ?? 0) >= 80 ? 'text-emerald-600' :
+                      (a.overall_score ?? 0) >= 60 ? 'text-amber-600' : 'text-red-600'
+                    }`}>
+                      {a.overall_score ?? '—'}
+                    </span>
+                  </Link>
                 </li>
               ))}
             </ul>

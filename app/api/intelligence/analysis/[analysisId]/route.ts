@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { requireTeamMemberForRow } from '@/lib/auth/require-team-member'
 
 /**
  * Editable fields only — evidence frames, confidence, model_provider,
@@ -7,6 +8,27 @@ import { createClient } from '@/lib/supabase/server'
  * regardless of what the client sends.
  */
 const EDITABLE_FIELDS = ['overall_score', 'position_scores', 'strengths', 'weaknesses', 'summary', 'drills'] as const
+
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ analysisId: string }> }
+) {
+  const { analysisId } = await params
+  const access = await requireTeamMemberForRow('position_analysis_results', analysisId)
+  if (access.error) return access.error
+
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('position_analysis_results')
+    .select('*, players(first_name, last_name, primary_position), teams(name)')
+    .eq('id', analysisId)
+    .single()
+
+  if (error || !data) {
+    return NextResponse.json({ error: 'Analysis not found.' }, { status: 404 })
+  }
+  return NextResponse.json({ result: data })
+}
 
 export async function PATCH(
   req: NextRequest,

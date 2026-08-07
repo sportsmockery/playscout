@@ -50,7 +50,7 @@ export async function getRelevantMemory(teamId: string, question: string, limit 
     const { data } = await supabase.rpc('match_team_memory', {
       query_embedding: JSON.stringify(embedding),
       match_team_id: teamId,
-      match_threshold: 0.72,
+      match_threshold: 0.75,
       match_count: limit,
     })
     return data ?? []

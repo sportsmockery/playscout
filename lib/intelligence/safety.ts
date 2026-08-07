@@ -1,0 +1,139 @@
+// Belt-and-suspenders output filter. The prompts (football-brain.ts + each
+// module's buildXIQSystemPrompt) already instruct the model never to
+// recommend these drills, but a model can still slip — this scrubs the
+// structured output before it ever reaches a coach, and logs when it had to.
+
+const PROHIBITED_DRILLS: { pattern: RegExp; label: string }[] = [
+  { pattern: /oklahoma\s*drill/i, label: 'Oklahoma drill' },
+  { pattern: /bull(s)?\s*(in\s*(the\s*)?)?ring/i, label: 'Bull in the Ring' },
+  { pattern: /nut\s*cracker/i, label: 'nutcracker drill' },
+  { pattern: /board\s*(drill|collision)/i, label: 'board collision drill' },
+]
+
+const CONTACT_DRILL_PATTERNS: RegExp[] = [
+  /full[\s-]?contact/i,
+  /live\s*tackl/i,
+  /\bthud\b/i,
+  /\bcollision\b/i,
+  /\b1[\s-]?on[\s-]?1\b.*\b(contact|live|tackl)/i,
+  /(open|closed)[\s-]?field\s*tackl/i,
+  /\blive\b.*\bblock/i,
+]
+
+const SAFE_TACKLING_ALTERNATIVE =
+  'Form-tackling progression: walk-through -> bag/dummy -> controlled pursuit at half speed. No full-speed or live collision work.'
+
+const SAFE_NON_CONTACT_ALTERNATIVE =
+  'Non-contact fundamentals drill (angles, footwork, form, leverage) — full-speed contact is not appropriate at this level.'
+
+export interface DrillSafetyResult {
+  drills: string[]
+  filtered: { original: string; reason: 'prohibited_drill' | 'contact_at_non_tackle_level' }[]
+}
+
+/**
+ * Scrubs prohibited drills (always) and, when gameType isn't 'tackle',
+ * contact drills too. Replaces each flagged item with a safe alternative
+ * rather than silently dropping it, so a coach isn't left with an empty
+ * recommendation.
+ */
+export function applyDrillSafetyFilter(
+  drills: string[],
+  gameType?: string | null
+): DrillSafetyResult {
+  const filtered: DrillSafetyResult['filtered'] = []
+
+  const afterProhibited = drills.map((drill) => {
+    const hit = PROHIBITED_DRILLS.find((p) => p.pattern.test(drill))
+    if (hit) {
+      filtered.push({ original: drill, reason: 'prohibited_drill' })
+      return SAFE_TACKLING_ALTERNATIVE
+    }
+    return drill
+  })
+
+  const afterContact =
+    gameType === 'tackle'
+      ? afterProhibited
+      : afterProhibited.map((drill, i) => {
+          // Already replaced for being prohibited — don't double-flag.
+          if (filtered.some((f) => f.original === drills[i])) return drill
+          const hit = CONTACT_DRILL_PATTERNS.some((p) => p.test(drill))
+          if (hit) {
+            filtered.push({ original: drills[i], reason: 'contact_at_non_tackle_level' })
+            return SAFE_NON_CONTACT_ALTERNATIVE
+          }
+          return drill
+        })
+
+  if (filtered.length) {
+    console.warn('[safety] filtered drill recommendations', { gameType, filtered })
+  }
+
+  return { drills: afterContact, filtered }
+}
+
+/** Same denylist, applied to freeform correction/coaching text. */
+export function scrubProhibitedDrillMentions(text: string): string {
+  const hit = PROHIBITED_DRILLS.find((p) => p.pattern.test(text))
+  if (!hit) return text
+  console.warn('[safety] scrubbed prohibited drill mention', { label: hit.label })
+  return text.replace(hit.pattern, SAFE_TACKLING_ALTERNATIVE)
+}
+
+// --- Chat output guard (Phase 3.5) ---------------------------------------
+
+const SECRET_LIKE_PATTERNS: RegExp[] = [
+  /sk-[a-zA-Z0-9]{20,}/,      // OpenAI/Anthropic-style API keys
+  /sb_secret_[a-zA-Z0-9_-]{10,}/, // Supabase secret keys
+  /eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}/, // JWTs (service role/anon keys)
+  /AIza[a-zA-Z0-9_-]{20,}/,   // Google API keys
+  /pplx-[a-zA-Z0-9]{20,}/,    // Perplexity keys
+]
+
+const SYSTEM_PROMPT_LEAK_MARKERS = [
+  'FOOTBALL_BRAIN_SYSTEM',
+  'You are PlayScout Football Intelligence',
+  'SUPABASE_SERVICE_ROLE_KEY',
+  'ANTHROPIC_API_KEY',
+]
+
+export interface OutputGuardResult {
+  safe: boolean
+  text: string
+  reasons: string[]
+}
+
+/**
+ * Last-line check on an assembled System A chat response before it reaches
+ * the client — redacts secret-shaped substrings and refuses outright if the
+ * response looks like it echoed system-prompt internals (a successful
+ * injection got the model to comply rather than refuse in-band).
+ */
+export function guardChatOutput(text: string): OutputGuardResult {
+  const reasons: string[] = []
+  let redacted = text
+
+  for (const pattern of SECRET_LIKE_PATTERNS) {
+    if (pattern.test(redacted)) {
+      reasons.push('secret_like_pattern')
+      redacted = redacted.replace(new RegExp(pattern, pattern.flags.includes('g') ? pattern.flags : pattern.flags + 'g'), '[redacted]')
+    }
+  }
+
+  const leaked = SYSTEM_PROMPT_LEAK_MARKERS.some((marker) => text.includes(marker))
+  if (leaked) {
+    reasons.push('system_prompt_leak')
+    return {
+      safe: false,
+      text: "I can't share my internal instructions. Ask me a football or coaching question instead.",
+      reasons,
+    }
+  }
+
+  if (reasons.length) {
+    console.warn('[safety] redacted chat output', { reasons })
+  }
+
+  return { safe: reasons.length === 0, text: redacted, reasons }
+}

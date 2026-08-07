@@ -139,12 +139,14 @@ export default async function DashboardPage() {
         <div className="glass-card p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-bold text-[var(--brand-navy)]">Recent Analyses</h2>
-            <Link
-              href="/intelligence"
-              className="text-xs text-[var(--brand-navy)] hover:underline flex items-center gap-1"
-            >
-              View all <ArrowRight size={12} />
-            </Link>
+            {teams[0] && (
+              <Link
+                href={`/teams/${teams[0].id}/intelligence`}
+                className="text-xs text-[var(--brand-navy)] hover:underline flex items-center gap-1"
+              >
+                View all <ArrowRight size={12} />
+              </Link>
+            )}
           </div>
 
           {!analyses || analyses.length === 0 ? (
@@ -157,10 +159,11 @@ export default async function DashboardPage() {
           ) : (
             <ul className="space-y-2">
               {analyses.map((analysis) => (
-                <li
-                  key={analysis.id}
-                  className="flex items-center justify-between p-3 rounded-lg hover:bg-[var(--brand-bg)] transition-colors"
-                >
+                <li key={analysis.id}>
+                  <Link
+                    href={`/analysis/${analysis.id}`}
+                    className="flex items-center justify-between p-3 rounded-lg hover:bg-[var(--brand-bg)] transition-colors"
+                  >
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
                       <Zap size={14} className="text-amber-600" />
@@ -177,6 +180,7 @@ export default async function DashboardPage() {
                   <span className="text-xs text-[var(--brand-muted)]">
                     {new Date(analysis.created_at).toLocaleDateString()}
                   </span>
+                  </Link>
                 </li>
               ))}
             </ul>
