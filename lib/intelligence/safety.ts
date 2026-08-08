@@ -2,6 +2,13 @@
 // module's buildXIQSystemPrompt) already instruct the model never to
 // recommend these drills, but a model can still slip — this scrubs the
 // structured output before it ever reaches a coach, and logs when it had to.
+//
+// LEVEL-AWARE: at youth (or unknown) levels the prohibited collision drills are
+// replaced outright. At high school (JV/varsity) they are kept but annotated
+// with a hard NFHS/state contact-limit caution — matching football-brain.ts
+// rule 13, which discourages them at all levels but doesn't ban them for HS.
+
+import { isHighSchoolOrAbove, type LevelTier } from './levels'
 
 const PROHIBITED_DRILLS: { pattern: RegExp; label: string }[] = [
   { pattern: /oklahoma\s*drill/i, label: 'Oklahoma drill' },
@@ -26,26 +33,40 @@ const SAFE_TACKLING_ALTERNATIVE =
 const SAFE_NON_CONTACT_ALTERNATIVE =
   'Non-contact fundamentals drill (angles, footwork, form, leverage) — full-speed contact is not appropriate at this level.'
 
+const HS_COLLISION_CAUTION =
+  ' — CAUTION (high school): only under NFHS/state contact-limit rules, with no full-speed head-on collisions and proper acclimatization. A technique-only progression (fit → track → break down → shadow finish) teaches the same thing more safely.'
+
 export interface DrillSafetyResult {
   drills: string[]
-  filtered: { original: string; reason: 'prohibited_drill' | 'contact_at_non_tackle_level' }[]
+  filtered: {
+    original: string
+    reason: 'prohibited_drill' | 'contact_at_non_tackle_level' | 'prohibited_drill_hs_caution'
+  }[]
 }
 
 /**
- * Scrubs prohibited drills (always) and, when gameType isn't 'tackle',
- * contact drills too. Replaces each flagged item with a safe alternative
- * rather than silently dropping it, so a coach isn't left with an empty
- * recommendation.
+ * Scrubs prohibited collision drills and, when gameType isn't 'tackle', contact
+ * drills too. Level-aware: youth/unknown tiers get the prohibited drill replaced
+ * with a safe alternative; high-school tiers keep it but with a hard NFHS
+ * contact-limit caution appended. Replaces/annotates rather than silently
+ * dropping, so a coach isn't left with an empty recommendation.
  */
 export function applyDrillSafetyFilter(
   drills: string[],
-  gameType?: string | null
+  gameType?: string | null,
+  tier: LevelTier = 'unknown'
 ): DrillSafetyResult {
   const filtered: DrillSafetyResult['filtered'] = []
+  const hsCautionOnly = isHighSchoolOrAbove(tier)
 
   const afterProhibited = drills.map((drill) => {
     const hit = PROHIBITED_DRILLS.find((p) => p.pattern.test(drill))
     if (hit) {
+      if (hsCautionOnly) {
+        // High school: keep the drill, attach the contact-limit caution.
+        filtered.push({ original: drill, reason: 'prohibited_drill_hs_caution' })
+        return `${drill}${HS_COLLISION_CAUTION}`
+      }
       filtered.push({ original: drill, reason: 'prohibited_drill' })
       return SAFE_TACKLING_ALTERNATIVE
     }

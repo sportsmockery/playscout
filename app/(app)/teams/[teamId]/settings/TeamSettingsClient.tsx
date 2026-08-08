@@ -13,6 +13,14 @@ const AGE_GROUPS = [
 
 const LEVELS = ['Recreation', 'Travel', 'High School', 'College', 'Semi-Pro', 'Other'];
 
+// Drives the contact-drill safety gate in analysis. flag = no contact ever;
+// tackle = live contact allowed where level-appropriate; rookie_tackle = modified.
+const GAME_TYPES: { value: string; label: string }[] = [
+  { value: 'flag', label: 'Flag (no contact)' },
+  { value: 'tackle', label: 'Tackle (full contact)' },
+  { value: 'rookie_tackle', label: 'Rookie / modified tackle' },
+];
+
 interface Props {
   team: Team;
 }
@@ -25,6 +33,7 @@ export default function TeamSettingsClient({ team }: Props) {
   const [ageGroup, setAgeGroup] = useState(team.age_group ?? '');
   const [season, setSeason] = useState(team.season ?? '');
   const [level, setLevel] = useState(team.level ?? '');
+  const [gameType, setGameType] = useState<string>(team.game_type ?? '');
   const [league, setLeague] = useState(team.league ?? '');
   const [state, setState] = useState(team.state ?? '');
   const [offensiveStyle, setOffensiveStyle] = useState(team.offensive_style ?? '');
@@ -50,6 +59,7 @@ export default function TeamSettingsClient({ team }: Props) {
         age_group: ageGroup || null,
         season: season || null,
         level: level || null,
+        game_type: gameType || null,
         league: league || null,
         state: state || null,
         offensive_style: offensiveStyle || null,
@@ -139,6 +149,21 @@ export default function TeamSettingsClient({ team }: Props) {
             className={inputClass}
           />
         </div>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-[var(--brand-ink)] mb-1.5">
+          Game Type
+        </label>
+        <select value={gameType} onChange={(e) => setGameType(e.target.value)} className={inputClass}>
+          <option value="">Select game type</option>
+          {GAME_TYPES.map((g) => (
+            <option key={g.value} value={g.value}>{g.label}</option>
+          ))}
+        </select>
+        <p className="text-xs text-[var(--brand-muted)] mt-1.5">
+          Controls the analysis safety gate — flag teams never get contact drills; tackle unlocks live work where level-appropriate.
+        </p>
       </div>
 
       <div>

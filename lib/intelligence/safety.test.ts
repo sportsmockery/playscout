@@ -32,6 +32,28 @@ describe('applyDrillSafetyFilter — prohibited drills', () => {
   })
 })
 
+describe('applyDrillSafetyFilter — level-aware prohibited-drill handling', () => {
+  it('strips the Oklahoma drill at youth/unknown tiers (default)', () => {
+    const { drills, filtered } = applyDrillSafetyFilter(['Oklahoma drill'], 'tackle', 'youth')
+    expect(drills[0]).not.toMatch(/oklahoma/i)
+    expect(filtered[0].reason).toBe('prohibited_drill')
+  })
+
+  it('keeps the drill but appends an NFHS caution at high-school tiers', () => {
+    const { drills, filtered } = applyDrillSafetyFilter(['Oklahoma drill'], 'tackle', 'varsity')
+    expect(drills[0]).toMatch(/oklahoma/i)          // kept, not replaced
+    expect(drills[0]).toMatch(/CAUTION/i)           // annotated
+    expect(drills[0]).toMatch(/NFHS/)
+    expect(filtered[0].reason).toBe('prohibited_drill_hs_caution')
+  })
+
+  it('applies the HS caution at JV too', () => {
+    const { drills } = applyDrillSafetyFilter(['Bull in the ring'], 'tackle', 'jv')
+    expect(drills[0]).toMatch(/bull.*ring/i)
+    expect(drills[0]).toMatch(/CAUTION/i)
+  })
+})
+
 describe('applyDrillSafetyFilter — flag/tackle contact gate', () => {
   it('blocks live/full-contact drills when game type is flag', () => {
     const { drills, filtered } = applyDrillSafetyFilter(['Live tackling circuit', '1-on-1 full contact blocking'], 'flag')

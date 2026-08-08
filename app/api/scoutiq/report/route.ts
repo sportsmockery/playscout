@@ -9,6 +9,7 @@ import { getPlayersByTeam, getPlaybooksByTeam, getPlaybookPlays } from '@/lib/db
 import { aggregateScoutReport, type ScoutClipEvidence } from '@/lib/intelligence/scoutiq-aggregate'
 import { buildScoutIQGamePlanPrompt, type ScoutIQGamePlan } from '@/lib/intelligence/modules/scoutiq-gameplan'
 import { applyDrillSafetyFilter } from '@/lib/intelligence/safety'
+import { resolveLevelTier } from '@/lib/intelligence/levels'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -83,7 +84,7 @@ export async function POST(req: NextRequest) {
     const basedOnVideoIds = [...new Set(scoutResults.map((r) => r.video_id))]
 
     const [{ data: team }, players, playbooks] = await Promise.all([
-      supabase.from('teams').select('name, age_group, offensive_style, defensive_style, game_type').eq('id', teamId).single(),
+      supabase.from('teams').select('name, age_group, level, offensive_style, defensive_style, game_type').eq('id', teamId).single(),
       getPlayersByTeam(teamId),
       getPlaybooksByTeam(teamId),
     ])
@@ -129,7 +130,11 @@ export async function POST(req: NextRequest) {
     }
 
     // Belt-and-suspenders drill safety filter on the practice recommendations.
-    gamePlan.practice_week_focus = applyDrillSafetyFilter(gamePlan.practice_week_focus ?? [], team?.game_type).drills
+    gamePlan.practice_week_focus = applyDrillSafetyFilter(
+      gamePlan.practice_week_focus ?? [],
+      team?.game_type,
+      resolveLevelTier(team),
+    ).drills
 
     const { data: saved, error: saveErr } = await supabase
       .from('scout_reports')

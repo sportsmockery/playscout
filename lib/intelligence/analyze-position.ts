@@ -10,6 +10,7 @@ import { buildMISTAKEIQSystemPrompt, MISTAKEIQ_RESPONSE_SCHEMA } from './modules
 import { buildSCOUTIQSystemPrompt, SCOUTIQ_RESPONSE_SCHEMA } from './modules/scoutiq'
 import { PositionAnalysisOutputSchema, type PositionAnalysisInput, type PositionAnalysisResult } from './schemas'
 import { applyDrillSafetyFilter, scrubProhibitedDrillMentions } from './safety'
+import { resolveLevelTier } from './levels'
 
 type ModuleConfig = {
   buildPrompt: (input: PositionAnalysisInput) => string
@@ -38,10 +39,11 @@ export async function analyzePosition(
   // a client-supplied value here would let a caller bypass the gate.
   const { data: teamRow } = await supabase
     .from('teams')
-    .select('game_type')
+    .select('game_type, level, age_group')
     .eq('id', input.teamId)
     .maybeSingle()
   const gameType = teamRow?.game_type as 'flag' | 'tackle' | 'rookie_tackle' | null | undefined
+  const tier = resolveLevelTier(teamRow as { age_group?: string | null; level?: string | null } | null)
   const inputWithGameType: PositionAnalysisInput = {
     ...input,
     team: input.team ? { ...input.team, game_type: gameType ?? undefined } : input.team,
@@ -94,11 +96,11 @@ export async function analyzePosition(
 
   // Belt-and-suspenders: the prompt already bans these, but scrub the
   // structured output too before it can reach a coach's screen.
-  const { drills: safeDrills } = applyDrillSafetyFilter(parsed.drills, gameType)
+  const { drills: safeDrills } = applyDrillSafetyFilter(parsed.drills, gameType, tier)
   const safeMistakes = parsed.mistakes?.map((m) => {
     const correction = scrubProhibitedDrillMentions(m.correction)
     const drill = m.drill
-      ? applyDrillSafetyFilter([m.drill], gameType).drills[0]
+      ? applyDrillSafetyFilter([m.drill], gameType, tier).drills[0]
       : m.drill
     return { ...m, correction, drill }
   })
