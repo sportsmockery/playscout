@@ -11,7 +11,7 @@
 --    read but never written. Mirrors the existing "Coaches can manage
 --    videos" role gate via the teams -> organization_members join.
 
-create table public.opponents (
+create table if not exists public.opponents (
   id uuid primary key default gen_random_uuid(),
   team_id uuid not null references public.teams(id) on delete cascade,
   name text not null,
@@ -23,6 +23,7 @@ create table public.opponents (
 
 alter table public.opponents enable row level security;
 
+drop policy if exists "Members can read opponents" on public.opponents;
 create policy "Members can read opponents"
   on public.opponents for select
   using (
@@ -34,6 +35,7 @@ create policy "Members can read opponents"
     )
   );
 
+drop policy if exists "Coaches can manage opponents" on public.opponents;
 create policy "Coaches can manage opponents"
   on public.opponents for all
   using (
@@ -64,6 +66,7 @@ alter table public.teams
   add column if not exists game_type text
     check (game_type in ('flag','tackle','rookie_tackle'));
 
+drop policy if exists "Coaches can insert mistakes" on public.mistake_events;
 create policy "Coaches can insert mistakes"
   on public.mistake_events for insert
   with check (
@@ -76,6 +79,7 @@ create policy "Coaches can insert mistakes"
     )
   );
 
+drop policy if exists "Coaches can insert tendencies" on public.team_tendencies;
 create policy "Coaches can insert tendencies"
   on public.team_tendencies for insert
   with check (
@@ -88,6 +92,7 @@ create policy "Coaches can insert tendencies"
     )
   );
 
+drop policy if exists "Coaches can update tendencies" on public.team_tendencies;
 create policy "Coaches can update tendencies"
   on public.team_tendencies for update
   using (

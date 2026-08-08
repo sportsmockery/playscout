@@ -2,7 +2,7 @@
 -- per generated game plan for a team/opponent pair, built from all opponent
 -- clips scouted so far.
 
-create table public.scout_reports (
+create table if not exists public.scout_reports (
   id uuid primary key default gen_random_uuid(),
   team_id uuid not null references public.teams(id) on delete cascade,
   opponent_id uuid not null references public.opponents(id) on delete cascade,
@@ -23,6 +23,7 @@ create table public.scout_reports (
 
 alter table public.scout_reports enable row level security;
 
+drop policy if exists "Members can read scout reports" on public.scout_reports;
 create policy "Members can read scout reports"
   on public.scout_reports for select
   using (
@@ -34,6 +35,7 @@ create policy "Members can read scout reports"
     )
   );
 
+drop policy if exists "Coaches can insert scout reports" on public.scout_reports;
 create policy "Coaches can insert scout reports"
   on public.scout_reports for insert
   with check (
