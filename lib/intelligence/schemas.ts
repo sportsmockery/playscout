@@ -19,11 +19,15 @@ export const PositionAnalysisInputSchema = z.object({
     position: z.string().optional(),
     jersey_number: z.string().optional(),
     age_group: z.string().optional(),
+    grade_level: z.string().optional(),
     notes: z.string().optional(),
   }).optional(),
   team: z.object({
     name: z.string().optional(),
     age_group: z.string().optional(),
+    // Competition level ("High School", "College", ...) — combined with
+    // age_group to calibrate grading from youth through varsity.
+    level: z.string().optional(),
     season: z.string().optional(),
     offensive_style: z.string().optional(),
     defensive_style: z.string().optional(),

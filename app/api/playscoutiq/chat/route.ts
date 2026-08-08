@@ -63,6 +63,22 @@ export async function POST(req: NextRequest) {
   const blocked = await guardAIRequest(supabase, user.id, teamId);
   if (blocked) return blocked;
 
+  // Resolve the team's level up front so EVERY answer — general or team-specific
+  // — is calibrated to the real competition level (youth → varsity), not a youth
+  // default.
+  let teamName = context?.teamName;
+  let teamAgeGroup = context?.ageGroup;
+  let teamLevel: string | undefined;
+  if (teamId) {
+    const { data: t } = await supabase.from('teams').select('name, level, age_group').eq('id', teamId).maybeSingle();
+    const trow = t as { name?: string; level?: string; age_group?: string } | null;
+    if (trow) {
+      teamName = teamName ?? trow.name ?? undefined;
+      teamAgeGroup = teamAgeGroup ?? trow.age_group ?? undefined;
+      teamLevel = trow.level ?? undefined;
+    }
+  }
+
   const latestUserMessage = messages[messages.length - 1].content;
   const classified = await classifyIntent(latestUserMessage);
   // No team selected — nothing to ground a team-specific answer in.
@@ -120,8 +136,9 @@ export async function POST(req: NextRequest) {
   }
 
   const systemPrompt = buildPlayScoutIQPrompt({
-    teamName: context?.teamName,
-    ageGroup: context?.ageGroup,
+    teamName,
+    ageGroup: teamAgeGroup,
+    level: teamLevel,
     intent,
     structuredContext: structuredContext
       ? {

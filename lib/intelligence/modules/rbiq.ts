@@ -1,9 +1,11 @@
-import { FOOTBALL_BRAIN_SYSTEM } from '../football-brain'
+import { buildFootballBrain } from '../football-brain'
+import { resolveLevelTier } from '../levels'
 import { Type } from '@google/genai'
 import type { PositionAnalysisInput } from '../schemas'
 
 export function buildRBIQSystemPrompt(input: PositionAnalysisInput): string {
   const { player, team, playSequence, coachNote } = input
+  const tier = resolveLevelTier(team)
 
   const playerProfile = player && (player.name || player.position)
     ? `ATHLETE PROFILE:
@@ -12,8 +14,8 @@ ${player.position ? `- Position: ${player.position}` : ''}
 ${player.jersey_number ? `- Jersey: #${player.jersey_number}` : ''}
 ${player.age_group ? `- Age group: ${player.age_group}` : ''}
 ${player.notes ? `- Coach notes: ${player.notes}` : ''}
-Calibrate expectations to this athlete's age and level — never use NFL/college standards.`
-    : 'ATHLETE PROFILE: No specific profile provided. Grade the running back visible in the clip against age-appropriate youth football fundamentals. If you cannot determine which back is the subject (e.g. multiple backs in the backfield), say which one you graded and why. If age/level is unclear from frames, state that assumption.'
+Calibrate expectations to this team's competition level (see COMPETITION LEVEL above): youth on age-appropriate fundamentals, varsity on next-level/college-bound standards.`
+    : 'ATHLETE PROFILE: No specific profile provided. Grade the running back visible in the clip against the standards appropriate to the team competition level (see the level calibration above). If you cannot determine which back is the subject (e.g. multiple backs in the backfield), say which one you graded and why. If age/level is unclear from frames, state that assumption.'
 
   const teamContext = team
     ? `TEAM CONTEXT: ${team.name ?? 'Unknown team'} | ${team.age_group ?? ''} | ${team.offensive_style ?? ''}`
@@ -25,7 +27,7 @@ Calibrate expectations to this athlete's age and level — never use NFL/college
 
   const noteContext = coachNote ? `COACH NOTE: ${coachNote}` : ''
 
-  return `${FOOTBALL_BRAIN_SYSTEM}
+  return `${buildFootballBrain(tier)}
 
 You are RBIQ — Running Back Intelligence.
 ${playerProfile}
@@ -59,8 +61,7 @@ the profile's age group; if age is unknown, state which band you assumed):
 | Vision/gap    | Follows the hole              | Reads one block, one cut      | Presses then cuts, finds cutback  |
 | Footwork      | North-south, falls forward    | Decisive one-cut              | One-cut + finishes through contact|
 Meeting the age target is Advanced (80-89) FOR THAT AGE; do not penalize a young athlete
-for lacking older-band skills, and do not award NFL/college-caliber scores for meeting a
-youth target.
+for lacking older-band skills, and do NOT clamp a varsity player to youth targets — an elite varsity player earns an Elite varsity grade.
 
 SCORING A DIMENSION WITH NO EVIDENCE: if the clip shows no ball-carry by the back at all
 (e.g. the back only pass-protects or runs a route and never touches the ball), BALL_SECURITY

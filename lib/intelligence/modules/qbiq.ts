@@ -1,9 +1,11 @@
-import { FOOTBALL_BRAIN_SYSTEM, buildGameTypeContext } from '../football-brain'
+import { buildFootballBrain, buildGameTypeContext } from '../football-brain'
+import { resolveLevelTier } from '../levels'
 import { Type } from '@google/genai'
 import type { PositionAnalysisInput } from '../schemas'
 
 export function buildQBIQSystemPrompt(input: PositionAnalysisInput): string {
   const { player, team, playSequence, coachNote } = input
+  const tier = resolveLevelTier(team)
   const gameTypeContext = buildGameTypeContext(team?.game_type)
 
   const playerProfile = player && (player.name || player.position)
@@ -13,8 +15,8 @@ ${player.position ? `- Position: ${player.position}` : ''}
 ${player.jersey_number ? `- Jersey: #${player.jersey_number}` : ''}
 ${player.age_group ? `- Age group: ${player.age_group}` : ''}
 ${player.notes ? `- Coach notes: ${player.notes}` : ''}
-Calibrate expectations to this athlete's age and level — never use NFL/college standards.`
-    : 'ATHLETE PROFILE: No specific profile provided. Grade the quarterback visible in the clip against age-appropriate youth football fundamentals. If age/level is unclear from frames, state that assumption.'
+Calibrate expectations to this team's competition level (see COMPETITION LEVEL above): youth on age-appropriate fundamentals, varsity on next-level/college-bound standards.`
+    : 'ATHLETE PROFILE: No specific profile provided. Grade the quarterback visible in the clip against the standards appropriate to the team competition level (see the level calibration above). If age/level is unclear from frames, state that assumption.'
 
   const teamContext = team
     ? `TEAM CONTEXT: ${team.name ?? 'Unknown team'} | ${team.age_group ?? ''} | ${team.offensive_style ?? ''}`
@@ -26,7 +28,7 @@ Calibrate expectations to this athlete's age and level — never use NFL/college
 
   const noteContext = coachNote ? `COACH NOTE: ${coachNote}` : ''
 
-  return `${FOOTBALL_BRAIN_SYSTEM}
+  return `${buildFootballBrain(tier)}
 
 You are QBIQ — Quarterback Intelligence.
 ${playerProfile}
@@ -59,8 +61,7 @@ the profile's age group; if age is unknown, state which band you assumed):
 | Base throw    | Steps to target, short range     | Consistent to 10-12 yds        | Timing throws with progression    |
 | Reads         | Find #1, else run                | Read one defender/picture      | Full half-field progression       |
 Meeting the age target is Advanced (80-89) FOR THAT AGE; do not penalize a young athlete
-for lacking older-band skills, and do not award NFL/college-caliber scores for meeting a
-youth target.
+for lacking older-band skills, and do NOT clamp a varsity player to youth targets — an elite varsity player earns an Elite varsity grade.
 
 SCORING A DIMENSION WITH NO EVIDENCE: if the clip has no dropback/pass attempt at all
 (e.g. it's a single run/handoff play), POCKET_PRESENCE may have zero applicable

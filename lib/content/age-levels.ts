@@ -105,4 +105,41 @@ export const AGE_LEVELS: AgeLevel[] = [
     ],
     successLooksLike: 'Executes full weekly plan, understands game situations',
   },
+  {
+    level: 'JV',
+    ages: 'High school (grades 9–10)',
+    gameType: 'Full tackle (NFHS / state rules)',
+    practice: '2–2.5 hrs, 4–5x/week in season',
+    contact: 'Full contact under NFHS/state contact-limit rules; acclimatization + return-to-play protocol',
+    install: [
+      'Full base offense + defense with multiple fronts and coverages',
+      'Situational and game-plan packages developing toward varsity',
+      'Individual technique refinement by position',
+      'Film study, self-scout, and opponent scouting',
+    ],
+    avoid: [
+      'Clamping players to youth fundamentals — grade toward varsity/next-level standards',
+      'Skipping return-to-play protocol after any head contact',
+    ],
+    successLooksLike: 'Executes a real playbook, wins individual matchups, develops toward varsity',
+  },
+  {
+    level: 'Varsity',
+    ages: 'High school (grades 11–12)',
+    gameType: 'Full tackle (NFHS / state rules)',
+    practice: '2.5–3 hrs, 5x/week in season',
+    contact: 'Full contact under NFHS/state contact-limit rules; acclimatization + return-to-play protocol',
+    install: [
+      'Full playbook: RPOs, multiple coverages, situational + game-plan packages',
+      'Advanced technique — hip-shoulder separation, full-field reads, pass-pro nuance',
+      'Weekly opponent game plan built from scouting',
+      'College-bound / next-level standards as the aspirational ceiling',
+    ],
+    avoid: [
+      'Grading varsity players against youth fundamentals',
+      'Refusing scheme depth as "too advanced" — full playbooks are expected here',
+      'Skipping return-to-play protocol after any head contact',
+    ],
+    successLooksLike: 'Executes a complete game plan weekly; elite players graded on next-level technique',
+  },
 ]

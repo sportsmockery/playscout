@@ -1,4 +1,5 @@
-import { FOOTBALL_BRAIN_SYSTEM, buildGameTypeContext } from '../football-brain'
+import { buildFootballBrain, buildGameTypeContext } from '../football-brain'
+import { resolveLevelTier } from '../levels'
 import { Type } from '@google/genai'
 import type { PositionAnalysisInput } from '../schemas'
 
@@ -11,6 +12,7 @@ import type { PositionAnalysisInput } from '../schemas'
  */
 export function buildSCOUTIQSystemPrompt(input: PositionAnalysisInput): string {
   const { team, opponent, playSequence, coachNote } = input
+  const tier = resolveLevelTier(team)
   const opponentLabel = opponent?.name ?? 'the opponent'
 
   const jerseyContext = opponent?.jersey_color
@@ -21,7 +23,7 @@ export function buildSCOUTIQSystemPrompt(input: PositionAnalysisInput): string {
 
   const gameTypeContext = buildGameTypeContext(team?.game_type)
 
-  return `${FOOTBALL_BRAIN_SYSTEM}
+  return `${buildFootballBrain(tier)}
 
 You are SCOUTIQ — Opponent Scout Intelligence.
 SUBJECT: You are scouting ${opponentLabel}${opponent?.age_group ? ` (${opponent.age_group})` : ''} — this is opponent film, not the coach's own team's film.

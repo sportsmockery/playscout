@@ -6,8 +6,8 @@
 - **GitHub**: https://github.com/sportsmockery/playscout
 - **Supabase**: https://supabase.com/dashboard/project/rapuqqztreaefzysetju
 - **Vercel**: chris-burhans-projects / playscout
-- **Mission**: Youth football intelligence built from film, evidence, assignments, tendencies, mistakes, and team memory.
-- **Initial focus**: 9U–10U football
+- **Mission**: Football intelligence built from film, evidence, assignments, tendencies, mistakes, and team memory — for teams at **every level from youth (6U) through high-school varsity**.
+- **Level coverage**: youth age bands (6U–14U), middle school, and high-school JV/Varsity. Grading and scheme recommendations calibrate to each team's level via `lib/intelligence/levels.ts` (`resolveLevelTier`) — youth graded on age-appropriate fundamentals, varsity on next-level/college-bound standards. Do NOT reintroduce a youth-only "never NFL/college" ceiling.
 
 ---
 

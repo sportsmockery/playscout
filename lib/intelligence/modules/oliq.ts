@@ -1,9 +1,11 @@
-import { FOOTBALL_BRAIN_SYSTEM, buildGameTypeContext } from '../football-brain'
+import { buildFootballBrain, buildGameTypeContext } from '../football-brain'
+import { resolveLevelTier } from '../levels'
 import { Type } from '@google/genai'
 import type { PositionAnalysisInput } from '../schemas'
 
 export function buildOLIQSystemPrompt(input: PositionAnalysisInput): string {
   const { player, team, playSequence, coachNote } = input
+  const tier = resolveLevelTier(team)
   const gameTypeContext = buildGameTypeContext(team?.game_type)
 
   const playerProfile = player && (player.name || player.position)
@@ -20,7 +22,7 @@ Calibrate expectations to this athlete's age and level.`
   const playContext = playSequence?.coach_label ? `PLAY: ${playSequence.coach_label}` : ''
   const noteContext = coachNote ? `COACH NOTE: ${coachNote}` : ''
 
-  return `${FOOTBALL_BRAIN_SYSTEM}
+  return `${buildFootballBrain(tier)}
 
 You are OLIQ — Offensive Line Intelligence.
 ${playerProfile}
@@ -53,8 +55,7 @@ the profile's age group; if age is unknown, state which band you assumed):
 | Pad level        | "Low man wins" understood| Wins leverage most reps| Wins leverage + finishes   |
 | Assignment busts | Occasional               | < 10%                  | < 5%                       |
 Meeting the age target is Advanced (80-89) FOR THAT AGE; do not penalize a young lineman
-for lacking older-band skills, and do not award NFL/college-caliber scores for meeting a
-youth target.
+for lacking older-band skills, and do NOT clamp a varsity player to youth targets — an elite varsity player earns an Elite varsity grade.
 
 SCORING A DIMENSION WITH NO EVIDENCE: if the clip has no pass attempt at all (e.g. it's
 a single run play), PASS_PROTECTION may have zero applicable evidence — return null for

@@ -31,6 +31,21 @@ export async function POST(req: NextRequest) {
     const blocked = await guardAIRequest(supabase, user.id, input.teamId)
     if (blocked) return blocked
 
+    // Read level/age_group/game_type from the team row server-side so grading
+    // calibration (youth → varsity) and the flag safety gate don't depend on the
+    // client remembering to send them. Server value wins.
+    const { data: teamRow } = await supabase
+      .from('teams').select('game_type, level, age_group').eq('id', input.teamId).maybeSingle()
+    const tr = teamRow as { game_type?: string; level?: string; age_group?: string } | null
+    if (tr) {
+      input.team = {
+        ...(input.team ?? {}),
+        ...(tr.game_type ? { game_type: tr.game_type as 'flag' | 'tackle' | 'rookie_tackle' } : {}),
+        ...(tr.level ? { level: tr.level } : {}),
+        ...(tr.age_group ? { age_group: tr.age_group } : {}),
+      }
+    }
+
     let frames = input.frames
     if (!frames.length && input.videoId) {
       frames = await getVideoFramesBase64(input.videoId)

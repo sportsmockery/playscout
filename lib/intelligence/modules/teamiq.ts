@@ -1,4 +1,5 @@
-import { FOOTBALL_BRAIN_SYSTEM, buildGameTypeContext } from '../football-brain'
+import { buildFootballBrain, buildGameTypeContext } from '../football-brain'
+import { resolveLevelTier } from '../levels'
 import { Type } from '@google/genai'
 import type { PositionAnalysisInput } from '../schemas'
 
@@ -22,6 +23,7 @@ function buildSideContext(
 
 export function buildTEAMIQSystemPrompt(input: PositionAnalysisInput): string {
   const { team, playSequence, coachNote } = input
+  const tier = resolveLevelTier(team)
   const teamLabel = team?.name ?? 'the subject team'
 
   const jerseyContext = team?.jersey_color
@@ -31,7 +33,7 @@ export function buildTEAMIQSystemPrompt(input: PositionAnalysisInput): string {
   const sideContext = buildSideContext(team?.side_of_ball, teamLabel, team?.jersey_color)
   const gameTypeContext = buildGameTypeContext(team?.game_type)
 
-  return `${FOOTBALL_BRAIN_SYSTEM}
+  return `${buildFootballBrain(tier)}
 
 You are TEAMIQ — Team Intelligence.
 ${team ? `TEAM: ${team.name ?? ''} | ${team.age_group ?? ''} | Offense: ${team.offensive_style ?? 'unknown'} | Defense: ${team.defensive_style ?? 'unknown'}` : ''}
