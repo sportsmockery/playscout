@@ -6,7 +6,9 @@
   "expo": {
     "install": {
       "comment": "eslint-config-expo is intentionally on v9 for ESLint 9 flat-config support; SDK 52 pins v8 (legacy .eslintrc), so exclude it from version validation.",
-      "exclude": ["eslint-config-expo"]
+      "exclude": [
+        "eslint-config-expo"
+      ]
     }
   },
   "scripts": {
@@ -25,12 +27,14 @@
     "@supabase/supabase-js": "^2.109.0",
     "@tanstack/react-query": "^5.101.2",
     "expo": "~52.0.0",
+    "expo-asset": "~11.0.5",
     "expo-camera": "~16.0.0",
     "expo-clipboard": "~7.0.0",
     "expo-constants": "~17.0.0",
     "expo-device": "~7.0.0",
     "expo-document-picker": "~13.0.0",
     "expo-file-system": "~18.0.0",
+    "expo-font": "~13.0.4",
     "expo-haptics": "~14.0.0",
     "expo-image": "~2.0.0",
     "expo-image-picker": "~16.0.0",
