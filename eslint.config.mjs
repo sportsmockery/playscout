@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // The native mobile app is a self-contained Expo project with its own
+    // toolchain (mobile/eslint.config.js, mobile/tsconfig.json). Keep the
+    // web lint pass from reaching into React Native source.
+    "mobile/**",
   ]),
 ]);
 

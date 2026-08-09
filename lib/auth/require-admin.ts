@@ -1,5 +1,6 @@
 import 'server-only'
 import { NextResponse } from 'next/server'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { isAdminRole } from '@/lib/auth/roles'
 
@@ -9,11 +10,11 @@ import { isAdminRole } from '@/lib/auth/roles'
  * caller and their organization + role. This is the security boundary — every
  * admin mutation must call it before touching the service-role client.
  */
-export async function requireAdmin(): Promise<
+export async function requireAdmin(opts?: { supabase?: SupabaseClient }): Promise<
   | { error: NextResponse; user?: undefined; organizationId?: undefined; role?: undefined }
   | { error?: undefined; user: { id: string }; organizationId: string; role: string }
 > {
-  const supabase = await createClient()
+  const supabase = opts?.supabase ?? (await createClient())
   const {
     data: { user },
   } = await supabase.auth.getUser()

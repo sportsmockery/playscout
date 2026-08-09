@@ -1,4 +1,5 @@
 import 'server-only'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 
 export const ADMIN_ROLES = ['owner', 'admin'] as const
@@ -40,11 +41,11 @@ export interface Membership {
  * `user` is null when nobody is signed in; `membership` is null when the user
  * hasn't created/joined an org yet.
  */
-export async function getCurrentMembership(): Promise<{
+export async function getCurrentMembership(opts?: { supabase?: SupabaseClient }): Promise<{
   user: { id: string; email?: string } | null
   membership: Membership | null
 }> {
-  const supabase = await createClient()
+  const supabase = opts?.supabase ?? (await createClient())
   const {
     data: { user },
   } = await supabase.auth.getUser()

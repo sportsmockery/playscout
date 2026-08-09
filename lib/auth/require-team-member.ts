@@ -1,5 +1,6 @@
 import 'server-only'
 import { NextResponse } from 'next/server'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 
 /**
@@ -17,11 +18,18 @@ type RequireTeamMemberResult =
   | { error: NextResponse; user?: undefined; role?: undefined }
   | { error?: undefined; user: { id: string }; role: string }
 
+/**
+ * `opts.supabase` lets a caller pass a request-scoped client (e.g. one built
+ * from a mobile Bearer token via lib/supabase/request.ts). When omitted, the
+ * cookie-based server client is used exactly as before — so existing web
+ * callers are unaffected. The client is only ever the anon-key client bound to
+ * a user session; the same RLS and membership checks apply either way.
+ */
 export async function requireTeamMember(
   teamId: string,
-  opts?: { writeRoles?: readonly string[] }
+  opts?: { writeRoles?: readonly string[]; supabase?: SupabaseClient }
 ): Promise<RequireTeamMemberResult> {
-  const supabase = await createClient()
+  const supabase = opts?.supabase ?? (await createClient())
   const {
     data: { user },
   } = await supabase.auth.getUser()
@@ -80,9 +88,9 @@ export async function requireTeamMember(
 export async function requireTeamMemberForRow(
   table: string,
   id: string,
-  opts?: { writeRoles?: readonly string[]; teamIdColumn?: string }
+  opts?: { writeRoles?: readonly string[]; teamIdColumn?: string; supabase?: SupabaseClient }
 ): Promise<RequireTeamMemberResult> {
-  const supabase = await createClient()
+  const supabase = opts?.supabase ?? (await createClient())
   const teamIdColumn = opts?.teamIdColumn ?? 'team_id'
   const { data: row } = await supabase.from(table).select(teamIdColumn).eq('id', id).maybeSingle()
   const teamId = (row as Record<string, unknown> | null)?.[teamIdColumn] as string | undefined

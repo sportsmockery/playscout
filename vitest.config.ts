@@ -8,10 +8,13 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./vitest.setup.ts'],
-    exclude: ['node_modules', '.next', 'e2e/**'],
+    exclude: ['node_modules', '.next', 'e2e/**', 'mobile/**'],
   },
   resolve: {
     alias: {
+      // 'server-only' is a build-time marker with no runtime; stub it so
+      // server modules (guards, request client) can be unit-tested under vitest.
+      'server-only': path.resolve(__dirname, 'test/stubs/server-only.ts'),
       '@': path.resolve(__dirname, '.'),
     },
   },
