@@ -27,6 +27,8 @@ npx eas build --profile development --platform ios
 npx eas build --profile development --platform android
 ```
 
+Built on **Expo SDK 54** (matches current Expo Go on iOS/Android).
+
 ### Environment
 
 Only public values ever ship in the bundle (see `.env.example`). **Never** put a
@@ -38,6 +40,23 @@ service-role key or any AI provider key here.
 | `EXPO_PUBLIC_SUPABASE_ANON_KEY` | Supabase public anon key |
 | `EXPO_PUBLIC_API_URL` | PlayScout API base (default `https://playscout.ai`) |
 | `EXPO_PUBLIC_SENTRY_DSN` | Optional crash reporting |
+
+### Running against a local backend
+
+The `/api/mobile/*` endpoints live in this branch, so for real data point the app
+at a backend that has them. To use your dev machine's web server, run the repo
+root with `npm run dev` and set `EXPO_PUBLIC_API_URL` to your machine's **LAN IP**
+(not `localhost` — the phone can't reach that):
+
+```bash
+# mobile/.env
+EXPO_PUBLIC_API_URL=http://<your-LAN-IP>:3000
+EXPO_PUBLIC_SUPABASE_URL=https://<project>.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=<anon key>
+```
+
+Find your LAN IP with `ipconfig getifaddr en0` (macOS). Phone and computer must be
+on the same Wi-Fi. Also apply the `push_tokens` migration to Supabase.
 
 ---
 
@@ -149,6 +168,9 @@ npm run lint
 npm run typecheck
 npm test
 EXPO_PUBLIC_SUPABASE_URL=… EXPO_PUBLIC_SUPABASE_ANON_KEY=… npx expo-doctor
+# expo-doctor reports 17/18: the one "duplicate react" note is expected — it
+# sees the parent web repo's React at ../node_modules. Metro and EAS resolve
+# the mobile app's own node_modules (verified via `expo export`).
 
 # repository root (web/back-end regression)
 cd ..

@@ -61,7 +61,7 @@ export default function UploadScreen() {
 
   async function pickFromLibrary() {
     const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      mediaTypes: ['videos'],
       quality: 1,
     });
     if (!res.canceled && res.assets[0]) {
