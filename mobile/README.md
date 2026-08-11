@@ -195,3 +195,12 @@ Deliberately deferred / web-only for now (clearly marked in-app):
 - Maestro E2E flows and on-device QA (require physical devices / EAS builds).
 
 No mock-only screens are on the production path.
+
+### Known note: expo-doctor "duplicate react"
+
+Because this Expo app lives **inside** the PlayScout web repo, `expo-doctor`
+reports a duplicate `react` — the mobile app's `react` (in `mobile/node_modules`)
+alongside the Next.js web app's `react` (in the repo-root `node_modules`). This
+is benign: Metro resolves from `mobile/node_modules` only, and the native build
+never includes the parent copy (verified by a clean `expo export`). Every other
+doctor check passes.
