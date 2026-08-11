@@ -15,7 +15,9 @@ export default function Verify() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const valid = /^\d{6}$/.test(code.trim());
+  // Supabase's email OTP length is configurable (6–10 digits); accept whatever
+  // this project is set to rather than assuming six.
+  const valid = /^\d{6,10}$/.test(code.trim());
 
   async function onVerify() {
     if (!valid || !email) return;
@@ -35,13 +37,14 @@ export default function Verify() {
       <View style={[styles.root, { paddingTop: insets.top + 48 }]}>
         <Text role="screenTitle">Enter your code</Text>
         <Text role="body" color="textSecondary" style={{ marginTop: 8 }}>
-          We sent a 6-digit code to {email}. It expires shortly.
+          We sent a code to {email}. Type the number from the email — it expires shortly.
         </Text>
 
         <TextInput
           value={code}
-          onChangeText={(t) => setCode(t.replace(/\D/g, '').slice(0, 6))}
-          placeholder="123456"
+          onChangeText={(t) => setCode(t.replace(/\D/g, '').slice(0, 10))}
+          placeholder="Code"
+          maxLength={10}
           placeholderTextColor={theme.colors.textSecondary}
           keyboardType="number-pad"
           inputMode="numeric"
