@@ -9,10 +9,11 @@ interface AuthState {
   status: 'loading' | 'signedIn' | 'signedOut';
   session: Session | null;
   user: User | null;
-  /** Request an email OTP (6-digit code). No open signup: unknown emails simply
-   * never receive a code, matching the web's invite-only posture. */
-  requestEmailOtp: (email: string) => Promise<{ error: string | null }>;
-  verifyEmailOtp: (email: string, token: string) => Promise<{ error: string | null }>;
+  /** Email + password sign-in — the same method the web app uses. Invite-only:
+   * there is no sign-up on mobile. */
+  signInWithPassword: (email: string, password: string) => Promise<{ error: string | null }>;
+  /** Sends a password-reset email (handled by the web reset flow). */
+  sendPasswordReset: (email: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
 }
 
@@ -52,19 +53,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       status,
       session,
       user: session?.user ?? null,
-      async requestEmailOtp(email: string) {
-        const { error } = await supabase.auth.signInWithOtp({
+      async signInWithPassword(email: string, password: string) {
+        const { error } = await supabase.auth.signInWithPassword({
           email: email.trim().toLowerCase(),
-          options: { shouldCreateUser: false },
+          password,
         });
         return { error: error?.message ?? null };
       },
-      async verifyEmailOtp(email: string, token: string) {
-        const { error } = await supabase.auth.verifyOtp({
-          email: email.trim().toLowerCase(),
-          token: token.trim(),
-          type: 'email',
-        });
+      async sendPasswordReset(email: string) {
+        const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase());
         return { error: error?.message ?? null };
       },
       async signOut() {

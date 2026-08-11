@@ -12,27 +12,28 @@ export default function SignIn() {
   const theme = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { requestEmailOtp } = useAuth();
+  const { signInWithPassword } = useAuth();
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const valid = EMAIL_RE.test(email.trim());
+  const valid = EMAIL_RE.test(email.trim()) && password.length > 0;
 
-  async function onContinue() {
+  async function onSignIn() {
     if (!valid) return;
     setLoading(true);
     setError(null);
-    const { error: err } = await requestEmailOtp(email);
+    const { error: err } = await signInWithPassword(email, password);
     setLoading(false);
-    // We never reveal whether an email exists (no open signup). On success OR a
-    // benign "user not found", route to verify — the code only arrives for real
-    // accounts. Only surface genuine transport errors.
-    if (err && !/not.*found|signups?\s+not\s+allowed/i.test(err)) {
-      setError('We couldn’t send a code right now. Please try again.');
-      return;
+    // On success, onAuthStateChange flips status → the auth layout redirects.
+    if (err) {
+      setError(
+        /invalid login credentials/i.test(err)
+          ? 'That email and password don’t match. Check them and try again.'
+          : 'We couldn’t sign you in. Please try again.',
+      );
     }
-    router.push({ pathname: '/(auth)/verify', params: { email: email.trim().toLowerCase() } });
   }
 
   return (
@@ -41,11 +42,10 @@ export default function SignIn() {
       style={{ flex: 1, backgroundColor: theme.colors.background }}
     >
       <View style={[styles.root, { paddingTop: insets.top + 48, paddingBottom: insets.bottom + 24 }]}>
-        <View style={styles.header}>
+        <View>
           <Text role="screenTitle">PlayScout</Text>
           <Text role="body" color="textSecondary" style={{ marginTop: 8 }}>
-            Your film room, in hand. Sign in with your coaching email and we’ll send a
-            one-time code.
+            Your film room, in hand. Sign in with your PlayScout email and password.
           </Text>
         </View>
 
@@ -62,26 +62,44 @@ export default function SignIn() {
             autoComplete="email"
             keyboardType="email-address"
             inputMode="email"
-            returnKeyType="go"
-            onSubmitEditing={onContinue}
-            style={[
-              styles.input,
-              {
-                color: theme.colors.text,
-                backgroundColor: theme.colors.surface,
-                borderColor: theme.colors.border,
-                borderRadius: theme.radius.md,
-              },
-            ]}
+            returnKeyType="next"
+            style={inputStyle(theme)}
           />
+
+          <Text role="label" style={{ marginTop: 20, marginBottom: 8 }}>
+            Password
+          </Text>
+          <TextInput
+            value={password}
+            onChangeText={setPassword}
+            placeholder="Your password"
+            placeholderTextColor={theme.colors.textSecondary}
+            autoCapitalize="none"
+            autoComplete="current-password"
+            secureTextEntry
+            returnKeyType="go"
+            onSubmitEditing={onSignIn}
+            style={inputStyle(theme)}
+          />
+
           {error ? (
-            <Text role="metadata" style={{ color: theme.colors.error, marginTop: 8 }}>
+            <Text role="metadata" style={{ color: theme.colors.error, marginTop: 10 }}>
               {error}
             </Text>
           ) : null}
 
           <View style={{ height: 20 }} />
-          <Button label="Send code" onPress={onContinue} loading={loading} disabled={!valid} />
+          <Button label="Sign in" onPress={onSignIn} loading={loading} disabled={!valid} />
+
+          <Text
+            role="label"
+            color="gold"
+            align="center"
+            style={{ marginTop: 16 }}
+            onPress={() => router.push('/(auth)/forgot-password')}
+          >
+            Forgot password?
+          </Text>
         </View>
 
         <View style={{ flex: 1 }} />
@@ -93,13 +111,19 @@ export default function SignIn() {
   );
 }
 
-const styles = StyleSheet.create({
-  root: { flex: 1, paddingHorizontal: 24 },
-  header: {},
-  input: {
+function inputStyle(theme: ReturnType<typeof useTheme>) {
+  return {
     minHeight: 52,
     borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: 16,
     fontSize: 16,
-  },
+    color: theme.colors.text,
+    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radius.md,
+  } as const;
+}
+
+const styles = StyleSheet.create({
+  root: { flex: 1, paddingHorizontal: 24 },
 });
