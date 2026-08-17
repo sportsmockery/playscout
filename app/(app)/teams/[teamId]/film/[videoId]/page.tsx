@@ -104,9 +104,12 @@ export default async function VideoDetailPage({
         </div>
         <p className="text-sm text-[var(--brand-muted)] mb-4">
           Analyze this film with an intelligence module. Results save to {team.name}&apos;s history.
+          {video.status !== 'ready_for_review' && video.status !== 'analysis_complete' && video.status !== 'failed' && (
+            <> This film is still processing — you can queue analysis now and it runs the moment the frames are ready.</>
+          )}
         </p>
 
-        {video.status === 'ready_for_review' || video.status === 'analysis_complete' ? (
+        {video.status !== 'failed' ? (
           <div className="grid sm:grid-cols-2 gap-3">
             {FILM_MODULES.map((mod) => (
               <Link
@@ -126,7 +129,7 @@ export default async function VideoDetailPage({
           </div>
         ) : (
           <p className="text-sm text-[var(--brand-muted)] bg-[var(--brand-bg)] border border-[var(--brand-border)] rounded-lg p-3">
-            IQ analysis unlocks once this film finishes processing.
+            This film failed to process, so there are no frames to analyze. Try the upload again from the film library.
           </p>
         )}
       </div>

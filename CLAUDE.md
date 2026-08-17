@@ -326,6 +326,33 @@ Coach uploads full game (100MB–4GB)
 **Processing status labels (coach-friendly):**
 Queued → Preparing Film → Extracting Frames → Building Timeline → Finding Plays → Reviewing Evidence → Analyzing Assignments → Detecting Tendencies → Creating Report → Complete / Needs Attention
 
+### Mode 3: Batch Analysis (many clips / a whole folder)
+```
+Coach multi-selects film (or a folder) in a module screen's FilmPicker
+→ POST /api/analysis/batches  (returns immediately — nothing is analyzed in the request)
+→ analysis_batches + one analysis_batch_jobs row per clip
+→ Railway analysis worker claims jobs (workers/process-analysis.ts)
+   — and the browser pokes POST /api/analysis/run while the coach is watching
+→ Each job: frames → analyzePosition → position_analysis_results (+ mistakes/tendencies/memory)
+→ Coach may leave the page or quit entirely; AnalysisQueue shows live progress on return
+```
+
+**Batch rules:**
+- Exactly one already-processed clip still runs inline (instant report). Everything else queues.
+- A clip selected before its frames exist parks at `waiting_for_film` and runs when the video
+  worker finishes it — selecting film that's still processing is normal, not an error.
+- Batch status/counters are derived by the `analysis_batch_jobs` rollup trigger, never
+  hand-incremented.
+- The batch stores the coach's module context once (`analysis_batches.context`) and replays it
+  per clip; identity fields (team/module/player/video) always come from the job row, never the
+  stored context.
+
+### Film folders
+- `video_folders` + `videos.folder_id` (ON DELETE SET NULL — deleting a folder never deletes film).
+- Film library: folder rail, multi-select, bulk move, upload straight into a folder.
+- Folders are analysis targets: the FilmPicker selects a whole folder at once, and
+  `?folderId=` / `?videoIds=` deep-links a module screen with that selection pre-made.
+
 ---
 
 ## Database Schema
@@ -712,7 +739,7 @@ playscout/
       types.ts              # Generated + manual DB types
   workers/
     process-video.ts        # Background video processing pipeline
-    analyze-sequence.ts     # Background AI analysis
+    process-analysis.ts     # Background module analysis queue (analysis_batch_jobs)
   supabase/
     migrations/
       001_initial_schema.sql
@@ -846,6 +873,8 @@ VERCEL_ORG_ID=team_tyYugyFj05x63r5t9jwqFWq3
 - Vercel project env vars are separate from `.env.local` and must be pushed explicitly: `vercel env add <NAME> <production|preview|development>` (reads value from stdin, prompts per environment — non-interactive shells should pipe the value in and pass the environment as one call per target). Preview environment additions may require selecting "Add to all Preview branches" — rerun the suggested command if it errors asking to disambiguate.
 - At minimum, `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` must exist in the Vercel project (used by `lib/supabase/client.ts`, `server.ts`, and `proxy.ts`). A blank/missing `NEXT_PUBLIC_SUPABASE_ANON_KEY` causes every route to 500 in production, because `proxy.ts` runs `createServerClient` on nearly every request via its matcher.
 - There is an orphaned duplicate project `playscout-scaffold` in the same Vercel scope (from an early accidental deploy under the pre-rename package name). Do not deploy to it; the real project is `playscout`. Safe to delete once confirmed unused, but ask before deleting.
+- The Railway worker service runs all three pollers via `npm run worker` (`workers/index.ts` →
+  video + playbook + analysis). Deploying a new worker file means redeploying that service.
 - Workers run on Railway (not Vercel) — they authenticate to Supabase directly via `SUPABASE_SERVICE_ROLE_KEY` (see `workers/lib/service-client.ts`), not a separate shared secret
 - Use `apply_migration` for all DB schema changes — never raw DDL in production
 

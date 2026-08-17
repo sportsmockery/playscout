@@ -1,8 +1,9 @@
-import { getTeamById, getPlayersByTeam, getVideosByTeam, getRecentAnalysis } from '@/lib/db/queries';
+import { getTeamById, getPlayersByTeam, getVideosByTeam, getRecentAnalysis, getFilmFolders } from '@/lib/db/queries';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft, Zap } from 'lucide-react';
 import QBIQClient from './QBIQClient';
+import { resolveInitialVideoIds } from '@/lib/intelligence/initial-selection';
 
 export async function generateMetadata({ params }: { params: Promise<{ teamId: string }> }) {
   const { teamId } = await params;
@@ -15,22 +16,24 @@ export default async function QBIQPage({
   searchParams,
 }: {
   params: Promise<{ teamId: string }>;
-  searchParams: Promise<{ videoId?: string }>;
+  searchParams: Promise<{ videoId?: string; videoIds?: string; folderId?: string }>;
 }) {
   const { teamId } = await params;
-  const { videoId } = await searchParams;
-  const [team, players, videos, pastAnalyses] = await Promise.all([
+  const { videoId, videoIds, folderId } = await searchParams;
+  const [team, players, videos, folders, pastAnalyses] = await Promise.all([
     getTeamById(teamId),
     getPlayersByTeam(teamId),
     getVideosByTeam(teamId),
+    getFilmFolders(teamId),
     getRecentAnalysis(teamId, 5),
   ]);
 
   if (!team) notFound();
 
   const qbs = players.filter((p) => p.primary_position === 'QB');
-  const completedVideos = videos.filter((v) => v.status === 'ready_for_review' || v.status === 'analysis_complete');
   const qbAnalyses = pastAnalyses.filter((a) => a.module_key === 'QBIQ');
+
+  const initialVideoIds = resolveInitialVideoIds({ videoId, videoIds, folderId }, videos);
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
@@ -59,9 +62,10 @@ export default async function QBIQPage({
         teamName={team.name}
         ageGroup={team.age_group ?? undefined}
         qbs={qbs}
-        videos={completedVideos}
+        videos={videos}
+        folders={folders}
         pastAnalyses={qbAnalyses}
-        initialVideoId={videoId}
+        initialVideoIds={initialVideoIds}
       />
     </div>
   );

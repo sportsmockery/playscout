@@ -1,8 +1,9 @@
-import { getTeamById, getPlayersByTeam, getVideosByTeam, getRecentAnalysis } from '@/lib/db/queries';
+import { getTeamById, getPlayersByTeam, getVideosByTeam, getRecentAnalysis, getFilmFolders } from '@/lib/db/queries';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft, Shield } from 'lucide-react';
 import OLIQClient from './OLIQClient';
+import { resolveInitialVideoIds } from '@/lib/intelligence/initial-selection';
 
 export async function generateMetadata({ params }: { params: Promise<{ teamId: string }> }) {
   const { teamId } = await params;
@@ -15,14 +16,15 @@ export default async function OLIQPage({
   searchParams,
 }: {
   params: Promise<{ teamId: string }>;
-  searchParams: Promise<{ videoId?: string }>;
+  searchParams: Promise<{ videoId?: string; videoIds?: string; folderId?: string }>;
 }) {
   const { teamId } = await params;
-  const { videoId } = await searchParams;
-  const [team, players, videos, pastAnalyses] = await Promise.all([
+  const { videoId, videoIds, folderId } = await searchParams;
+  const [team, players, videos, folders, pastAnalyses] = await Promise.all([
     getTeamById(teamId),
     getPlayersByTeam(teamId),
     getVideosByTeam(teamId),
+    getFilmFolders(teamId),
     getRecentAnalysis(teamId, 5),
   ]);
 
@@ -31,8 +33,9 @@ export default async function OLIQPage({
   const olPlayers = players.filter((p) =>
     ['OL', 'C', 'OG', 'OT'].includes(p.primary_position ?? '')
   );
-  const completedVideos = videos.filter((v) => v.status === 'ready_for_review' || v.status === 'analysis_complete');
   const olAnalyses = pastAnalyses.filter((a) => a.module_key === 'OLIQ');
+
+  const initialVideoIds = resolveInitialVideoIds({ videoId, videoIds, folderId }, videos);
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
@@ -61,9 +64,10 @@ export default async function OLIQPage({
         teamName={team.name}
         ageGroup={team.age_group ?? undefined}
         olPlayers={olPlayers}
-        videos={completedVideos}
+        videos={videos}
+        folders={folders}
         pastAnalyses={olAnalyses}
-        initialVideoId={videoId}
+        initialVideoIds={initialVideoIds}
       />
     </div>
   );

@@ -1,11 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { Gauge, ChevronDown, AlertCircle } from 'lucide-react';
+import { Gauge, ChevronDown, AlertCircle, Layers } from 'lucide-react';
 import type { Player, Video, PositionAnalysisResult } from '@/lib/db/types';
 import EvidenceFrames from '@/components/intelligence/EvidenceFrames';
 import QuickClipUpload from '@/components/intelligence/QuickClipUpload';
 import AnalysisCorrections from '@/components/intelligence/AnalysisCorrections';
+import FilmPicker, { isReadyNow, type FilmPickerFolder } from '@/components/intelligence/FilmPicker';
+import AnalysisQueue from '@/components/intelligence/AnalysisQueue';
+import { queueAnalysisBatch, batchTitle } from '@/components/intelligence/queue-batch';
 
 interface Props {
   teamId: string;
@@ -13,8 +16,9 @@ interface Props {
   ageGroup?: string;
   rbs: Player[];
   videos: Video[];
+  folders: FilmPickerFolder[];
   pastAnalyses: PositionAnalysisResult[];
-  initialVideoId?: string;
+  initialVideoIds?: string[];
 }
 
 interface AnalysisResult {
@@ -44,59 +48,85 @@ const DIMENSIONS: Array<[keyof AnalysisResult['position_scores'], string]> = [
   ['footwork_contact', 'Footwork & Contact'],
 ];
 
-export default function RBIQClient({ teamId, teamName, ageGroup, rbs, videos, pastAnalyses, initialVideoId }: Props) {
+export default function RBIQClient({ teamId, teamName, ageGroup, rbs, videos, folders, pastAnalyses, initialVideoIds }: Props) {
   const [selectedRB, setSelectedRB] = useState<Player | null>(rbs[0] ?? null);
-  const [selectedVideo, setSelectedVideo] = useState<Video | null>(
-    (initialVideoId ? videos.find((v) => v.id === initialVideoId) : null) ?? videos[0] ?? null,
-  );
+  const [selectedVideoIds, setSelectedVideoIds] = useState<string[]>(initialVideoIds ?? []);
   const [quickClipFrames, setQuickClipFrames] = useState<string[] | null>(null);
   const [context, setContext] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [analysisId, setAnalysisId] = useState<string | null>(null);
+  const [queued, setQueued] = useState('');
+  const [queueVersion, setQueueVersion] = useState(0);
   const [error, setError] = useState('');
 
-  function selectVideo(video: Video | null) {
-    setSelectedVideo(video);
-    if (video) setQuickClipFrames(null);
+  const selectedVideos = videos.filter((v) => selectedVideoIds.includes(v.id));
+  // One ready clip runs inline so the coach sees the report immediately.
+  // Anything else — several clips, or film still processing — goes on the
+  // background queue, which is the only way it can outlive this page.
+  const runsInline = !!quickClipFrames || (selectedVideos.length === 1 && isReadyNow(selectedVideos[0]));
+  const selectedVideo = selectedVideos.length === 1 ? selectedVideos[0] : null;
+
+  function selectVideos(ids: string[]) {
+    setSelectedVideoIds(ids);
+    if (ids.length) setQuickClipFrames(null);
   }
 
   function useQuickClip(frames: string[]) {
     setQuickClipFrames(frames);
-    setSelectedVideo(null);
+    setSelectedVideoIds([]);
   }
 
   async function runAnalysis() {
-    if (!selectedVideo && !quickClipFrames) return;
+    if (!quickClipFrames && selectedVideoIds.length === 0) return;
     setLoading(true);
     setError('');
-    setResult(null);
-    setAnalysisId(null);
+    setQueued('');
 
     try {
+      const payload = {
+        moduleKey: 'RBIQ',
+        teamId,
+        playerId: selectedRB?.id,
+        coachNote: context || undefined,
+        player: selectedRB
+          ? {
+              name: `${selectedRB.first_name ?? ''} ${selectedRB.last_name ?? ''}`.trim() || undefined,
+              position: selectedRB.primary_position ?? undefined,
+              jersey_number: selectedRB.jersey_number != null ? String(selectedRB.jersey_number) : undefined,
+              age_group: ageGroup,
+              notes: selectedRB.notes ?? undefined,
+            }
+          : undefined,
+        team: {
+          name: teamName,
+          age_group: ageGroup,
+        },
+      };
+
+      if (!runsInline) {
+        const queuedRes = await queueAnalysisBatch({
+          teamId,
+          moduleKey: 'RBIQ',
+          videoIds: selectedVideoIds,
+          playerId: selectedRB?.id,
+          title: batchTitle('RBIQ', selectedVideoIds.length),
+          context: payload,
+        });
+        setQueued(`${queuedRes.queued} clip${queuedRes.queued === 1 ? '' : 's'} queued — results appear below as they finish.`);
+        setQueueVersion((v) => v + 1);
+        return;
+      }
+
+      setResult(null);
+      setAnalysisId(null);
       const res = await fetch('/api/intelligence/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          moduleKey: 'RBIQ',
-          teamId,
-          playerId: selectedRB?.id,
+          ...payload,
           videoId: selectedVideo?.id,
           frames: quickClipFrames ?? undefined,
-          coachNote: context || undefined,
-          player: selectedRB
-            ? {
-                name: `${selectedRB.first_name ?? ''} ${selectedRB.last_name ?? ''}`.trim() || undefined,
-                position: selectedRB.primary_position ?? undefined,
-                jersey_number: selectedRB.jersey_number != null ? String(selectedRB.jersey_number) : undefined,
-                age_group: ageGroup,
-                notes: selectedRB.notes ?? undefined,
-              }
-            : undefined,
-          team: {
-            name: teamName,
-            age_group: ageGroup,
-          },
         }),
       });
 
@@ -155,24 +185,15 @@ export default function RBIQClient({ teamId, teamName, ageGroup, rbs, videos, pa
               <label className="block text-xs font-medium text-[var(--brand-ink)] mb-1.5">
                 Film
               </label>
-              {videos.length === 0 ? (
-                <p className="text-xs text-[var(--brand-muted)] bg-[var(--brand-bg)] border border-[var(--brand-border)] rounded-lg p-2 mb-2">
-                  No processed film yet. Upload game film and wait for it to finish processing, or use a quick clip below.
-                </p>
-              ) : (
-                <div className="relative mb-2">
-                  <select
-                    value={quickClipFrames ? '' : selectedVideo?.id ?? ''}
-                    onChange={(e) => selectVideo(videos.find((v) => v.id === e.target.value) ?? null)}
-                    className={selectClass}
-                  >
-                    {videos.map((v) => (
-                      <option key={v.id} value={v.id}>{v.title}</option>
-                    ))}
-                  </select>
-                  <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--brand-muted)] pointer-events-none" />
-                </div>
-              )}
+              <div className="mb-2">
+                <FilmPicker
+                  videos={videos}
+                  folders={folders}
+                  value={quickClipFrames ? [] : selectedVideoIds}
+                  onChange={selectVideos}
+                  disabled={loading}
+                />
+              </div>
               <QuickClipUpload
                 onFramesReady={useQuickClip}
                 onClear={() => setQuickClipFrames(null)}
@@ -195,23 +216,42 @@ export default function RBIQClient({ teamId, teamName, ageGroup, rbs, videos, pa
 
             <button
               onClick={runAnalysis}
-              disabled={loading || (!selectedVideo && !quickClipFrames)}
+              disabled={loading || (selectedVideoIds.length === 0 && !quickClipFrames)}
               className="w-full flex items-center justify-center gap-2 bg-[var(--brand-navy)] text-white font-semibold py-3 rounded-lg hover:bg-[var(--brand-navy-dark)] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {loading ? (
                 <>
                   <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Analyzing...
+                  {runsInline ? 'Analyzing...' : 'Queueing...'}
                 </>
-              ) : (
+              ) : runsInline ? (
                 <>
                   <Gauge size={16} />
                   Run RBIQ Analysis
                 </>
+              ) : (
+                <>
+                  <Layers size={16} />
+                  Queue RBIQ on {selectedVideoIds.length} clip{selectedVideoIds.length === 1 ? '' : 's'}
+                </>
               )}
             </button>
+
+            {!runsInline && selectedVideoIds.length > 0 && (
+              <p className="text-[11px] text-[var(--brand-muted)] -mt-1">
+                Runs in the background — leave this page or close PlayScout and come back for the reports.
+              </p>
+            )}
+
+            {queued && (
+              <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg p-2">
+                {queued}
+              </p>
+            )}
           </div>
         </div>
+
+        <AnalysisQueue teamId={teamId} moduleKey="RBIQ" refreshKey={queueVersion} />
 
         {/* Past analyses */}
         {pastAnalyses.length > 0 && (

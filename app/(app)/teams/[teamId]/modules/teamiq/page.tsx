@@ -1,8 +1,9 @@
-import { getTeamById, getVideosByTeam, getRecentAnalysis } from '@/lib/db/queries';
+import { getTeamById, getVideosByTeam, getRecentAnalysis, getFilmFolders } from '@/lib/db/queries';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft, TrendingUp } from 'lucide-react';
 import TeamIQClient from './TeamIQClient';
+import { resolveInitialVideoIds } from '@/lib/intelligence/initial-selection';
 
 export async function generateMetadata({ params }: { params: Promise<{ teamId: string }> }) {
   const { teamId } = await params;
@@ -15,22 +16,22 @@ export default async function TeamIQPage({
   searchParams,
 }: {
   params: Promise<{ teamId: string }>;
-  searchParams: Promise<{ videoId?: string }>;
+  searchParams: Promise<{ videoId?: string; videoIds?: string; folderId?: string }>;
 }) {
   const { teamId } = await params;
-  const { videoId } = await searchParams;
-  const [team, videos, pastAnalyses] = await Promise.all([
+  const { videoId, videoIds, folderId } = await searchParams;
+  const [team, videos, folders, pastAnalyses] = await Promise.all([
     getTeamById(teamId),
     getVideosByTeam(teamId),
+    getFilmFolders(teamId),
     getRecentAnalysis(teamId, 5),
   ]);
 
   if (!team) notFound();
 
-  const readyVideos = videos.filter(
-    (v) => v.status === 'ready_for_review' || v.status === 'analysis_complete'
-  );
   const teamAnalyses = pastAnalyses.filter((a) => a.module_key === 'TEAMIQ');
+
+  const initialVideoIds = resolveInitialVideoIds({ videoId, videoIds, folderId }, videos);
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
@@ -62,9 +63,10 @@ export default async function TeamIQPage({
         defensiveStyle={team.defensive_style ?? undefined}
         homeJerseyColor={team.home_jersey_color ?? undefined}
         awayJerseyColor={team.away_jersey_color ?? undefined}
-        videos={readyVideos}
+        videos={videos}
+        folders={folders}
         pastAnalyses={teamAnalyses}
-        initialVideoId={videoId}
+        initialVideoIds={initialVideoIds}
       />
     </div>
   );

@@ -82,10 +82,13 @@ const MODULES = [
 
 export default async function IntelligencePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ teamId: string }>;
+  searchParams: Promise<{ videoIds?: string; folderId?: string }>;
 }) {
   const { teamId } = await params;
+  const { videoIds, folderId } = await searchParams;
   const [team, analyses, tendencies] = await Promise.all([
     getTeamById(teamId),
     getRecentAnalysis(teamId, 10),
@@ -93,6 +96,16 @@ export default async function IntelligencePage({
   ]);
 
   if (!team) notFound();
+
+  // A coach who picked film in the library and hit "Analyze" lands here to
+  // choose a module — carry their selection through so the module screen
+  // opens with it already selected instead of making them pick twice.
+  const filmParams = new URLSearchParams();
+  if (videoIds) filmParams.set('videoIds', videoIds);
+  if (folderId) filmParams.set('folderId', folderId);
+  const filmQuery = filmParams.toString();
+  const withFilm = (href: string) => (filmQuery ? `${href}?${filmQuery}` : href);
+  const selectionCount = videoIds ? videoIds.split(',').filter(Boolean).length : 0;
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
@@ -113,12 +126,23 @@ export default async function IntelligencePage({
         </p>
       </div>
 
+      {(selectionCount > 0 || folderId) && (
+        <div className="mb-5 rounded-xl border border-[var(--brand-border)] bg-white px-4 py-3 text-sm text-[var(--brand-ink)]">
+          <span className="font-semibold">
+            {selectionCount > 0
+              ? `${selectionCount} clip${selectionCount === 1 ? '' : 's'} selected`
+              : 'Folder selected'}
+          </span>{' '}
+          — pick a module to analyze {selectionCount === 1 ? 'it' : 'them'}.
+        </div>
+      )}
+
       {/* Module cards */}
       <div className="grid md:grid-cols-2 gap-5 mb-10">
         {MODULES.map((mod) => (
           <Link
             key={mod.name}
-            href={mod.href(teamId)}
+            href={withFilm(mod.href(teamId))}
             className="glass-card p-6 group flex items-start gap-5"
           >
             <div className={`w-12 h-12 rounded-xl ${mod.bg} flex items-center justify-center flex-shrink-0`}>

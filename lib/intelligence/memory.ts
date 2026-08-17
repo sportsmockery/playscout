@@ -1,16 +1,22 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { createEmbedding } from '@/lib/ai/providers/openai'
-import { createClient } from '@/lib/supabase/server'
 import type { PositionAnalysisResult } from './schemas'
 
+/**
+ * Both functions here take their Supabase client as a parameter rather than
+ * building one: this module is reached from the standalone Railway analysis
+ * worker (service-role client, no request context) as well as from Next.js
+ * routes (cookie client). Same rationale as lib/ai/record-usage.ts.
+ */
 export async function saveToTeamMemory(
   teamId: string,
   result: PositionAnalysisResult,
-  context: { moduleKey: string; playerName?: string; videoTitle?: string; playLabel?: string }
+  context: { moduleKey: string; playerName?: string; videoTitle?: string; playLabel?: string },
+  supabase: SupabaseClient
 ) {
   try {
     const content = buildMemorySummary(result, context)
     const embedding = await createEmbedding(content)
-    const supabase = await createClient()
 
     await supabase.from('team_memory').insert({
       team_id: teamId,
@@ -42,10 +48,14 @@ function buildMemorySummary(
   return lines.join('\n')
 }
 
-export async function getRelevantMemory(teamId: string, question: string, limit = 5) {
+export async function getRelevantMemory(
+  supabase: SupabaseClient,
+  teamId: string,
+  question: string,
+  limit = 5
+) {
   try {
     const embedding = await createEmbedding(question)
-    const supabase = await createClient()
 
     const { data } = await supabase.rpc('match_team_memory', {
       query_embedding: JSON.stringify(embedding),

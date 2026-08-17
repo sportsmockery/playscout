@@ -2,10 +2,13 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { AlertTriangle, AlertCircle, ChevronDown } from 'lucide-react';
+import { AlertTriangle, AlertCircle, Layers } from 'lucide-react';
 import type { Video, PositionAnalysisResult } from '@/lib/db/types';
 import EvidenceFrames from '@/components/intelligence/EvidenceFrames';
 import QuickClipUpload from '@/components/intelligence/QuickClipUpload';
+import FilmPicker, { isReadyNow, type FilmPickerFolder } from '@/components/intelligence/FilmPicker';
+import AnalysisQueue from '@/components/intelligence/AnalysisQueue';
+import { queueAnalysisBatch, batchTitle } from '@/components/intelligence/queue-batch';
 
 interface Props {
   teamId: string;
@@ -14,8 +17,9 @@ interface Props {
   homeJerseyColor?: string;
   awayJerseyColor?: string;
   videos: Video[];
+  folders: FilmPickerFolder[];
   pastAnalyses: PositionAnalysisResult[];
-  initialVideoId?: string;
+  initialVideoIds?: string[];
 }
 
 interface MistakeIQResult {
@@ -74,12 +78,11 @@ export default function MistakeIQClient({
   homeJerseyColor,
   awayJerseyColor,
   videos,
+  folders,
   pastAnalyses,
-  initialVideoId,
+  initialVideoIds,
 }: Props) {
-  const [selectedVideo, setSelectedVideo] = useState<Video | null>(
-    (initialVideoId ? videos.find((v) => v.id === initialVideoId) : null) ?? videos[0] ?? null,
-  );
+  const [selectedVideoIds, setSelectedVideoIds] = useState<string[]>(initialVideoIds ?? []);
   const [quickClipFrames, setQuickClipFrames] = useState<string[] | null>(null);
   const [jerseyChoice, setJerseyChoice] = useState<JerseyChoice>(
     homeJerseyColor ? 'home' : awayJerseyColor ? 'away' : 'unknown'
@@ -87,38 +90,65 @@ export default function MistakeIQClient({
   const [coachNote, setCoachNote] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<MistakeIQResult | null>(null);
+  const [queued, setQueued] = useState('');
+  const [queueVersion, setQueueVersion] = useState(0);
   const [error, setError] = useState('');
 
   const resolvedJerseyColor =
     jerseyChoice === 'home' ? homeJerseyColor : jerseyChoice === 'away' ? awayJerseyColor : undefined;
 
-  function selectVideo(video: Video | null) {
-    setSelectedVideo(video);
-    if (video) setQuickClipFrames(null);
+  const selectedVideos = videos.filter((v) => selectedVideoIds.includes(v.id));
+  // One ready clip runs inline so the coach sees the report immediately.
+  // Anything else — several clips, or film still processing — goes on the
+  // background queue, which is the only way it can outlive this page.
+  const runsInline = !!quickClipFrames || (selectedVideos.length === 1 && isReadyNow(selectedVideos[0]));
+  const selectedVideo = selectedVideos.length === 1 ? selectedVideos[0] : null;
+
+  function selectVideos(ids: string[]) {
+    setSelectedVideoIds(ids);
+    if (ids.length) setQuickClipFrames(null);
   }
 
   function useQuickClip(frames: string[]) {
     setQuickClipFrames(frames);
-    setSelectedVideo(null);
+    setSelectedVideoIds([]);
   }
 
   async function runAnalysis() {
-    if (!selectedVideo && !quickClipFrames) return;
+    if (!quickClipFrames && selectedVideoIds.length === 0) return;
     setLoading(true);
     setError('');
-    setResult(null);
+    setQueued('');
 
     try {
+      const payload = {
+        moduleKey: 'MISTAKEIQ',
+        teamId,
+        coachNote: coachNote || undefined,
+        team: { name: teamName, age_group: ageGroup, jersey_color: resolvedJerseyColor },
+      };
+
+      if (!runsInline) {
+        const queuedRes = await queueAnalysisBatch({
+          teamId,
+          moduleKey: 'MISTAKEIQ',
+          videoIds: selectedVideoIds,
+          title: batchTitle('MISTAKEIQ', selectedVideoIds.length),
+          context: payload,
+        });
+        setQueued(`${queuedRes.queued} clip${queuedRes.queued === 1 ? '' : 's'} queued — results appear below as they finish.`);
+        setQueueVersion((v) => v + 1);
+        return;
+      }
+
+      setResult(null);
       const res = await fetch('/api/intelligence/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          moduleKey: 'MISTAKEIQ',
-          teamId,
+          ...payload,
           videoId: selectedVideo?.id,
           frames: quickClipFrames ?? undefined,
-          coachNote: coachNote || undefined,
-          team: { name: teamName, age_group: ageGroup, jersey_color: resolvedJerseyColor },
         }),
       });
 
@@ -131,9 +161,6 @@ export default function MistakeIQClient({
       setLoading(false);
     }
   }
-
-  const selectClass =
-    'w-full px-3 py-2.5 rounded-lg border border-[var(--brand-border)] bg-white text-[var(--brand-ink)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--brand-navy)] focus:border-transparent transition-all appearance-none';
 
   return (
     <div className="grid lg:grid-cols-3 gap-6">
@@ -149,24 +176,15 @@ export default function MistakeIQClient({
               <label className="block text-xs font-medium text-[var(--brand-ink)] mb-1.5">
                 Film
               </label>
-              {videos.length === 0 ? (
-                <p className="text-xs text-[var(--brand-muted)] bg-[var(--brand-bg)] border border-[var(--brand-border)] rounded-lg p-2 mb-2">
-                  No processed film yet. Upload game film and wait for it to finish processing, or use a quick clip below.
-                </p>
-              ) : (
-                <div className="relative mb-2">
-                  <select
-                    value={quickClipFrames ? '' : selectedVideo?.id ?? ''}
-                    onChange={(e) => selectVideo(videos.find((v) => v.id === e.target.value) ?? null)}
-                    className={selectClass}
-                  >
-                    {videos.map((v) => (
-                      <option key={v.id} value={v.id}>{v.title}</option>
-                    ))}
-                  </select>
-                  <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--brand-muted)] pointer-events-none" />
-                </div>
-              )}
+              <div className="mb-2">
+                <FilmPicker
+                  videos={videos}
+                  folders={folders}
+                  value={quickClipFrames ? [] : selectedVideoIds}
+                  onChange={selectVideos}
+                  disabled={loading}
+                />
+              </div>
               <QuickClipUpload
                 onFramesReady={useQuickClip}
                 onClear={() => setQuickClipFrames(null)}
@@ -222,23 +240,42 @@ export default function MistakeIQClient({
 
             <button
               onClick={runAnalysis}
-              disabled={loading || (!selectedVideo && !quickClipFrames)}
+              disabled={loading || (selectedVideoIds.length === 0 && !quickClipFrames)}
               className="w-full flex items-center justify-center gap-2 bg-orange-600 text-white font-semibold py-3 rounded-lg hover:bg-orange-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {loading ? (
                 <>
                   <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Analyzing...
+                  {runsInline ? 'Analyzing...' : 'Queueing...'}
                 </>
-              ) : (
+              ) : runsInline ? (
                 <>
                   <AlertTriangle size={16} />
                   Run MistakeIQ Analysis
                 </>
+              ) : (
+                <>
+                  <Layers size={16} />
+                  Queue MistakeIQ on {selectedVideoIds.length} clip{selectedVideoIds.length === 1 ? '' : 's'}
+                </>
               )}
             </button>
+
+            {!runsInline && selectedVideoIds.length > 0 && (
+              <p className="text-[11px] text-[var(--brand-muted)] -mt-1">
+                Runs in the background — leave this page or close PlayScout and come back for the reports.
+              </p>
+            )}
+
+            {queued && (
+              <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg p-2">
+                {queued}
+              </p>
+            )}
           </div>
         </div>
+
+        <AnalysisQueue teamId={teamId} moduleKey="MISTAKEIQ" refreshKey={queueVersion} />
 
         {pastAnalyses.length > 0 && (
           <div className="glass-card p-5">

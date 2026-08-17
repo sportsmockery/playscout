@@ -51,6 +51,8 @@ export interface UploadItem {
   teamName?: string;
   /** When set, the uploaded video is tagged film_type='opponent' for this opponent (ScoutIQ). */
   opponentId?: string;
+  /** When set, the finished video is filed into this film-library folder. */
+  folderId?: string;
   status: UploadStatus;
   progress: number; // 0–100 for this file
   bytesUploaded: number;
@@ -66,6 +68,7 @@ interface EnqueueInput {
   teamId: string;
   teamName?: string;
   opponentId?: string;
+  folderId?: string;
 }
 
 interface UploadDockContextValue {
@@ -247,6 +250,7 @@ export default function UploadDockProvider({ children }: { children: React.React
             teamId: item.teamId,
             title: item.title || item.file.name,
             opponentId: item.opponentId,
+            folderId: item.folderId,
           }),
         });
         if (!res.ok) {
@@ -317,6 +321,7 @@ export default function UploadDockProvider({ children }: { children: React.React
         teamId: input.teamId,
         teamName: input.teamName,
         opponentId: input.opponentId,
+        folderId: input.folderId,
         status: 'queued' as UploadStatus,
         progress: 0,
         bytesUploaded: 0,

@@ -1,8 +1,18 @@
-import { createClient } from '@/lib/supabase/server'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
-export async function getVideoFramesBase64(videoId: string): Promise<string[]> {
-  const supabase = await createClient()
-
+/**
+ * Downloads a processed video's evidence frames as base64 JPEGs.
+ *
+ * Takes its Supabase client as a parameter rather than building one: this
+ * module is imported by both Next.js route handlers (cookie client) and the
+ * standalone Railway analysis worker (service-role client), and the worker
+ * has no request context to build one from. Same rationale as the note at
+ * the top of lib/ai/record-usage.ts.
+ */
+export async function getVideoFramesBase64(
+  videoId: string,
+  supabase: SupabaseClient
+): Promise<string[]> {
   const { data: frameRows } = await supabase
     .from('video_frames')
     .select('storage_path, frame_index')

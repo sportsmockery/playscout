@@ -28,7 +28,9 @@ const MODULE_MAP: Record<string, ModuleConfig> = {
 
 export async function analyzePosition(
   input: PositionAnalysisInput,
-  userId: string,
+  // null when a background batch job runs film queued by a coach whose
+  // account has since been removed — the usage ledger takes a null user.
+  userId: string | null,
   supabase: SupabaseClient
 ): Promise<PositionAnalysisResult> {
   const config = MODULE_MAP[input.moduleKey]
