@@ -194,7 +194,7 @@ function buildSystemPrompt(athlete: Athlete | null): string { ... }
 export type IntelligenceModuleKey =
   | 'QBIQ' | 'OLIQ' | 'RBIQ' | 'WRIQ'
   | 'DLIQ' | 'LBIQ' | 'DBIQ'
-  | 'TEAMIQ' | 'MISTAKEIQ' | 'SCOUTIQ' | 'PRACTICEIQ';
+  | 'TEAMIQ' | 'MISTAKEIQ' | 'SCOUTIQ' | 'PRACTICEIQ' | 'RANKERIQ';
 
 export interface PositionAnalysisInput {
   moduleKey: IntelligenceModuleKey;
@@ -251,6 +251,25 @@ export interface PositionAnalysisResult {
 - Categories: missed_assignment, missed_block, missed_contain, wrong_gap_fit, bad_pursuit_angle, poor_tackling_leverage, turnover_risk, snap_mesh_issue, alignment_error, coverage_bust, penalty_risk, poor_effort, clock_situation_error
 - Each mistake: `{ title, severity, category, description, likely_impact, correction, drill, evidence_frames, confidence }`
 - Severity: minor | moderate | major | game_changing
+
+**RANKERIQ** — `lib/intelligence/modules/rankeriq.ts`
+- Grades and ranks EVERY player on the team's own unit in a clip. Determines whether the team is
+  on offense or defense (or takes it from the coach) and grades that unit only — never the opponent.
+- The model reports observations per player: `position`, `role_on_play`, `execution` (0-100),
+  `difficulty` (1-5), `impact` (decisive→none), a one-line `note` on how the grade was decided,
+  and `evidence_frames`.
+- **The grade itself is computed in `lib/intelligence/player-grades.ts`, not by the model.**
+  Ranking is only meaningful if a 78 in clip 3 means what a 78 means in clip 40; a model asked for
+  a holistic number invents a new scale every call. Baseline 70 = did the job; difficulty tilts the
+  deviation in the direction the rep already went; impact scales how far it can travel.
+- Position is NOT a numeric multiplier — "grade varies by position" lives in the prompt (what good
+  execution looks like for a LT vs a FS). A coefficient would rank a great center below a mediocre
+  QB by fiat.
+- Identification is the module's main anti-hallucination risk: a wrong jersey number gives a real
+  kid someone else's grade. Numbers are reported ONLY when legible, unreadable players are graded
+  by role, and `matchRosterPlayer` refuses to match a duplicated number rather than guessing.
+- Writes one row per graded player to `player_grades` (migration 030) so grades roll up to player
+  profiles and trend over a season, not just live inside one report's jsonb.
 
 **Scoring scale (all modules):**
 90-100 Elite | 80-89 Advanced | 70-79 Solid | 60-69 Developing | <60 Beginner

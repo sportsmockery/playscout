@@ -8,8 +8,10 @@ import { buildRBIQSystemPrompt, RBIQ_RESPONSE_SCHEMA } from './modules/rbiq'
 import { buildTEAMIQSystemPrompt, TEAMIQ_RESPONSE_SCHEMA } from './modules/teamiq'
 import { buildMISTAKEIQSystemPrompt, MISTAKEIQ_RESPONSE_SCHEMA } from './modules/mistakeiq'
 import { buildSCOUTIQSystemPrompt, SCOUTIQ_RESPONSE_SCHEMA } from './modules/scoutiq'
+import { buildRANKERIQSystemPrompt, RANKERIQ_RESPONSE_SCHEMA } from './modules/rankeriq'
 import { PositionAnalysisOutputSchema, type PositionAnalysisInput, type PositionAnalysisResult } from './schemas'
 import { applyDrillSafetyFilter, scrubProhibitedDrillMentions } from './safety'
+import { rankPlayerGrades } from './player-grades'
 import { resolveLevelTier } from './levels'
 
 type ModuleConfig = {
@@ -24,6 +26,7 @@ const MODULE_MAP: Record<string, ModuleConfig> = {
   TEAMIQ:    { buildPrompt: buildTEAMIQSystemPrompt,    schema: TEAMIQ_RESPONSE_SCHEMA },
   MISTAKEIQ: { buildPrompt: buildMISTAKEIQSystemPrompt, schema: MISTAKEIQ_RESPONSE_SCHEMA },
   SCOUTIQ:   { buildPrompt: buildSCOUTIQSystemPrompt,   schema: SCOUTIQ_RESPONSE_SCHEMA },
+  RANKERIQ:  { buildPrompt: buildRANKERIQSystemPrompt,  schema: RANKERIQ_RESPONSE_SCHEMA },
 }
 
 export async function analyzePosition(
@@ -107,6 +110,14 @@ export async function analyzePosition(
     return { ...m, correction, drill }
   })
 
+  // RANKERIQ: the model reports observations; the grade itself is computed
+  // here from those factors so a 78 in clip 3 means what a 78 means in clip
+  // 40 — otherwise ranking players across a game is comparing scales, not
+  // performances. Roster matching happens at save time, where the DB is.
+  const rankedGrades = parsed.player_grades?.length
+    ? rankPlayerGrades(parsed.player_grades)
+    : parsed.player_grades
+
   return {
     overall_score: parsed.overall_score,
     position_scores: parsed.position_scores,
@@ -126,6 +137,9 @@ export async function analyzePosition(
     situational_tells: parsed.situational_tells,
     attack_points: parsed.attack_points,
     mistakes: safeMistakes,
+    player_grades: rankedGrades,
+    unit_graded: parsed.unit_graded,
+    players_not_evaluable: parsed.players_not_evaluable,
     target_players: parsed.target_players,
     model: route.model,
     framesAnalyzed: input.frames.length,

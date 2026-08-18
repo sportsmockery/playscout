@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { MistakeItem, Tendency } from './schemas'
+import type { MistakeItem, PlayerGrade, Tendency } from './schemas'
+import { matchRosterPlayer, type RosterEntry } from './player-grades'
 import { rollupTendency } from './tendency-rollup'
 
 /**
@@ -104,4 +105,69 @@ export async function persistTeamTendencies(
       if (error) console.error('[persist-intelligence] failed to insert team_tendencies', error)
     }
   }
+}
+
+/**
+ * RANKERIQ writes one row per graded player to player_grades. Without this
+ * the ranked list would live only inside one analysis result's jsonb and
+ * could never be rolled up onto a player profile or trended over a season —
+ * which is most of the point of grading every rep.
+ *
+ * Roster matching happens here rather than in the model call because it needs
+ * the DB: a grade is attached to a player ONLY when the model actually read a
+ * jersey number and exactly one player wears it.
+ */
+export async function persistPlayerGrades(
+  supabase: SupabaseClient,
+  params: {
+    teamId: string
+    videoId?: string | null
+    analysisResultId?: string | null
+    playSequenceId?: string | null
+    side?: string | null
+    modelProvider?: string
+    modelName?: string
+  },
+  grades: PlayerGrade[] | undefined
+): Promise<void> {
+  if (!grades?.length) return
+
+  const { data: roster, error: rosterError } = await supabase
+    .from('players')
+    .select('id, jersey_number, first_name, last_name')
+    .eq('team_id', params.teamId)
+  if (rosterError) {
+    console.error('[persist-intelligence] failed to read roster for player grades', rosterError)
+  }
+
+  const side = ['offense', 'defense', 'special_teams'].includes(params.side ?? '')
+    ? params.side
+    : 'unclear'
+
+  const rows = grades.map((g) => ({
+    team_id: params.teamId,
+    video_id: params.videoId ?? null,
+    analysis_result_id: params.analysisResultId ?? null,
+    play_sequence_id: params.playSequenceId ?? null,
+    player_id: matchRosterPlayer(g.jersey_number, (roster ?? []) as RosterEntry[]),
+    jersey_number: g.jersey_number ?? null,
+    identifier: g.identifier,
+    position: g.position,
+    role_on_play: g.role_on_play,
+    side,
+    grade: g.grade ?? 0,
+    letter: g.letter ?? null,
+    execution: Math.round(g.execution),
+    difficulty: Math.round(g.difficulty),
+    impact: g.impact,
+    rank_in_clip: g.rank ?? null,
+    note: g.note,
+    identification_confidence: g.identification_confidence,
+    evidence: { frames: g.evidence_frames ?? [] },
+    model_provider: params.modelProvider ?? null,
+    model_name: params.modelName ?? null,
+  }))
+
+  const { error } = await supabase.from('player_grades').insert(rows)
+  if (error) console.error('[persist-intelligence] failed to insert player_grades', error)
 }
