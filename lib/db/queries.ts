@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import type { Team, Player, Video, PositionAnalysisResult, TeamTendency, MistakeEvent, Playbook, PlaybookAnalysis, PlaybookPlay, PlaySequence, Opponent, ScoutReport } from './types'
+import type { Team, Player, Video, VideoFolder, PositionAnalysisResult, TeamTendency, MistakeEvent, Playbook, PlaybookAnalysis, PlaybookPlay, PlaySequence, Opponent, ScoutReport } from './types'
 
 // Alias for server component compatibility
 export const createServerClient = createClient
@@ -100,6 +100,32 @@ export async function getVideosByTeam(teamId: string): Promise<Video[]> {
   const supabase = await createClient()
   const { data } = await supabase.from('videos').select('*').eq('team_id', teamId).order('created_at', { ascending: false })
   return data ?? []
+}
+
+export async function getVideosByFolder(teamId: string, folderId: string): Promise<Video[]> {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('videos')
+    .select('*')
+    .eq('team_id', teamId)
+    .eq('folder_id', folderId)
+    .order('created_at', { ascending: false })
+  return data ?? []
+}
+
+/** Folders with the number of clips filed in each, for the film library rail. */
+export async function getFilmFolders(teamId: string): Promise<(VideoFolder & { video_count: number })[]> {
+  const supabase = await createClient()
+  const [{ data: folders }, { data: videos }] = await Promise.all([
+    supabase.from('video_folders').select('*').eq('team_id', teamId).order('name'),
+    supabase.from('videos').select('folder_id').eq('team_id', teamId),
+  ])
+
+  const counts = new Map<string, number>()
+  for (const v of videos ?? []) {
+    if (v.folder_id) counts.set(v.folder_id, (counts.get(v.folder_id) ?? 0) + 1)
+  }
+  return (folders ?? []).map((f) => ({ ...f, video_count: counts.get(f.id) ?? 0 }))
 }
 
 export async function getVideoCount(): Promise<number> {

@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
   let memoryContext = '';
   if (teamId) {
     try {
-      const memories = await getRelevantMemory(teamId, latestUserMessage, 5);
+      const memories = await getRelevantMemory(supabase, teamId, latestUserMessage, 5);
       if (memories.length > 0) {
         memoryContext = memories
           .map((m: { memory_type?: string; content?: string }) => `[Memory ${m.memory_type}]: ${m.content}`)

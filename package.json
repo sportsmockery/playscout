@@ -17,6 +17,8 @@
     "worker:video:dev": "tsx watch workers/process-video.ts",
     "worker:playbook": "tsx workers/process-playbook.ts",
     "worker:playbook:dev": "tsx watch workers/process-playbook.ts",
+    "worker:analysis": "tsx workers/process-analysis.ts",
+    "worker:analysis:dev": "tsx watch workers/process-analysis.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },

@@ -4,7 +4,7 @@ import { requireTeamMember, WRITE_ROLES } from '@/lib/auth/require-team-member'
 
 export async function POST(req: NextRequest) {
   try {
-    const { uploadId, storagePath, teamId, title, opponentId } = await req.json()
+    const { uploadId, storagePath, teamId, title, opponentId, folderId } = await req.json()
 
     if (!storagePath || !teamId) {
       return NextResponse.json(
@@ -39,6 +39,19 @@ export async function POST(req: NextRequest) {
       filmType = 'opponent'
     }
 
+    // Uploading straight into a folder is how a coach keeps a 40-clip game
+    // dump organized — filing them afterwards is the step nobody does.
+    if (folderId) {
+      const { data: folder } = await supabase
+        .from('video_folders')
+        .select('id, team_id')
+        .eq('id', folderId)
+        .maybeSingle()
+      if (!folder || folder.team_id !== teamId) {
+        return NextResponse.json({ error: 'Folder not found for this team.' }, { status: 404 })
+      }
+    }
+
     const { data: video, error } = await supabase
       .from('videos')
       .insert({
@@ -50,6 +63,7 @@ export async function POST(req: NextRequest) {
         status: 'uploaded',
         film_type: filmType,
         opponent_id: opponentId ?? null,
+        folder_id: folderId ?? null,
       })
       .select()
       .single()

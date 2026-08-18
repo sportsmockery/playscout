@@ -13,6 +13,10 @@ interface Props {
   /** When set, uploaded videos are tagged film_type='opponent' for this opponent (ScoutIQ). */
   opponentId?: string;
   buttonLabel?: string;
+  /** Folders this batch can be filed into. Omitted where folders don't apply (ScoutIQ). */
+  folders?: { id: string; name: string }[];
+  /** Folder the coach is currently browsing — pre-selected as the destination. */
+  defaultFolderId?: string;
 }
 
 interface PendingFile {
@@ -30,10 +34,18 @@ function formatBytes(bytes: number) {
 
 let rowId = 0;
 
-export default function UploadVideoButton({ teamId, teamName, opponentId, buttonLabel }: Props) {
+export default function UploadVideoButton({
+  teamId,
+  teamName,
+  opponentId,
+  buttonLabel,
+  folders,
+  defaultFolderId,
+}: Props) {
   const { enqueue } = useUploadDock();
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState<PendingFile[]>([]);
+  const [folderId, setFolderId] = useState(defaultFolderId ?? '');
   const inputRef = useRef<HTMLInputElement>(null);
 
   function addFiles(fileList: FileList | null) {
@@ -67,6 +79,7 @@ export default function UploadVideoButton({ teamId, teamName, opponentId, button
   function reset() {
     setOpen(false);
     setPending([]);
+    setFolderId(defaultFolderId ?? '');
   }
 
   const validFiles = useMemo(() => pending.filter((p) => !p.tooBig), [pending]);
@@ -82,6 +95,7 @@ export default function UploadVideoButton({ teamId, teamName, opponentId, button
         teamId,
         teamName,
         opponentId,
+        folderId: folderId || undefined,
       })),
     );
     reset();
@@ -140,6 +154,25 @@ export default function UploadVideoButton({ teamId, teamName, opponentId, button
                 onChange={handleFileChange}
               />
             </div>
+
+            {/* Destination folder */}
+            {folders && folders.length > 0 && (
+              <div className="mt-4">
+                <label className="block text-xs font-medium text-[var(--brand-ink)] mb-1.5">
+                  File into
+                </label>
+                <select
+                  value={folderId}
+                  onChange={(e) => setFolderId(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-[var(--brand-border)] bg-white text-sm text-[var(--brand-ink)] focus:outline-none focus:ring-2 focus:ring-[var(--brand-navy)]"
+                >
+                  <option value="">No folder (unfiled)</option>
+                  {folders.map((f) => (
+                    <option key={f.id} value={f.id}>{f.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {/* Selected files */}
             {pending.length > 0 && (

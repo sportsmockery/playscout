@@ -2,9 +2,13 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronDown, Plus, Crosshair, AlertCircle, Target } from 'lucide-react';
+import { ChevronDown, Plus, Crosshair, AlertCircle, Target, Layers } from 'lucide-react';
 import type { Opponent, Video, ScoutReport } from '@/lib/db/types';
 import UploadVideoButton from '../../film/UploadVideoButton';
+import AddFilmLinkButton from '../../film/AddFilmLinkButton';
+import AnalysisQueue from '@/components/intelligence/AnalysisQueue';
+import { queueAnalysisBatch, batchTitle } from '@/components/intelligence/queue-batch';
+import { isUnanalyzable } from '@/components/intelligence/FilmPicker';
 
 interface Props {
   teamId: string;
@@ -87,6 +91,8 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
   const [reportLoading, setReportLoading] = useState(false);
   const [reportError, setReportError] = useState('');
   const [latestReport, setLatestReport] = useState<ScoutReport | null>(scoutReports[0] ?? null);
+  const [queued, setQueued] = useState('');
+  const [queueVersion, setQueueVersion] = useState(0);
 
   const selectedOpponent = opponents.find((o) => o.id === selectedOpponentId);
   const readyVideos = opponentVideos.filter((v) => v.status === 'ready_for_review' || v.status === 'analysis_complete');
@@ -119,6 +125,41 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
       setClipError(err instanceof Error ? err.message : 'ScoutIQ analysis failed');
     } finally {
       setClipLoading(null);
+    }
+  }
+
+  /**
+   * Scouting an opponent means scouting every clip of them — one at a time
+   * was the slow path, and it died with the page. This queues the lot in the
+   * background so the coach can walk away and come back to a full picture,
+   * including clips whose frames are still being extracted.
+   */
+  async function scoutAllClips() {
+    if (!selectedOpponentId || !selectedOpponent) return;
+    const targets = opponentVideos.filter((v) => !isUnanalyzable(v));
+    if (!targets.length) return;
+    setClipError('');
+    setQueued('');
+    try {
+      const res = await queueAnalysisBatch({
+        teamId,
+        moduleKey: 'SCOUTIQ',
+        videoIds: targets.map((v) => v.id),
+        title: `${batchTitle('SCOUTIQ', targets.length)} — ${selectedOpponent.name}`,
+        context: {
+          opponentId: selectedOpponentId,
+          team: { name: teamName, age_group: ageGroup },
+          opponent: {
+            name: selectedOpponent.name,
+            age_group: selectedOpponent.age_group ?? undefined,
+            jersey_color: jerseyColor || undefined,
+          },
+        },
+      });
+      setQueued(`${res.queued} clip${res.queued === 1 ? '' : 's'} queued — scouting runs in the background.`);
+      setQueueVersion((v) => v + 1);
+    } catch (err) {
+      setClipError(err instanceof Error ? err.message : 'Could not queue scouting.');
     }
   }
 
@@ -181,8 +222,26 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
           <div className="glass-card p-5">
             <div className="flex items-center justify-between mb-3">
               <h2 className="font-bold text-[var(--brand-navy)] text-sm uppercase tracking-wide">{selectedOpponent.name}&apos;s Film</h2>
-              <UploadVideoButton teamId={teamId} opponentId={selectedOpponent.id} buttonLabel="Upload Opponent Film" />
+              <div className="flex items-center gap-2">
+                {opponentVideos.some((v) => !isUnanalyzable(v)) && (
+                  <button
+                    onClick={scoutAllClips}
+                    className="flex items-center gap-1.5 text-xs font-semibold border border-[var(--brand-border)] text-[var(--brand-ink)] px-3 py-2 rounded-lg hover:bg-[var(--brand-bg)] transition-colors"
+                  >
+                    <Layers size={14} />
+                    Scout all clips
+                  </button>
+                )}
+                <AddFilmLinkButton teamId={teamId} opponentId={selectedOpponent.id} />
+                <UploadVideoButton teamId={teamId} opponentId={selectedOpponent.id} buttonLabel="Upload Opponent Film" />
+              </div>
             </div>
+
+            {queued && (
+              <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg p-2 mb-3">
+                {queued}
+              </p>
+            )}
 
             <div className="mb-3">
               <label className="block text-xs font-medium text-[var(--brand-ink)] mb-1">Opponent jersey/helmet color (this film)</label>
@@ -235,6 +294,8 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
               <p className="text-xs text-red-600 mt-3 flex items-center gap-1"><AlertCircle size={13} />{clipError}</p>
             )}
           </div>
+
+          <AnalysisQueue teamId={teamId} moduleKey="SCOUTIQ" refreshKey={queueVersion} />
 
           {/* Game plan */}
           <div className="glass-card p-5">

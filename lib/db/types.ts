@@ -38,8 +38,39 @@ export interface Video {
   source_type?: 'upload' | 'hudl_link' | 'external_url'; source_url?: string | null
   storage_path?: string | null; thumbnail_path?: string | null; duration_seconds?: number | null
   file_size?: number | null; mime_type?: string | null
-  film_type?: FilmType; opponent_id?: string | null
+  film_type?: FilmType; opponent_id?: string | null; folder_id?: string | null
   status?: VideoStatus | null; processing_status?: string | null; error_message?: string | null; created_at: string
+}
+
+export interface VideoFolder {
+  id: string; team_id: string; name: string; description?: string | null
+  created_by?: string | null; created_at: string; updated_at?: string
+}
+
+export type AnalysisBatchStatus =
+  | 'queued' | 'running' | 'completed' | 'completed_with_errors' | 'failed' | 'cancelled'
+/** waiting_for_film = queued against a clip whose frames aren't extracted yet. */
+export type AnalysisBatchJobStatus =
+  | 'queued' | 'waiting_for_film' | 'running' | 'completed' | 'failed' | 'cancelled'
+
+export interface AnalysisBatch {
+  id: string; team_id: string; created_by?: string | null
+  module_key: string; player_id?: string | null; folder_id?: string | null
+  title?: string | null; context?: Json | null
+  status: AnalysisBatchStatus
+  total_jobs: number; completed_jobs: number; failed_jobs: number
+  created_at: string; updated_at?: string; completed_at?: string | null
+}
+
+export interface AnalysisBatchJob {
+  id: string; batch_id: string; team_id: string; video_id: string
+  module_key: string; player_id?: string | null
+  status: AnalysisBatchJobStatus
+  attempts: number; max_attempts: number
+  locked_by?: string | null; locked_at?: string | null
+  error_message?: string | null; analysis_result_id?: string | null
+  started_at?: string | null; completed_at?: string | null
+  created_at: string; updated_at?: string
 }
 
 export interface PlaySequence {
