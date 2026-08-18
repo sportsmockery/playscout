@@ -1,6 +1,21 @@
 import Anthropic from '@anthropic-ai/sdk'
 
-export const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? '' })
+/**
+ * Lazy singleton, matching lib/ai/providers/openai.ts.
+ *
+ * The SDK's constructor throws in any environment it considers browser-like
+ * (jsdom included) and reads the API key at construction time. Building it at
+ * module scope therefore made merely IMPORTING anything downstream of this
+ * file fail — which is how the batch-summary runner broke the analysis-job
+ * tests. Deferring construction to first use keeps this module safe to import
+ * from anywhere, including code paths that never call Claude.
+ */
+let client: Anthropic | null = null
+
+export function getAnthropic(): Anthropic {
+  if (!client) client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? '' })
+  return client
+}
 
 export const CLAUDE_SONNET = 'claude-sonnet-4-5'
 export const CLAUDE_OPUS = 'claude-opus-4-5'
@@ -11,7 +26,7 @@ export async function streamClaude(
   messages: Array<{ role: 'user' | 'assistant'; content: string }>,
   maxTokens = 1024
 ) {
-  return anthropic.messages.stream({ model, max_tokens: maxTokens, system, messages })
+  return getAnthropic().messages.stream({ model, max_tokens: maxTokens, system, messages })
 }
 
 export interface ClaudeResult {
@@ -25,7 +40,7 @@ export async function callClaude(
   messages: Array<{ role: 'user' | 'assistant'; content: string }>,
   maxTokens = 2048
 ): Promise<ClaudeResult> {
-  const response = await anthropic.messages.create({ model, max_tokens: maxTokens, system, messages })
+  const response = await getAnthropic().messages.create({ model, max_tokens: maxTokens, system, messages })
   const block = response.content[0]
   return {
     text: block.type === 'text' ? block.text : '',

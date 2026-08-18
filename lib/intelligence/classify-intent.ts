@@ -35,7 +35,9 @@ export async function classifyIntent(message: string): Promise<ChatIntent> {
   if (heuristic) return heuristic
 
   try {
-    // Dynamic import: the anthropic SDK constructs its client at module load
+    // Dynamic import: keeps the Anthropic SDK out of the module graph for
+    // callers that never classify an intent. (The client itself is lazy now —
+    // see getAnthropic — so this is a bundle concern, not a load-time one.)
     // and refuses to load in a browser-like environment (e.g. this file's
     // own jsdom-based unit tests) — deferring the import means those tests
     // never pay that cost since they only exercise the heuristic path.

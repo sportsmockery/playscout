@@ -353,8 +353,24 @@ Coach multi-selects film (or a folder) in a module screen's FilmPicker
 → Railway analysis worker claims jobs (workers/process-analysis.ts)
    — and the browser pokes POST /api/analysis/run while the coach is watching
 → Each job: frames → analyzePosition → position_analysis_results (+ mistakes/tendencies/memory)
+→ When the last clip settles, a synthesis pass writes the batch's CUMULATIVE report
 → Coach may leave the page or quit entirely; AnalysisQueue shows live progress on return
 ```
+
+**The combined report (`/analysis/batch/[batchId]`) is the destination for a batch, not
+per-clip pages.** A coach who queues 40 clips wants one film session, not 40 verdicts:
+- `lib/intelligence/aggregate-batch.ts` computes the numbers deterministically — averages,
+  how many clips each point repeats in, per-player grade rollups with trend, mistake counts.
+  These are facts handed to the model, never recomputed by it.
+- `lib/intelligence/batch-summary.ts` is the System A narrative over that evidence (Claude via
+  `report_generation`). It must produce a comment for EVERY clip, and pattern counts must match
+  the computed totals.
+- `run-batch-summary.ts` claims the work with a conditional UPDATE on `summary_status`, so when
+  several runners finish the last clips at once exactly one writes the report.
+- One-clip batches are marked `not_applicable` — no second model call for a report that already
+  exists. A failed synthesis never invalidates the per-clip analyses.
+- Each clip is expandable inline on that page (`ClipBreakdown`); its standalone
+  `/analysis/[id]` page still exists for sharing/printing but is no longer the way in.
 
 **Batch rules:**
 - Exactly one already-processed clip still runs inline (instant report). Everything else queues.

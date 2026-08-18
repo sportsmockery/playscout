@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { AlertCircle, CheckCircle2, Clock, Loader2, X } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Clock, Layers, Loader2, X } from 'lucide-react';
 import type { AnalysisBatchJobStatus, AnalysisBatchStatus } from '@/lib/db/types';
 
 interface BatchJob {
@@ -23,6 +23,7 @@ interface Batch {
   total_jobs: number;
   completed_jobs: number;
   failed_jobs: number;
+  summary_status?: 'pending' | 'running' | 'complete' | 'failed' | 'not_applicable';
   created_at: string;
   jobs: BatchJob[];
 }
@@ -179,13 +180,16 @@ export default function AnalysisQueue({ teamId, moduleKey, refreshKey }: Props) 
                   <p className="text-[11px] text-[var(--brand-muted)]">
                     {batch.status === 'queued' && 'Queued'}
                     {batch.status === 'running' && `Analyzing — ${done} of ${batch.total_jobs} done`}
-                    {batch.status === 'completed' && `Complete — ${batch.completed_jobs} report${batch.completed_jobs === 1 ? '' : 's'}`}
+                    {batch.status === 'completed' &&
+                      (batch.summary_status === 'running' || batch.summary_status === 'pending'
+                        ? `${batch.completed_jobs} clips done — writing the combined report…`
+                        : `Complete — ${batch.completed_jobs} clip${batch.completed_jobs === 1 ? '' : 's'}`)}
                     {batch.status === 'completed_with_errors' && `${batch.completed_jobs} done · ${batch.failed_jobs} failed`}
                     {batch.status === 'failed' && 'Failed'}
                     {batch.status === 'cancelled' && 'Cancelled'}
                   </p>
                 </div>
-                {isActive(batch) && (
+                {isActive(batch) ? (
                   <button
                     onClick={() => cancel(batch.id)}
                     className="shrink-0 flex items-center gap-1 text-[11px] font-semibold text-[var(--brand-muted)] hover:text-red-600"
@@ -193,6 +197,16 @@ export default function AnalysisQueue({ teamId, moduleKey, refreshKey }: Props) 
                     <X size={12} />
                     Cancel
                   </button>
+                ) : (
+                  batch.completed_jobs > 0 && (
+                    <Link
+                      href={`/analysis/batch/${batch.id}`}
+                      className="shrink-0 flex items-center gap-1 text-[11px] font-semibold text-white bg-[var(--brand-navy)] px-2.5 py-1 rounded-lg hover:bg-[var(--brand-navy-dark)]"
+                    >
+                      <Layers size={12} />
+                      Combined report
+                    </Link>
+                  )
                 )}
               </div>
 
@@ -212,7 +226,7 @@ export default function AnalysisQueue({ teamId, moduleKey, refreshKey }: Props) 
                     <span className="min-w-0 flex-1 truncate text-[var(--brand-ink)]">{job.video_title}</span>
                     {job.analysis_result_id ? (
                       <Link
-                        href={`/analysis/${job.analysis_result_id}`}
+                        href={`/analysis/batch/${batch.id}`}
                         className="shrink-0 text-[11px] font-semibold text-[var(--brand-navy)] hover:underline"
                       >
                         View

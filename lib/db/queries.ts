@@ -140,6 +140,36 @@ export async function getVideoById(videoId: string): Promise<Video | null> {
   return data
 }
 
+/**
+ * A finished batch with everything its combined report page renders: the
+ * cumulative summary, each clip's job row, and each clip's own analysis.
+ */
+export async function getAnalysisBatchById(batchId: string) {
+  const supabase = await createClient()
+  const { data: batch } = await supabase
+    .from('analysis_batches')
+    .select('*, teams(name)')
+    .eq('id', batchId)
+    .maybeSingle()
+  if (!batch) return null
+
+  const { data: jobs } = await supabase
+    .from('analysis_batch_jobs')
+    .select('id, video_id, status, error_message, analysis_result_id, videos(title, thumbnail_path)')
+    .eq('batch_id', batchId)
+    .order('created_at', { ascending: true })
+
+  const resultIds = (jobs ?? []).map((j) => j.analysis_result_id).filter((id): id is string => !!id)
+  const { data: results } = resultIds.length
+    ? await supabase
+        .from('position_analysis_results')
+        .select('id, video_id, overall_score, summary, strengths, weaknesses, drills, evidence, module_key')
+        .in('id', resultIds)
+    : { data: [] as PositionAnalysisResult[] }
+
+  return { batch, jobs: jobs ?? [], results: (results ?? []) as PositionAnalysisResult[] }
+}
+
 export async function getAnalysisById(analysisId: string): Promise<PositionAnalysisResult | null> {
   const supabase = await createClient()
   const { data } = await supabase

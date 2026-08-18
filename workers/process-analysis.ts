@@ -21,6 +21,7 @@ import {
   reapStuckAnalysisJobs,
   type AnalysisJobRow,
 } from '../lib/intelligence/run-analysis-job'
+import { maybeSummarizeBatch } from '../lib/intelligence/run-batch-summary'
 
 const WORKER_ID = process.env.WORKER_ID
   ? `${process.env.WORKER_ID}-analysis`
@@ -81,6 +82,11 @@ async function main() {
       // throws; the catch is only for an unreachable DB.
       const outcome = await runAnalysisJob(supabase, job)
       log(`job ${job.id} → ${outcome}`)
+
+      // Finishing a batch's last clip is what triggers its cumulative report.
+      const summary = await maybeSummarizeBatch(supabase, job.batch_id)
+      if (summary === 'written') log(`batch ${job.batch_id}: cumulative report written`)
+      else if (summary === 'failed') log(`batch ${job.batch_id}: cumulative report FAILED (per-clip reports are unaffected)`)
     } catch (err) {
       Sentry.captureException(err, {
         tags: { worker: 'analysis', module: job.module_key },

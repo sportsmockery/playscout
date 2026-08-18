@@ -3,6 +3,7 @@ import { analyzePosition } from './analyze-position'
 import { getVideoFramesBase64 } from './get-frames'
 import { saveAnalysisResult } from './save-analysis'
 import { PositionAnalysisInputSchema, type PositionAnalysisInput } from './schemas'
+import { maybeSummarizeBatch } from './run-batch-summary'
 
 /**
  * One unit of background analysis: "run module X against video Y with the
@@ -264,11 +265,21 @@ export async function drainAnalysisJobs(
   const maxJobs = opts.maxJobs ?? Infinity
   const outcomes: JobOutcome[] = []
 
+  const touchedBatches = new Set<string>()
+
   while (outcomes.length < maxJobs) {
     if (opts.deadlineMs && Date.now() - started > opts.deadlineMs) break
     const job = await claimNextAnalysisJob(supabase, { workerId: opts.workerId, teamId: opts.teamId })
     if (!job) break
     outcomes.push(await runAnalysisJob(supabase, job))
+    touchedBatches.add(job.batch_id)
+  }
+
+  // Whichever runner finished a batch's last clip writes its cumulative
+  // report. maybeSummarizeBatch no-ops when the batch still has work in
+  // flight or another runner already claimed the summary.
+  for (const batchId of touchedBatches) {
+    await maybeSummarizeBatch(supabase, batchId).catch(() => {})
   }
 
   return { processed: outcomes.length, outcomes }
