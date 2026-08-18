@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Film, Play, Clock } from 'lucide-react';
+import { Film, Play, Clock, Link2 } from 'lucide-react';
 import type { Video } from '@/lib/db/types';
 
 function formatDuration(seconds?: number | null) {
@@ -100,6 +100,12 @@ export default function VideoCard({ teamId, video }: { teamId: string; video: Vi
         <div className="p-4 pb-2">
           <h3 className="font-semibold text-[var(--brand-ink)] text-sm mb-1 truncate">{video.title}</h3>
           <div className="flex items-center gap-3 text-xs text-[var(--brand-muted)]">
+            {video.source_type === 'external_url' && (
+              <span className="flex items-center gap-1" title={video.source_url ?? undefined}>
+                <Link2 size={11} />
+                Link
+              </span>
+            )}
             {video.duration_seconds && (
               <span className="flex items-center gap-1">
                 <Clock size={11} />

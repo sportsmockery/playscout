@@ -23,6 +23,7 @@ import type { ReadableStream as WebReadableStream } from 'node:stream/web'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createServiceClient } from './lib/service-client'
 import { Sentry } from './lib/sentry'
+import { downloadRemoteVideo, RemoteVideoError } from './lib/fetch-remote-video'
 import {
   probeDurationSeconds,
   extractFrameAt,
@@ -232,13 +233,24 @@ async function runPipeline(supabase: SupabaseClient, job: Job) {
     await setJobProgress(supabase, job.id, 5, 'Preparing Film')
     const { data: video, error: vErr } = await supabase
       .from('videos')
-      .select('id, team_id, storage_path')
+      .select('id, team_id, storage_path, source_url, source_type')
       .eq('id', job.video_id)
       .single()
     if (vErr || !video) throw new Error(`Video ${job.video_id} not found`)
-    if (!video.storage_path) throw new Error('Video has no storage_path')
 
-    await downloadVideoToDisk(supabase, video.storage_path, videoPath)
+    if (video.storage_path) {
+      await downloadVideoToDisk(supabase, video.storage_path, videoPath)
+    } else if (video.source_url) {
+      // Film added by link: the source stays where the coach put it. We
+      // stream it here to extract frames, then throw the copy away with the
+      // rest of the work directory — only the frames are kept.
+      await setJobProgress(supabase, job.id, 10, 'Fetching Film')
+      const fetched = await downloadRemoteVideo(video.source_url, videoPath)
+      log(`job ${job.id}: fetched ${fetched.bytes} bytes from link (${fetched.contentType ?? 'no content-type'})`)
+    } else {
+      throw new Error('Video has neither a storage_path nor a source_url')
+    }
+
     const duration = await probeDurationSeconds(videoPath)
     if (duration) {
       await supabase.from('videos').update({ duration_seconds: duration }).eq('id', job.video_id)
@@ -355,7 +367,10 @@ async function runPipeline(supabase: SupabaseClient, job: Job) {
 
 async function failJob(supabase: SupabaseClient, job: Job, err: unknown) {
   const message = err instanceof Error ? err.message : String(err)
-  const exhausted = job.attempts >= job.max_attempts
+  // A bad link (404, expired signature, a share page instead of a file) fails
+  // the same way on every retry, and the message already tells the coach what
+  // to fix — surface it now instead of after three identical attempts.
+  const exhausted = job.attempts >= job.max_attempts || err instanceof RemoteVideoError
   const now = new Date().toISOString()
 
   Sentry.captureException(err, {

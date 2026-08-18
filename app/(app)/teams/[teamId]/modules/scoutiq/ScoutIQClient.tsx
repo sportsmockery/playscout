@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { ChevronDown, Plus, Crosshair, AlertCircle, Target, Layers } from 'lucide-react';
 import type { Opponent, Video, ScoutReport } from '@/lib/db/types';
 import UploadVideoButton from '../../film/UploadVideoButton';
+import AddFilmLinkButton from '../../film/AddFilmLinkButton';
 import AnalysisQueue from '@/components/intelligence/AnalysisQueue';
 import { queueAnalysisBatch, batchTitle } from '@/components/intelligence/queue-batch';
 import { isUnanalyzable } from '@/components/intelligence/FilmPicker';
@@ -231,6 +232,7 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
                     Scout all clips
                   </button>
                 )}
+                <AddFilmLinkButton teamId={teamId} opponentId={selectedOpponent.id} />
                 <UploadVideoButton teamId={teamId} opponentId={selectedOpponent.id} buttonLabel="Upload Opponent Film" />
               </div>
             </div>

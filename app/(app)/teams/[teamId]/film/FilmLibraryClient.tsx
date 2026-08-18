@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import type { Video, VideoFolder } from '@/lib/db/types';
 import UploadVideoButton from './UploadVideoButton';
+import AddFilmLinkButton from './AddFilmLinkButton';
 import VideoCard from './VideoCard';
 
 type FolderWithCount = VideoFolder & { video_count: number };
@@ -219,6 +220,11 @@ export default function FilmLibraryClient({ teamId, teamName, videos, folders }:
                 {selectMode ? 'Done' : 'Select'}
               </button>
             )}
+            <AddFilmLinkButton
+              teamId={teamId}
+              folders={folders.map((f) => ({ id: f.id, name: f.name }))}
+              defaultFolderId={activeFolder && activeFolder !== UNFILED ? activeFolder : undefined}
+            />
             <UploadVideoButton
               teamId={teamId}
               teamName={teamName}
@@ -290,10 +296,15 @@ export default function FilmLibraryClient({ teamId, teamName, videos, folders }:
               Upload game or practice film — a single clip or a whole game of single plays — to run
               frame analysis, extract tendencies, and build intelligence reports.
             </p>
-            <div className="flex justify-center">
+            <div className="flex justify-center gap-2">
               <UploadVideoButton
                 teamId={teamId}
                 teamName={teamName}
+                folders={folders.map((f) => ({ id: f.id, name: f.name }))}
+                defaultFolderId={activeFolder && activeFolder !== UNFILED ? activeFolder : undefined}
+              />
+              <AddFilmLinkButton
+                teamId={teamId}
                 folders={folders.map((f) => ({ id: f.id, name: f.name }))}
                 defaultFolderId={activeFolder && activeFolder !== UNFILED ? activeFolder : undefined}
               />

@@ -347,6 +347,26 @@ Coach multi-selects film (or a folder) in a module screen's FilmPicker
   per clip; identity fields (team/module/player/video) always come from the job row, never the
   stored context.
 
+### Film from a link (`source_type: 'external_url'`)
+```
+Coach pastes a direct file link → POST /api/videos/from-link (validates, records, queues)
+→ video row with source_url and NO storage_path
+→ Railway video worker streams it to temp disk, extracts frames, discards the copy
+→ Playback uses source_url; everything downstream (folders, batches, modules) is unchanged
+```
+- The file is never copied into our bucket — the coach's host stays the source of truth. If
+  their link expires, playback breaks but the frames and analyses survive.
+- `lib/video/remote-source.ts` is the single validator, used by the browser (instant feedback),
+  the API route, and the worker (re-run on every redirect hop).
+- Guards, because the URL is attacker-controlled: http/https only, no embedded credentials, no
+  private/loopback/link-local targets (DNS is resolved and every returned address checked), a
+  streaming size cap, and a content-type check that catches "that was a share page."
+- Streaming platforms (YouTube/Vimeo/Twitch/…) and session-gated hosts (Hudl/MaxPreps) are
+  refused by name with copy telling the coach what to paste instead. Do NOT add scraping here —
+  those are watch pages, and pulling them breaks those platforms' terms.
+- A link failure is terminal on the first attempt (`RemoteVideoError` in the worker): a 404 or an
+  expired signature fails identically on every retry, and the message is already actionable.
+
 ### Film folders
 - `video_folders` + `videos.folder_id` (ON DELETE SET NULL — deleting a folder never deletes film).
 - Film library: folder rail, multi-select, bulk move, upload straight into a folder.

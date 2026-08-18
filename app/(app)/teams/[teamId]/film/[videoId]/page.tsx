@@ -40,9 +40,11 @@ export default async function VideoDetailPage({
   if (!team || !video || video.team_id !== teamId) notFound();
 
   const supabase = await createServerClient();
-  const signedUrl = video.storage_path
+  // Uploaded film plays from our bucket; film added by link plays from where
+  // the coach hosts it — we keep the frames, not a second copy of the game.
+  const playbackUrl = video.storage_path
     ? (await supabase.storage.from('videos').createSignedUrl(video.storage_path, 3600)).data?.signedUrl
-    : null;
+    : video.source_url ?? null;
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
@@ -55,14 +57,14 @@ export default async function VideoDetailPage({
       </Link>
 
       <div className="glass-card overflow-hidden mb-6">
-        {signedUrl ? (
+        {playbackUrl ? (
           <video
             controls
             preload="metadata"
             poster={video.thumbnail_path ?? undefined}
             className="w-full aspect-video bg-black"
           >
-            <source src={signedUrl} />
+            <source src={playbackUrl} />
             Your browser doesn&apos;t support playback of this video format.
           </video>
         ) : (
