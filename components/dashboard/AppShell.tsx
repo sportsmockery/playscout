@@ -7,6 +7,7 @@ import { Menu, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import UploadDockProvider from '@/components/upload/UploadDockProvider';
 import UploadDock from '@/components/upload/UploadDock';
+import AnalysisDock from '@/components/intelligence/AnalysisDock';
 import PlayScoutIQBubble from '@/components/intelligence/PlayScoutIQBubble';
 
 interface AppShellProps {
@@ -69,6 +70,7 @@ export default function AppShell({ children, teamId, defaultTeamId, isAdmin }: A
 
       {/* Persistent upload progress — survives navigation within /app */}
       <UploadDock />
+      <AnalysisDock />
 
       {/* Floating PlayScoutIQ assistant — bottom-left on every page */}
       <PlayScoutIQBubble defaultTeamId={defaultTeamId} />

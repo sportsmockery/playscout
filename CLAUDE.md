@@ -435,6 +435,14 @@ Coach pastes a direct file link → POST /api/videos/from-link (validates, recor
 - A link failure is terminal on the first attempt (`RemoteVideoError` in the worker): a 404 or an
   expired signature fails identically on every retry, and the message is already actionable.
 
+### Seeing work in flight
+- `AnalysisDock` (app shell, next to `UploadDock`) shows every running batch across all the
+  coach's teams from any page, and pokes `/api/analysis/run` per team so a batch keeps draining
+  while they're elsewhere in the app. Backed by `GET /api/analysis/active`, which needs no
+  teamId — RLS already scopes batches to teams the user can reach.
+- The team Intelligence hub renders `AnalysisQueue` for ALL modules above Analysis History, so
+  "history" covers queued and running work rather than only the finished half.
+
 ### Film folders
 - `video_folders` + `videos.folder_id` (ON DELETE SET NULL — deleting a folder never deletes film).
 - Film library: folder rail, multi-select, bulk move, upload straight into a folder.
@@ -701,6 +709,13 @@ create table public.team_memory (
 ---
 
 ## Row Level Security
+
+**`players` was the last table on the original 002 policies** (fixed in migration 032). Every
+other team-scoped table moved to `can_access_team()` in 016/017/018; players still demanded an
+`organization_members` row with role owner/admin/coach, so a coach holding access via
+`team_assignments` or `all_teams` was silently denied on insert. Worth remembering the shape of
+that bug: **RLS refuses a write by returning zero rows, not an error**, so any client that only
+checks `error` reports success on a save that never happened. Check the returned rows too.
 
 Enable RLS on every table. Core pattern:
 
