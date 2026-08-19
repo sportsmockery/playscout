@@ -151,6 +151,11 @@ Produce ONE report across the whole batch, as JSON matching this shape exactly:
 }
 
 HARD REQUIREMENTS:
+- Refer to players EXACTLY by the labels given above and nothing else. Many players are
+  identified by role ("left guard") because their jersey number was not legible on this film —
+  that is normal. NEVER attach a jersey number to a player who is listed without one, never
+  invent a name, and never merge two differently-labelled players into one. If a label has no
+  number, neither does your sentence about them.
 - per_video MUST contain exactly one entry for every clip listed above, using the exact video_id strings given. Do not skip a clip, do not invent one.
 - A pattern's clips_seen must match the counts in COMPUTED TOTALS. If you cannot support a count, leave the pattern out.
 - Prioritize what repeats across clips over what was dramatic in one clip. A single bad rep is not a trend, and say so when a coach might read it as one.

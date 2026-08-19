@@ -18,6 +18,7 @@ const clip = (over: Partial<BatchClipResult> = {}): BatchClipResult => ({
 const pg = (over: Partial<PlayerGrade> = {}): PlayerGrade => ({
   identifier: '#54',
   jersey_number: '54',
+  jersey_number_frame: 6,
   position: 'LG',
   role_on_play: 'combo to backer',
   execution: 80,
@@ -75,7 +76,7 @@ describe('aggregateBatch', () => {
     expect(fiftyFour?.bestGrade).toBe(90)
     expect(fiftyFour?.worstGrade).toBe(70)
 
-    const tackle = agg.playerRollup.find((p) => p.identifier === 'left tackle')
+    const tackle = agg.playerRollup.find((p) => p.identifier.toLowerCase() === 'left tackle')
     expect(tackle?.reps).toBe(2)
     expect(tackle?.averageGrade).toBe(70)
   })

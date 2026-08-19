@@ -36,6 +36,11 @@ export interface PlayerRollup {
   playerId: string | null
   identifier: string
   jerseyNumber: string | null
+  /**
+   * roster/number = one specific player. role = a position across the batch,
+   * which may be more than one child if numbers weren't legible.
+   */
+  identifiedBy: 'roster' | 'number' | 'role'
   positions: string[]
   reps: number
   averageGrade: number
@@ -106,15 +111,66 @@ function countRepeats(lists: string[][], limit = 8): RepeatedItem[] {
 }
 
 /**
+ * Alignment words that describe the PLAY, not the player. "Pulling left
+ * guard" and "left guard" are the same kid doing different jobs; leaving them
+ * unmerged turned an 11-player unit into 30 rollup rows.
+ */
+const ROLE_QUALIFIERS = [
+  'pulling', 'playside', 'play side', 'backside', 'back side', 'frontside', 'front side',
+  'lead', 'near', 'far', 'weakside', 'weak side', 'strongside', 'strong side', 'covered',
+  'uncovered', 'the',
+]
+
+/** Position codes and long forms that mean the same spot. Left/right are kept
+ *  distinct on purpose — those are different players. */
+const POSITION_ALIASES: Record<string, string> = {
+  lt: 'left tackle', rt: 'right tackle', lg: 'left guard', rg: 'right guard',
+  c: 'center', ol: 'offensive line',
+  qb: 'quarterback', rb: 'running back', hb: 'running back', tb: 'running back',
+  tailback: 'running back', halfback: 'running back',
+  fb: 'fullback', te: 'tight end', wr: 'wide receiver', receiver: 'wide receiver',
+  de: 'defensive end', dt: 'defensive tackle', nt: 'nose tackle', dl: 'defensive line',
+  lb: 'linebacker', ilb: 'linebacker', olb: 'linebacker',
+  cb: 'cornerback', corner: 'cornerback', fs: 'free safety', ss: 'strong safety',
+  db: 'defensive back',
+}
+
+/**
+ * Collapses a descriptive label to the role it names, so the same player
+ * described three ways across a batch lands in one row.
+ */
+export function normalizeRoleLabel(raw: string): string {
+  let text = (raw ?? '')
+    .toLowerCase()
+    .split('/')[0]                    // "fullback / lead blocker" -> "fullback"
+    .replace(/\([^)]*\)/g, ' ')       // drop "(black jersey)"
+    .replace(/#\s*\d+/g, ' ')         // drop any number
+    .replace(/[^a-z\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  for (const q of ROLE_QUALIFIERS) {
+    text = text.replace(new RegExp(`\\b${q}\\b`, 'g'), ' ')
+  }
+  text = text.replace(/\s+/g, ' ').trim()
+
+  return POSITION_ALIASES[text] ?? text
+}
+
+/**
  * Identity for a graded player across clips: a matched roster row first, then
- * a legible jersey number, then the descriptive identifier. Descriptions are
- * scoped per position so "left tackle" in one clip doesn't silently merge
- * with a different player described the same way at another spot.
+ * a verified jersey number, then the normalized role.
+ *
+ * Role rows can legitimately cover more than one child (two different wide
+ * receivers both described as "wide receiver" in different clips). That's why
+ * PlayerRollup carries `identifiedBy` — the UI has to say so rather than
+ * implying a role row is one player.
  */
 function playerKey(g: PlayerGrade): string {
   if (g.player_id) return `player:${g.player_id}`
   if (g.jersey_number) return `jersey:${String(g.jersey_number).replace(/[^0-9]/g, '')}`
-  return `desc:${g.identifier.toLowerCase()}|${(g.position ?? '').toLowerCase()}`
+  const role = normalizeRoleLabel(g.position || g.identifier)
+  return `role:${role || 'unidentified'}`
 }
 
 function average(nums: number[]): number {
@@ -157,13 +213,22 @@ export function aggregateBatch(clips: BatchClipResult[]): BatchAggregate {
     .map(([key, { grades, order }]) => {
       const avg = Math.round(average(order))
       const withNumber = grades.find((g) => g.jersey_number)
+      const playerId = grades.find((g) => g.player_id)?.player_id ?? null
+      const role = normalizeRoleLabel(grades[0].position || grades[0].identifier)
+      const identifiedBy: PlayerRollup['identifiedBy'] = playerId
+        ? 'roster'
+        : withNumber
+          ? 'number'
+          : 'role'
       return {
         key,
-        playerId: grades.find((g) => g.player_id)?.player_id ?? null,
-        // Prefer the jersey-number identifier when any clip could read it —
-        // "#54" is more useful to a coach than "left guard".
-        identifier: withNumber?.identifier ?? grades[0].identifier,
+        playerId,
+        // Prefer the verified-number identifier when any clip could read it —
+        // "#54" is more useful to a coach than "left guard". Otherwise show
+        // the normalized role so the label matches what the row actually is.
+        identifier: withNumber?.identifier ?? (role ? role.replace(/\b\w/g, (c) => c.toUpperCase()) : grades[0].identifier),
         jerseyNumber: withNumber?.jersey_number ?? null,
+        identifiedBy,
         positions: [...new Set(grades.map((g) => g.position).filter(Boolean))],
         reps: grades.length,
         averageGrade: avg,

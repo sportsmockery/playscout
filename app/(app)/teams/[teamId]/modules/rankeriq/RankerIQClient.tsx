@@ -36,6 +36,8 @@ interface PlayerGrade {
   grade: number;
   letter: string;
   rank: number;
+  jersey_number_frame?: number | null;
+  number_rejected_reason?: string | null;
 }
 
 interface RankerResult {
@@ -433,7 +435,9 @@ export default function RankerIQClient({
               </div>
               <p className="text-[11px] text-[var(--brand-muted)] mb-4">
                 Grade blends execution with how hard the job was and how much the rep mattered.
-                Baseline 70 = did the job.
+                Baseline 70 = did the job. Players are named by jersey number only when the digits
+                were actually readable on this film and match your roster — otherwise they&apos;re
+                graded by role.
               </p>
 
               {grades.length === 0 ? (
@@ -467,10 +471,19 @@ export default function RankerIQClient({
                               {g.identifier}
                             </span>
                             <span className="text-xs text-[var(--brand-muted)]">{g.position}</span>
-                            {g.identification_confidence < 0.5 && (
-                              <span className="text-[10px] text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full">
-                                uncertain ID
+                            {g.number_rejected_reason ? (
+                              <span
+                                className="text-[10px] text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full"
+                                title={`A jersey number was reported but discarded: ${g.number_rejected_reason}`}
+                              >
+                                graded by role
                               </span>
+                            ) : (
+                              g.identification_confidence < 0.5 && (
+                                <span className="text-[10px] text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full">
+                                  uncertain ID
+                                </span>
+                              )
                             )}
                           </div>
 

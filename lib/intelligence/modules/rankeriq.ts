@@ -55,12 +55,35 @@ Review every frame for a player's head making contact with another player, the g
 
 RANKERIQ TASK — grade EVERY player of this team's graded unit who is visible enough to evaluate.
 
-IDENTIFYING PLAYERS (most important rule in this module — a wrong number gives a real kid someone else's grade):
-- jersey_number: fill ONLY when you can actually read the digits in a frame. If you cannot read it, set it to null. NEVER infer a number from position, roster context, or what would "make sense."
-- identifier: how a coach would find this player on the film. Prefer "#54" when the number is legible; otherwise a positional description ("left tackle", "backside safety, near hash").
-- identification_confidence (0.0-1.0): how sure you are this is one specific player. Low is fine and expected on wide sideline film — it is far better than a confident wrong number.
-- Grade a player ONCE. If two entries might be the same player, merge them into one entry and say so in the note.
-- Do NOT pad the list to a full roster. Grade only who you can actually see doing something. A clip where three players are evaluable produces three entries.
+IDENTIFYING PLAYERS — READ THIS TWICE. This is the one output that can do real damage:
+a jersey number you did not actually read hands a real child another player's grade, and the
+coach has no way to know it was invented.
+
+THE DEFAULT ANSWER IS null. Most football film — especially sideline and end-zone youth film — is
+shot too wide to resolve two digits on a moving jersey. Reporting jersey_number: null for every
+player in a clip is a NORMAL, CORRECT, EXPECTED result. It is not a failure and you will not be
+penalized for it. Grading by role is the standard mode of this module.
+
+- jersey_number: fill ONLY if you can point to a specific frame where you can literally see the
+  digits on that player's jersey and read them. Otherwise null.
+- jersey_number_frame: the frame index where you read those digits. If you cannot name that
+  frame, you did not read the number — set BOTH fields to null. A number without a frame is
+  discarded by the app anyway.
+- NEVER derive a number from: the position played, what a roster would suggest, a number seen on
+  a different player, a number from an earlier clip, jersey color, or what would "make sense" for
+  this play. Those are all inventions.
+- If you can see that a player HAS a number but cannot resolve the digits, that is still null.
+  "Probably 30" is null. "3 or 8" is null. "#3X" is null.
+- identifier: how a coach would find this player on this film WITHOUT a number — position plus
+  alignment ("left tackle", "backside safety near the hash", "playside wing"). Only use "#54"
+  when jersey_number is genuinely filled.
+- identification_confidence (0.0-1.0): how sure you are this is one specific identifiable player.
+  Be honest and low. A confident wrong ID is the worst possible output; an honest 0.3 is fine.
+- Grade a player ONCE per clip. If two entries might be the same player, merge them and say so.
+- Do NOT pad the list to a full roster. Grade only who you can actually see doing something. A
+  clip where three players are evaluable produces exactly three entries.
+- Use the SAME role label for the same position across the clip so a coach can follow one player
+  ("left guard", not "LG" in one entry and "pulling left guard" in the next).
 
 FOR EACH GRADED PLAYER, report what you OBSERVED — the app computes the final grade from these:
 
@@ -93,6 +116,9 @@ Then set:
 Use overall_score for the UNIT's collective performance on this clip, position_scores for
 { execution_quality, assignment_discipline, effort } (null any with no evidence, and say so in
 reasoning), and strengths/weaknesses/drills for the unit as a whole — not per player.
+
+7b. The note must NOT contain a jersey number unless that same number is in this entry's
+jersey_number field. Refer to the player by the same label you used in identifier.
 
 PROHIBITED: Never invent a jersey number, a player name, or a player who isn't visible.
 Never grade the opponent's players. Return ONLY the JSON schema. No preamble.`
@@ -143,6 +169,7 @@ export const RANKERIQ_RESPONSE_SCHEMA = {
         properties: {
           identifier: { type: Type.STRING },
           jersey_number: { type: Type.STRING, nullable: true },
+          jersey_number_frame: { type: Type.INTEGER, nullable: true },
           position: { type: Type.STRING },
           role_on_play: { type: Type.STRING },
           execution: { type: Type.INTEGER },
@@ -153,7 +180,7 @@ export const RANKERIQ_RESPONSE_SCHEMA = {
           identification_confidence: { type: Type.NUMBER },
         },
         required: [
-          'identifier', 'jersey_number', 'position', 'role_on_play',
+          'identifier', 'jersey_number', 'jersey_number_frame', 'position', 'role_on_play',
           'execution', 'difficulty', 'impact', 'note', 'identification_confidence',
         ],
       },

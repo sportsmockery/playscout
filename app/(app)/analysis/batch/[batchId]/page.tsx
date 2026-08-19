@@ -201,7 +201,10 @@ export default async function BatchReportPage({
             Player Grades Across The Batch
           </h2>
           <p className="text-[11px] text-[var(--brand-muted)] mb-4">
-            Average grade over every rep graded in these clips. More reps means a more reliable number.
+            Average grade over every rep graded in these clips. More reps means a more reliable
+            number. Rows marked <span className="font-semibold">by role</span> group a position
+            across the batch — if jersey numbers weren&apos;t readable on this film, that row may
+            cover more than one player.
           </p>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -218,7 +221,17 @@ export default async function BatchReportPage({
               <tbody>
                 {aggregate.playerRollup.map((p) => (
                   <tr key={p.key} className="border-b border-[var(--brand-border)] last:border-0">
-                    <td className="py-2 font-semibold text-[var(--brand-ink)]">{p.identifier}</td>
+                    <td className="py-2 font-semibold text-[var(--brand-ink)]">
+                      {p.identifier}
+                      {p.identifiedBy === 'role' && (
+                        <span
+                          className="ml-1.5 text-[10px] font-medium text-[var(--brand-muted)] bg-[var(--brand-bg)] border border-[var(--brand-border)] px-1.5 py-0.5 rounded-full"
+                          title="Grouped by position — jersey numbers weren't readable, so this row may cover more than one player."
+                        >
+                          by role
+                        </span>
+                      )}
+                    </td>
                     <td className="py-2 text-xs text-[var(--brand-muted)]">{p.positions.join(', ')}</td>
                     <td className="py-2 text-right text-xs text-[var(--brand-muted)]">{p.reps}</td>
                     <td className={`py-2 text-right font-bold ${scoreColor(p.averageGrade)}`}>

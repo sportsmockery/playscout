@@ -266,8 +266,20 @@ export interface PositionAnalysisResult {
   execution looks like for a LT vs a FS). A coefficient would rank a great center below a mediocre
   QB by fiat.
 - Identification is the module's main anti-hallucination risk: a wrong jersey number gives a real
-  kid someone else's grade. Numbers are reported ONLY when legible, unreadable players are graded
-  by role, and `matchRosterPlayer` refuses to match a duplicated number rather than guessing.
+  kid someone else's grade, and models DO fabricate numbers under this prompt (observed in
+  production). Prompt wording is necessary but not sufficient — `resolvePlayerIdentity` makes
+  every reported number clear three independent gates before it reaches a coach:
+  1. the model cited `jersey_number_frame` — the frame it read the digits in
+  2. `identification_confidence` >= `MIN_NUMBER_CONFIDENCE` (0.7)
+  3. the number exists on the team's roster (when a roster is on file)
+  A failing number is discarded, the player is relabelled by role, and the number is scrubbed
+  from the model's note too — "#30 kept his eyes downfield" is the same false claim in prose.
+  `matchRosterPlayer` additionally refuses a duplicated number rather than guessing between two
+  players. The default and expected answer on youth sideline film is NO number at all.
+- Rollup identity: `normalizeRoleLabel` collapses "Right Guard" / "RG" / "Pulling Right Guard" /
+  "Right Guard (white jersey)" to one row (left/right stay distinct — different players). A row
+  built from role rather than a number is marked `identifiedBy: 'role'` and the UI says so,
+  because such a row can legitimately cover more than one child.
 - Writes one row per graded player to `player_grades` (migration 030) so grades roll up to player
   profiles and trend over a season, not just live inside one report's jsonb.
 
