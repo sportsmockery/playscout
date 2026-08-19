@@ -3,6 +3,7 @@ import type { PositionAnalysisResult } from '@/lib/db/types';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft, Brain, Zap, Gauge, Shield, TrendingUp, AlertTriangle, ArrowRight, BookOpen, Crosshair, ListOrdered } from 'lucide-react';
+import AnalysisQueue from '@/components/intelligence/AnalysisQueue';
 
 type AnalysisWithPlayer = PositionAnalysisResult & {
   players: { first_name: string; last_name: string; primary_position: string } | null
@@ -170,6 +171,12 @@ export default async function IntelligencePage({
             />
           </Link>
         ))}
+      </div>
+
+      {/* Anything still running, across every module — so "Analysis History"
+          is the whole picture and not just the finished half. */}
+      <div className="mb-6">
+        <AnalysisQueue teamId={teamId} />
       </div>
 
       {/* Recent analyses */}
