@@ -11,6 +11,9 @@ import type { PlayerGrade } from './schemas'
 const grade = (over: Partial<PlayerGrade> = {}): PlayerGrade => ({
   identifier: '#54',
   jersey_number: '54',
+  // A legibly-read number now has to name the frame it was read in, or
+  // resolvePlayerIdentity discards it as a guess.
+  jersey_number_frame: 6,
   position: 'LG',
   role_on_play: 'backside cutoff',
   execution: 80,
@@ -101,11 +104,16 @@ describe('matchRosterPlayer', () => {
 })
 
 describe('rankPlayerGrades', () => {
+  /** Role-graded (no jersey number), so the descriptive label survives
+   *  identity resolution and can be used to assert ordering. */
+  const byRole = (identifier: string, over: Partial<PlayerGrade> = {}) =>
+    grade({ identifier, jersey_number: null, jersey_number_frame: null, ...over })
+
   it('ranks best-first and numbers the ranks', () => {
     const ranked = rankPlayerGrades([
-      grade({ identifier: 'weak', execution: 55 }),
-      grade({ identifier: 'strong', execution: 95 }),
-      grade({ identifier: 'middle', execution: 75 }),
+      byRole('weak', { execution: 55 }),
+      byRole('strong', { execution: 95 }),
+      byRole('middle', { execution: 75 }),
     ])
     expect(ranked.map((g) => g.identifier)).toEqual(['strong', 'middle', 'weak'])
     expect(ranked.map((g) => g.rank)).toEqual([1, 2, 3])
@@ -119,8 +127,8 @@ describe('rankPlayerGrades', () => {
 
   it('breaks ties toward the harder assignment', () => {
     const ranked = rankPlayerGrades([
-      grade({ identifier: 'easy-job', execution: 70, difficulty: 1 }),
-      grade({ identifier: 'hard-job', execution: 70, difficulty: 5 }),
+      byRole('easy-job', { execution: 70, difficulty: 1 }),
+      byRole('hard-job', { execution: 70, difficulty: 5 }),
     ])
     expect(ranked[0].identifier).toBe('hard-job')
   })

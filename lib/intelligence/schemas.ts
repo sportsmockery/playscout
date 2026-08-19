@@ -105,6 +105,10 @@ export type MistakeItem = z.infer<typeof MistakeItemSchema>
 export const PlayerGradeSchema = z.object({
   identifier: z.string(),
   jersey_number: z.string().nullable().optional(),
+  // The frame where the digits were actually read. A number with no frame
+  // behind it is a guess, and resolvePlayerIdentity discards it — asking for
+  // the frame makes fabrication cost the model something.
+  jersey_number_frame: z.number().nullable().optional(),
   position: z.string(),
   role_on_play: z.string(),
   execution: z.number(),
@@ -118,6 +122,8 @@ export const PlayerGradeSchema = z.object({
   letter: z.string().optional(),
   rank: z.number().optional(),
   player_id: z.string().nullable().optional(),
+  /** Set when a reported number failed verification and was discarded. */
+  number_rejected_reason: z.string().nullable().optional(),
 })
 export type PlayerGrade = z.infer<typeof PlayerGradeSchema>
 

@@ -13,6 +13,7 @@ interface PlayerGradeShape {
   letter?: string;
   note: string;
   rank?: number;
+  number_rejected_reason?: string | null;
 }
 
 interface EvidenceShape {
@@ -113,6 +114,14 @@ export default function ClipBreakdown({ teamId, videoId, videoTitle, comment, re
                     <span className="font-semibold text-[var(--brand-ink)] shrink-0">
                       {g.identifier}
                       {g.position ? <span className="text-[var(--brand-muted)]"> {g.position}</span> : null}
+                      {g.number_rejected_reason && (
+                        <span
+                          className="ml-1 text-[10px] font-normal text-[var(--brand-muted)]"
+                          title={`A jersey number was reported but discarded: ${g.number_rejected_reason}`}
+                        >
+                          (by role)
+                        </span>
+                      )}
                     </span>
                     <span className="text-[var(--brand-muted)] min-w-0">{g.note}</span>
                   </li>
