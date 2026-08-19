@@ -58,9 +58,22 @@ describe('resolvePlayerIdentity — the fabricated-number gates', () => {
     expect(id.numberRejectedReason).toMatch(/no #30 on this roster/i)
   })
 
-  it('still trusts a well-evidenced number when the team has no roster on file', () => {
-    const id = resolvePlayerIdentity(legible({ jersey_number: '30', identifier: '#30' }), [])
-    expect(id.jerseyNumber).toBe('30')
+  it('refuses any number when the team has no roster to check it against', () => {
+    // Nothing to verify against is exactly the state that put one kid's grade
+    // on another, so a number is worth less than an honest role label here.
+    const id = resolvePlayerIdentity(legible(), [])
+    expect(id.jerseyNumber).toBeNull()
+    expect(id.identifier).toBe('LG')
+    expect(id.numberRejectedReason).toMatch(/no roster on file/i)
+  })
+
+  it('refuses numbers outright on scrimmage film, roster or not', () => {
+    // A practice pinny can carry a number belonging to a different kid, so a
+    // roster "match" proves nothing about who is wearing it.
+    const id = resolvePlayerIdentity(legible(), roster, { allowNumbers: false })
+    expect(id.jerseyNumber).toBeNull()
+    expect(id.playerId).toBeNull()
+    expect(id.numberRejectedReason).toMatch(/scrimmage/i)
   })
 
   it('keeps a roster-valid but duplicated number without attributing it to a player', () => {

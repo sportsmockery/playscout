@@ -41,6 +41,23 @@ export const PositionAnalysisInputSchema = z.object({
     yard_line: z.string().optional(),
     coach_label: z.string().optional(),
   }).optional(),
+  /**
+   * RANKERIQ only. Populated SERVER-SIDE in analyze-position.ts from the
+   * team's players table — never trusted from the client, since it is what
+   * decides which jersey numbers are allowed to exist.
+   */
+  roster: z.array(z.object({
+    jersey_number: z.string().nullable().optional(),
+    position: z.string().nullable().optional(),
+    name: z.string().nullable().optional(),
+  })).optional(),
+  /**
+   * Scrimmage and practice film is shot with pinnies and mismatched jerseys —
+   * a number on the field may belong to a different player on the roster, so
+   * a "match" proves nothing. The coach flags it and numbers are not claimed
+   * at all.
+   */
+  filmConditions: z.enum(['game', 'scrimmage', 'unknown']).optional(),
   // SCOUTIQ only — the opponent is the analysis SUBJECT, distinct from
   // `team` (the coach's own team, used as context/anchoring, never graded).
   opponentId: z.string().optional(),

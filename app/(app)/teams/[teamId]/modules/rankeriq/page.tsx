@@ -1,4 +1,4 @@
-import { getTeamById, getVideosByTeam, getFilmFolders, getRecentAnalysis } from '@/lib/db/queries';
+import { getTeamById, getVideosByTeam, getFilmFolders, getRecentAnalysis, getPlayersByTeam } from '@/lib/db/queries';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft, ListOrdered } from 'lucide-react';
@@ -20,11 +20,12 @@ export default async function RankerIQPage({
 }) {
   const { teamId } = await params;
   const { videoId, videoIds, folderId } = await searchParams;
-  const [team, videos, folders, pastAnalyses] = await Promise.all([
+  const [team, videos, folders, pastAnalyses, players] = await Promise.all([
     getTeamById(teamId),
     getVideosByTeam(teamId),
     getFilmFolders(teamId),
     getRecentAnalysis(teamId, 5),
+    getPlayersByTeam(teamId),
   ]);
 
   if (!team) notFound();
@@ -62,6 +63,8 @@ export default async function RankerIQPage({
         ageGroup={team.age_group ?? undefined}
         homeJerseyColor={team.home_jersey_color ?? undefined}
         awayJerseyColor={team.away_jersey_color ?? undefined}
+        rosterSize={players.length}
+        rosterWithNumbers={players.filter((p) => p.jersey_number != null).length}
         videos={videos}
         folders={folders}
         pastAnalyses={rankerAnalyses}

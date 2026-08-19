@@ -72,42 +72,87 @@ export interface BatchAggregate {
 
 const SEVERITY_ORDER = ['minor', 'moderate', 'major', 'game_changing']
 
+const STOPWORDS = new Set([
+  'the', 'a', 'an', 'and', 'or', 'of', 'to', 'in', 'on', 'at', 'is', 'are', 'was', 'were',
+  'with', 'for', 'from', 'by', 'that', 'this', 'it', 'its', 'their', 'his', 'her', 'they',
+  'he', 'she', 'as', 'but', 'not', 'no', 'too', 'very', 'be', 'been', 'has', 'have', 'had',
+  'which', 'who', 'when', 'while', 'into', 'out', 'up', 'down', 'off', 'more', 'some', 'can',
+  'could', 'would', 'should', 'frame', 'frames', 'clip', 'clips',
+])
+
 /**
- * Groups near-identical coaching points so "poor pad level" said in six clips
- * reads as one recurring problem rather than six separate ones. Deliberately
- * crude — lowercased, punctuation-stripped, first six words — because the
- * goal is grouping obvious repeats, not semantic clustering.
+ * Content words for similarity, lightly stemmed so "blocks stalling" and
+ * "block stalled" compare equal. Frame references are dropped — two clips
+ * making the same point cite different frames, and letting those count as
+ * differences is what kept real repeats apart.
  */
-function repetitionKey(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, '')
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 6)
-    .join(' ')
+function contentWords(text: string): Set<string> {
+  return new Set(
+    text
+      .toLowerCase()
+      .replace(/[^a-z\s]/g, ' ')
+      .split(/\s+/)
+      .filter((w) => w.length > 2 && !STOPWORDS.has(w))
+      .map((w) => (w.length > 4 ? w.replace(/(ings|ing|ed|es|s)$/, '') : w))
+  )
 }
 
+function jaccard(a: Set<string>, b: Set<string>): number {
+  if (!a.size || !b.size) return 0
+  let shared = 0
+  for (const w of a) if (b.has(w)) shared += 1
+  return shared / (a.size + b.size - shared)
+}
+
+/**
+ * How much two coaching points must overlap to count as the same point.
+ * Tuned against real reports, where the same problem is phrased differently
+ * in every clip ("backside guard late off the double" vs "backside guard late
+ * getting off the double team"). A first-six-words key never merged those, so
+ * every item showed 1x and the recurring lists were useless.
+ */
+const REPEAT_SIMILARITY = 0.5
+
 function countRepeats(lists: string[][], limit = 8): RepeatedItem[] {
-  const byKey = new Map<string, { text: string; clips: number }>()
+  const clusters: { text: string; words: Set<string>; clips: number }[] = []
+
   for (const list of lists) {
     // One clip saying the same thing twice still counts once.
-    const seenInClip = new Set<string>()
+    const matchedThisClip = new Set<number>()
     for (const raw of list) {
       const text = raw?.trim()
       if (!text) continue
-      const key = repetitionKey(text)
-      if (!key || seenInClip.has(key)) continue
-      seenInClip.add(key)
-      const existing = byKey.get(key)
-      if (existing) existing.clips += 1
-      else byKey.set(key, { text, clips: 1 })
+      const words = contentWords(text)
+      if (!words.size) continue
+
+      let bestIndex = -1
+      let bestScore = 0
+      clusters.forEach((c, i) => {
+        const score = jaccard(words, c.words)
+        if (score > bestScore) {
+          bestScore = score
+          bestIndex = i
+        }
+      })
+
+      if (bestScore >= REPEAT_SIMILARITY && bestIndex >= 0) {
+        if (!matchedThisClip.has(bestIndex)) {
+          clusters[bestIndex].clips += 1
+          matchedThisClip.add(bestIndex)
+        }
+        // Keep the shortest phrasing — it reads best as the canonical label.
+        if (text.length < clusters[bestIndex].text.length) clusters[bestIndex].text = text
+      } else {
+        clusters.push({ text, words, clips: 1 })
+        matchedThisClip.add(clusters.length - 1)
+      }
     }
   }
-  return [...byKey.values()]
+
+  return clusters
     .sort((a, b) => b.clips - a.clips || a.text.localeCompare(b.text))
     .slice(0, limit)
-    .map((r) => ({ text: r.text, clips: r.clips }))
+    .map((c) => ({ text: c.text, clips: c.clips }))
 }
 
 /**
@@ -166,11 +211,69 @@ export function normalizeRoleLabel(raw: string): string {
  * PlayerRollup carries `identifiedBy` — the UI has to say so rather than
  * implying a role row is one player.
  */
+function roleKeyOf(g: PlayerGrade): string {
+  return `role:${normalizeRoleLabel(g.position || g.identifier) || 'unidentified'}`
+}
+
 function playerKey(g: PlayerGrade): string {
   if (g.player_id) return `player:${g.player_id}`
   if (g.jersey_number) return `jersey:${String(g.jersey_number).replace(/[^0-9]/g, '')}`
-  const role = normalizeRoleLabel(g.position || g.identifier)
-  return `role:${role || 'unidentified'}`
+  return roleKeyOf(g)
+}
+
+/**
+ * Groups every graded rep in the batch into one row per player.
+ *
+ * The subtle case is a jersey number that was never confirmed against a
+ * roster. Grouping purely by number produced rows like "#55 — Right Tackle,
+ * Fullback, Right Guard, Left Guard, Running Back" across seven reps: one
+ * number stuck onto six different kids. A number that moves around the
+ * formation like that is evidence the digits were misread, not evidence of a
+ * versatile player.
+ *
+ * So an unconfirmed number only holds a group together while the reps agree
+ * on a position. When they don't, the number is abandoned and those reps fall
+ * back to role rows — the honest unit when we can't tell players apart.
+ * A roster-MATCHED number is exempt: there the roster is ground truth for who
+ * the player is, and a two-way kid genuinely does play several spots.
+ */
+function groupGradesForRollup(clips: BatchClipResult[]): Map<string, PlayerGrade[]> {
+  const preliminary = new Map<string, PlayerGrade[]>()
+  for (const clip of clips) {
+    for (const g of clip.playerGrades ?? []) {
+      if (typeof g.grade !== 'number') continue
+      const key = playerKey(g)
+      preliminary.set(key, [...(preliminary.get(key) ?? []), g])
+    }
+  }
+
+  const final = new Map<string, PlayerGrade[]>()
+  const push = (key: string, grade: PlayerGrade) =>
+    final.set(key, [...(final.get(key) ?? []), grade])
+
+  for (const [key, grades] of preliminary) {
+    const rosterBacked = grades.some((g) => g.player_id)
+    const roles = new Set(grades.map((g) => normalizeRoleLabel(g.position || g.identifier)))
+
+    if (key.startsWith('jersey:') && !rosterBacked && roles.size > 1) {
+      // The number contradicts itself across the batch — drop it.
+      for (const g of grades) {
+        push(roleKeyOf(g), {
+          ...g,
+          jersey_number: null,
+          identifier: normalizeRoleLabel(g.position || g.identifier) || g.identifier,
+          number_rejected_reason:
+            g.number_rejected_reason ??
+            'the same number was read at several different positions across this batch',
+        })
+      }
+      continue
+    }
+
+    for (const g of grades) push(key, g)
+  }
+
+  return final
 }
 
 function average(nums: number[]): number {
@@ -195,22 +298,13 @@ export function aggregateBatch(clips: BatchClipResult[]): BatchAggregate {
 
   const byScore = [...scored].sort((a, b) => b.overallScore - a.overallScore)
 
-  // Player grades keep clip order, so trend means "over the course of the
-  // batch" rather than an arbitrary ordering.
-  const gradesByPlayer = new Map<string, { grades: PlayerGrade[]; order: number[] }>()
-  clips.forEach((clip) => {
-    for (const g of clip.playerGrades ?? []) {
-      if (typeof g.grade !== 'number') continue
-      const key = playerKey(g)
-      const entry = gradesByPlayer.get(key) ?? { grades: [], order: [] }
-      entry.grades.push(g)
-      entry.order.push(g.grade)
-      gradesByPlayer.set(key, entry)
-    }
-  })
+  // Clips are visited in order, so trend means "over the course of the batch"
+  // rather than an arbitrary ordering.
+  const gradesByPlayer = groupGradesForRollup(clips)
 
   const playerRollup: PlayerRollup[] = [...gradesByPlayer.entries()]
-    .map(([key, { grades, order }]) => {
+    .map(([key, grades]) => {
+      const order = grades.map((g) => g.grade as number)
       const avg = Math.round(average(order))
       const withNumber = grades.find((g) => g.jersey_number)
       const playerId = grades.find((g) => g.player_id)?.player_id ?? null

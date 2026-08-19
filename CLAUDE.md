@@ -280,6 +280,24 @@ export interface PositionAnalysisResult {
   "Right Guard (white jersey)" to one row (left/right stay distinct — different players). A row
   built from role rather than a number is marked `identifiedBy: 'role'` and the UI says so,
   because such a row can legitimately cover more than one child.
+- A jersey number that was never confirmed against a roster only holds a rollup row together
+  while the reps AGREE on a position. Observed in production: "#55" appeared at six positions
+  across seven reps — one number stuck onto the whole offense. `groupGradesForRollup` abandons
+  such a number and falls back to role rows. A roster-MATCHED number is exempt: there the roster
+  is ground truth and a two-way kid really does play several spots.
+- **A jersey number REQUIRES a roster.** With nothing to check against, an unverifiable number is
+  exactly what put one kid's grade on another, so with no roster on file every player is graded
+  by role and the UI points the coach at `/teams/[id]/roster`. Entering jersey numbers is what
+  unlocks player-level grading and player profiles.
+- **Scrimmage/practice film claims no numbers at all** (`filmConditions: 'scrimmage'`, a checkbox
+  on the module screen). Pinnies and borrowed jerseys carry numbers belonging to other players,
+  so a roster "match" there proves nothing about who is wearing it — and some players wear no
+  number at all.
+- The roster reaches the prompt as a CLOSED SET ("these are the only numbers that exist; digits
+  outside this list mean you misread"), never as a lookup table. Telling the model "the left
+  guard is #54" would invite precisely the inference that produced fabricated numbers. The
+  roster is fetched server-side in `analyze-position.ts`, never accepted from the client, since
+  it decides which numbers are allowed to exist.
 - Writes one row per graded player to `player_grades` (migration 030) so grades roll up to player
   profiles and trend over a season, not just live inside one report's jsonb.
 
@@ -373,7 +391,10 @@ Coach multi-selects film (or a folder) in a module screen's FilmPicker
 per-clip pages.** A coach who queues 40 clips wants one film session, not 40 verdicts:
 - `lib/intelligence/aggregate-batch.ts` computes the numbers deterministically — averages,
   how many clips each point repeats in, per-player grade rollups with trend, mistake counts.
-  These are facts handed to the model, never recomputed by it.
+  These are facts handed to the model, never recomputed by it. Repetition is detected by
+  token-overlap similarity, not a word-prefix key: on real film the same problem is worded
+  differently in every clip, and a prefix key merged nothing, leaving every item at 1x — which
+  in turn let the summary model invent its own clip counts.
 - `lib/intelligence/batch-summary.ts` is the System A narrative over that evidence (Claude via
   `report_generation`). It must produce a comment for EVERY clip, and pattern counts must match
   the computed totals.
