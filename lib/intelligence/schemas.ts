@@ -3,7 +3,7 @@ import { Type } from '@google/genai'
 
 export type IntelligenceModuleKey =
   | 'QBIQ' | 'OLIQ' | 'RBIQ' | 'WRIQ' | 'DLIQ' | 'LBIQ' | 'DBIQ'
-  | 'TEAMIQ' | 'MISTAKEIQ' | 'SCOUTIQ' | 'PRACTICEIQ'
+  | 'TEAMIQ' | 'MISTAKEIQ' | 'SCOUTIQ' | 'PRACTICEIQ' | 'RANKERIQ'
 
 export const PositionAnalysisInputSchema = z.object({
   moduleKey: z.string(),
@@ -94,6 +94,33 @@ export const MistakeItemSchema = z.object({
 })
 export type MistakeItem = z.infer<typeof MistakeItemSchema>
 
+/**
+ * RANKERIQ — one graded rep for one player in one clip.
+ *
+ * The model supplies the observations (execution/difficulty/impact) and the
+ * identification; `grade`, `letter`, `rank` and `player_id` are computed
+ * server-side in lib/intelligence/player-grades.ts so grades stay comparable
+ * across clips and a jersey number is never matched to the wrong kid.
+ */
+export const PlayerGradeSchema = z.object({
+  identifier: z.string(),
+  jersey_number: z.string().nullable().optional(),
+  position: z.string(),
+  role_on_play: z.string(),
+  execution: z.number(),
+  difficulty: z.number(),
+  impact: z.string(),
+  note: z.string(),
+  evidence_frames: z.array(z.number()).optional(),
+  identification_confidence: z.number(),
+  // Computed after validation — never trusted from the model.
+  grade: z.number().optional(),
+  letter: z.string().optional(),
+  rank: z.number().optional(),
+  player_id: z.string().nullable().optional(),
+})
+export type PlayerGrade = z.infer<typeof PlayerGradeSchema>
+
 export const PositionAnalysisOutputSchema = z.object({
   overall_score: z.number(),
   position_scores: z.record(z.string(), z.number().nullable()),
@@ -130,6 +157,10 @@ export const PositionAnalysisOutputSchema = z.object({
   // MISTAKEIQ per-mistake taxonomy — written one row per item to
   // mistake_events (see lib/intelligence/persist-intelligence.ts).
   mistakes: z.array(MistakeItemSchema).optional(),
+  // RANKERIQ per-player grades — written one row per item to player_grades.
+  player_grades: z.array(PlayerGradeSchema).optional(),
+  unit_graded: z.string().optional(),
+  players_not_evaluable: z.string().optional(),
   // SCOUTIQ only — weak/target players on the OPPONENT. Anti-hallucination:
   // identify by legible jersey number when visible, otherwise by position/
   // alignment/description only — never invent a number.
@@ -163,6 +194,9 @@ export interface PositionAnalysisResult {
   situational_tells?: { situation: string; tell: string; confidence?: number }[]
   attack_points?: string[]
   mistakes?: MistakeItem[]
+  player_grades?: PlayerGrade[]
+  unit_graded?: string
+  players_not_evaluable?: string
   target_players?: { identifier: string; reason: string; confidence: number; evidence_frames?: number[] }[]
   model: string
   framesAnalyzed: number

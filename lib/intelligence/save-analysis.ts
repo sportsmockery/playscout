@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { saveToTeamMemory } from './memory'
-import { persistMistakeEvents, persistTeamTendencies } from './persist-intelligence'
+import { persistMistakeEvents, persistPlayerGrades, persistTeamTendencies } from './persist-intelligence'
 import type { PositionAnalysisInput, PositionAnalysisResult } from './schemas'
 
 /**
@@ -56,6 +56,11 @@ export async function saveAnalysisResult(
         situational_tells: result.situational_tells ?? null,
         attack_points: result.attack_points ?? null,
         target_players: result.target_players ?? null,
+        // RANKERIQ's ranked list, so a reopened saved report renders without
+        // a second query against player_grades.
+        player_grades: result.player_grades ?? null,
+        unit_graded: result.unit_graded ?? null,
+        players_not_evaluable: result.players_not_evaluable ?? null,
       },
       model_provider: 'google',
       model_name: result.model,
@@ -73,6 +78,21 @@ export async function saveAnalysisResult(
       supabase,
       { teamId: input.teamId, playSequenceId: input.playSequenceId },
       result.mistakes
+    )
+  }
+  if (input.moduleKey === 'RANKERIQ') {
+    await persistPlayerGrades(
+      supabase,
+      {
+        teamId: input.teamId,
+        videoId: input.videoId,
+        analysisResultId: saved?.id as string | undefined,
+        playSequenceId: input.playSequenceId,
+        side: result.unit_graded,
+        modelProvider: 'google',
+        modelName: result.model,
+      },
+      result.player_grades
     )
   }
   if (input.moduleKey === 'TEAMIQ') {

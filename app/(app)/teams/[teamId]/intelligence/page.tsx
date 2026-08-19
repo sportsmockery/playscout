@@ -2,7 +2,7 @@ import { getTeamById, getRecentAnalysis, getTeamTendencies } from '@/lib/db/quer
 import type { PositionAnalysisResult } from '@/lib/db/types';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ArrowLeft, Brain, Zap, Gauge, Shield, TrendingUp, AlertTriangle, ArrowRight, BookOpen, Crosshair } from 'lucide-react';
+import { ArrowLeft, Brain, Zap, Gauge, Shield, TrendingUp, AlertTriangle, ArrowRight, BookOpen, Crosshair, ListOrdered } from 'lucide-react';
 
 type AnalysisWithPlayer = PositionAnalysisResult & {
   players: { first_name: string; last_name: string; primary_position: string } | null
@@ -59,6 +59,15 @@ const MODULES = [
     bg: 'bg-orange-50',
     desc: 'Turnovers, penalties, missed assignments, and blown coverages.',
     href: (id: string) => `/teams/${id}/modules/mistakeiq`,
+  },
+  {
+    name: 'RankerIQ',
+    label: 'Player Ranking Intelligence',
+    icon: ListOrdered,
+    color: 'text-amber-600',
+    bg: 'bg-amber-50',
+    desc: 'Grades and ranks every player on the unit — execution, difficulty of the assignment, and value to the play — with the reason for each grade.',
+    href: (id: string) => `/teams/${id}/modules/rankeriq`,
   },
   {
     name: 'ScoutIQ',

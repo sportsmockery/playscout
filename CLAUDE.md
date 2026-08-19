@@ -194,7 +194,7 @@ function buildSystemPrompt(athlete: Athlete | null): string { ... }
 export type IntelligenceModuleKey =
   | 'QBIQ' | 'OLIQ' | 'RBIQ' | 'WRIQ'
   | 'DLIQ' | 'LBIQ' | 'DBIQ'
-  | 'TEAMIQ' | 'MISTAKEIQ' | 'SCOUTIQ' | 'PRACTICEIQ';
+  | 'TEAMIQ' | 'MISTAKEIQ' | 'SCOUTIQ' | 'PRACTICEIQ' | 'RANKERIQ';
 
 export interface PositionAnalysisInput {
   moduleKey: IntelligenceModuleKey;
@@ -251,6 +251,25 @@ export interface PositionAnalysisResult {
 - Categories: missed_assignment, missed_block, missed_contain, wrong_gap_fit, bad_pursuit_angle, poor_tackling_leverage, turnover_risk, snap_mesh_issue, alignment_error, coverage_bust, penalty_risk, poor_effort, clock_situation_error
 - Each mistake: `{ title, severity, category, description, likely_impact, correction, drill, evidence_frames, confidence }`
 - Severity: minor | moderate | major | game_changing
+
+**RANKERIQ** — `lib/intelligence/modules/rankeriq.ts`
+- Grades and ranks EVERY player on the team's own unit in a clip. Determines whether the team is
+  on offense or defense (or takes it from the coach) and grades that unit only — never the opponent.
+- The model reports observations per player: `position`, `role_on_play`, `execution` (0-100),
+  `difficulty` (1-5), `impact` (decisive→none), a one-line `note` on how the grade was decided,
+  and `evidence_frames`.
+- **The grade itself is computed in `lib/intelligence/player-grades.ts`, not by the model.**
+  Ranking is only meaningful if a 78 in clip 3 means what a 78 means in clip 40; a model asked for
+  a holistic number invents a new scale every call. Baseline 70 = did the job; difficulty tilts the
+  deviation in the direction the rep already went; impact scales how far it can travel.
+- Position is NOT a numeric multiplier — "grade varies by position" lives in the prompt (what good
+  execution looks like for a LT vs a FS). A coefficient would rank a great center below a mediocre
+  QB by fiat.
+- Identification is the module's main anti-hallucination risk: a wrong jersey number gives a real
+  kid someone else's grade. Numbers are reported ONLY when legible, unreadable players are graded
+  by role, and `matchRosterPlayer` refuses to match a duplicated number rather than guessing.
+- Writes one row per graded player to `player_grades` (migration 030) so grades roll up to player
+  profiles and trend over a season, not just live inside one report's jsonb.
 
 **Scoring scale (all modules):**
 90-100 Elite | 80-89 Advanced | 70-79 Solid | 60-69 Developing | <60 Beginner
@@ -334,8 +353,24 @@ Coach multi-selects film (or a folder) in a module screen's FilmPicker
 → Railway analysis worker claims jobs (workers/process-analysis.ts)
    — and the browser pokes POST /api/analysis/run while the coach is watching
 → Each job: frames → analyzePosition → position_analysis_results (+ mistakes/tendencies/memory)
+→ When the last clip settles, a synthesis pass writes the batch's CUMULATIVE report
 → Coach may leave the page or quit entirely; AnalysisQueue shows live progress on return
 ```
+
+**The combined report (`/analysis/batch/[batchId]`) is the destination for a batch, not
+per-clip pages.** A coach who queues 40 clips wants one film session, not 40 verdicts:
+- `lib/intelligence/aggregate-batch.ts` computes the numbers deterministically — averages,
+  how many clips each point repeats in, per-player grade rollups with trend, mistake counts.
+  These are facts handed to the model, never recomputed by it.
+- `lib/intelligence/batch-summary.ts` is the System A narrative over that evidence (Claude via
+  `report_generation`). It must produce a comment for EVERY clip, and pattern counts must match
+  the computed totals.
+- `run-batch-summary.ts` claims the work with a conditional UPDATE on `summary_status`, so when
+  several runners finish the last clips at once exactly one writes the report.
+- One-clip batches are marked `not_applicable` — no second model call for a report that already
+  exists. A failed synthesis never invalidates the per-clip analyses.
+- Each clip is expandable inline on that page (`ClipBreakdown`); its standalone
+  `/analysis/[id]` page still exists for sharing/printing but is no longer the way in.
 
 **Batch rules:**
 - Exactly one already-processed clip still runs inline (instant report). Everything else queues.

@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { createClient as createServerClient } from '@/lib/supabase/server';
-import { anthropic } from '@/lib/ai/providers/anthropic';
+import { getAnthropic } from '@/lib/ai/providers/anthropic';
 import { callPerplexity } from '@/lib/ai/providers/perplexity';
 import { buildPlayScoutIQPrompt, type ChatIntent } from '@/lib/intelligence/playscoutiq-prompt';
 import { getRelevantMemory } from '@/lib/intelligence/memory';
@@ -168,7 +168,7 @@ export async function POST(req: NextRequest) {
       let redacted = false;
 
       try {
-        const response = await anthropic.messages.create({
+        const response = await getAnthropic().messages.create({
           model: route.model,
           max_tokens: 2048,
           system: systemPrompt,
