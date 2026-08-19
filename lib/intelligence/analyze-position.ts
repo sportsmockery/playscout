@@ -49,9 +49,27 @@ export async function analyzePosition(
     .maybeSingle()
   const gameType = teamRow?.game_type as 'flag' | 'tackle' | 'rookie_tackle' | null | undefined
   const tier = resolveLevelTier(teamRow as { age_group?: string | null; level?: string | null } | null)
+  // RANKERIQ verifies every jersey number against the roster, so the roster is
+  // read here from the DB rather than accepted from the caller — it decides
+  // which numbers are allowed to exist, which makes it a trust boundary.
+  let roster: { id: string; jersey_number: string | null; position: string | null; name: string | null }[] = []
+  if (input.moduleKey === 'RANKERIQ') {
+    const { data: players } = await supabase
+      .from('players')
+      .select('id, jersey_number, primary_position, first_name, last_name')
+      .eq('team_id', input.teamId)
+    roster = (players ?? []).map((p) => ({
+      id: p.id as string,
+      jersey_number: p.jersey_number != null ? String(p.jersey_number) : null,
+      position: (p.primary_position as string | null) ?? null,
+      name: [p.first_name, p.last_name].filter(Boolean).join(' ') || null,
+    }))
+  }
+
   const inputWithGameType: PositionAnalysisInput = {
     ...input,
     team: input.team ? { ...input.team, game_type: gameType ?? undefined } : input.team,
+    roster: roster.map(({ jersey_number, position, name }) => ({ jersey_number, position, name })),
   }
 
   const systemPrompt = config.buildPrompt(inputWithGameType)
@@ -113,9 +131,12 @@ export async function analyzePosition(
   // RANKERIQ: the model reports observations; the grade itself is computed
   // here from those factors so a 78 in clip 3 means what a 78 means in clip
   // 40 — otherwise ranking players across a game is comparing scales, not
-  // performances. Roster matching happens at save time, where the DB is.
+  // performances. Identity is resolved against the roster fetched above.
+  // Scrimmage/practice film: pinnies carry numbers belonging to other players,
+  // so a roster "match" there proves nothing about who is wearing it.
+  const allowNumbers = input.filmConditions !== 'scrimmage'
   const rankedGrades = parsed.player_grades?.length
-    ? rankPlayerGrades(parsed.player_grades)
+    ? rankPlayerGrades(parsed.player_grades, roster, { allowNumbers })
     : parsed.player_grades
 
   return {

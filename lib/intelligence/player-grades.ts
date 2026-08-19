@@ -154,6 +154,15 @@ function roleLabel(grade: PlayerGrade): string {
   return 'Unidentified player'
 }
 
+export interface IdentityOptions {
+  /**
+   * False on scrimmage/practice film. Pinnies and practice jerseys carry
+   * numbers that belong to other players — or no number at all — so a number
+   * matching the roster there proves nothing about who is wearing it.
+   */
+  allowNumbers?: boolean
+}
+
 export interface ResolvedIdentity {
   jerseyNumber: string | null
   playerId: string | null
@@ -168,31 +177,50 @@ export interface ResolvedIdentity {
  * The prompt asks the model to report a number only when it can read the
  * digits, but models comply imperfectly and a fabricated number is the single
  * most damaging output this module can produce — it hands a real kid another
- * player's grade. So every reported number has to clear three independent
- * gates before we repeat it to a coach:
+ * player's grade. So every reported number has to clear these gates before we
+ * repeat it to a coach:
  *
- *   1. the model cited the frame where it read the digits
- *   2. its own identification confidence is at least MIN_NUMBER_CONFIDENCE
- *   3. the number actually exists on this team's roster (when we have one)
+ *   0. the film is game film — see IdentityOptions.allowNumbers
+ *   1. the team has a roster on file to check the number against
+ *   2. the model cited the frame where it read the digits
+ *   3. its own identification confidence is at least MIN_NUMBER_CONFIDENCE
+ *   4. the number actually exists on that roster
+ *
+ * Gate 1 is deliberately strict: with no roster there is nothing to verify
+ * against, and an unverifiable number is precisely what put one kid's grade on
+ * another. Grading by role costs the coach a label; getting it wrong costs
+ * them trust in every number on the page.
  *
  * Anything that fails is downgraded to a role label — never dropped, because
  * the grade itself is still useful. A rejected number is also scrubbed from
  * the model's note, since "#30 kept his eyes downfield" is the same false
  * claim in prose form.
  */
-export function resolvePlayerIdentity(grade: PlayerGrade, roster: RosterEntry[] = []): ResolvedIdentity {
+export function resolvePlayerIdentity(
+  grade: PlayerGrade,
+  roster: RosterEntry[] = [],
+  opts: IdentityOptions = {}
+): ResolvedIdentity {
   const reported = digitsOf(grade.jersey_number)
+  const allowNumbers = opts.allowNumbers ?? true
 
   if (!reported) {
     return { jerseyNumber: null, playerId: null, identifier: roleLabel(grade), numberRejectedReason: null }
   }
 
   let reason: string | null = null
-  if (grade.jersey_number_frame == null) {
+  if (!allowNumbers) {
+    reason = 'scrimmage film — jerseys may not match the roster'
+  } else if (roster.length === 0) {
+    // Without a roster there is nothing to check a number against, and an
+    // unverifiable number is exactly what put another kid's grade on a real
+    // player. Grade by role and tell the coach what would unlock names.
+    reason = 'no roster on file to verify numbers against'
+  } else if (grade.jersey_number_frame == null) {
     reason = 'no frame cited for the number'
   } else if ((grade.identification_confidence ?? 0) < MIN_NUMBER_CONFIDENCE) {
     reason = 'number not legible enough to trust'
-  } else if (roster.length > 0 && !roster.some((p) => digitsOf(p.jersey_number) === reported)) {
+  } else if (!roster.some((p) => digitsOf(p.jersey_number) === reported)) {
     reason = `no #${reported} on this roster`
   }
 
@@ -224,9 +252,13 @@ function scrubNumberFromNote(note: string, rejected: string, replacement: string
  * Ties break toward the harder assignment, since two players who executed
  * identically are not equally impressive if one had the tougher job.
  */
-export function rankPlayerGrades(grades: PlayerGrade[], roster: RosterEntry[] = []): PlayerGrade[] {
+export function rankPlayerGrades(
+  grades: PlayerGrade[],
+  roster: RosterEntry[] = [],
+  opts: IdentityOptions = {}
+): PlayerGrade[] {
   const scored = grades.map((g) => {
-    const identity = resolvePlayerIdentity(g, roster)
+    const identity = resolvePlayerIdentity(g, roster, opts)
     const grade = gradeFromFactors({
       execution: g.execution,
       difficulty: g.difficulty,

@@ -285,9 +285,19 @@ export interface PositionAnalysisResult {
   across seven reps — one number stuck onto the whole offense. `groupGradesForRollup` abandons
   such a number and falls back to role rows. A roster-MATCHED number is exempt: there the roster
   is ground truth and a two-way kid really does play several spots.
-- With no roster on file the roster gate cannot fire, so numbers rest on the frame + confidence
-  gates alone. Entering a roster is what makes player-level (rather than role-level) grading
-  trustworthy.
+- **A jersey number REQUIRES a roster.** With nothing to check against, an unverifiable number is
+  exactly what put one kid's grade on another, so with no roster on file every player is graded
+  by role and the UI points the coach at `/teams/[id]/roster`. Entering jersey numbers is what
+  unlocks player-level grading and player profiles.
+- **Scrimmage/practice film claims no numbers at all** (`filmConditions: 'scrimmage'`, a checkbox
+  on the module screen). Pinnies and borrowed jerseys carry numbers belonging to other players,
+  so a roster "match" there proves nothing about who is wearing it — and some players wear no
+  number at all.
+- The roster reaches the prompt as a CLOSED SET ("these are the only numbers that exist; digits
+  outside this list mean you misread"), never as a lookup table. Telling the model "the left
+  guard is #54" would invite precisely the inference that produced fabricated numbers. The
+  roster is fetched server-side in `analyze-position.ts`, never accepted from the client, since
+  it decides which numbers are allowed to exist.
 - Writes one row per graded player to `player_grades` (migration 030) so grades roll up to player
   profiles and trend over a season, not just live inside one report's jsonb.
 

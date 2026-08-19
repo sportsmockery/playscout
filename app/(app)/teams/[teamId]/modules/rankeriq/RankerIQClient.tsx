@@ -16,6 +16,9 @@ interface Props {
   ageGroup?: string;
   homeJerseyColor?: string;
   awayJerseyColor?: string;
+  /** Drives the "add a roster to grade by player" prompt. */
+  rosterSize: number;
+  rosterWithNumbers: number;
   videos: Video[];
   folders: FilmPickerFolder[];
   pastAnalyses: PositionAnalysisResult[];
@@ -109,6 +112,8 @@ export default function RankerIQClient({
   ageGroup,
   homeJerseyColor,
   awayJerseyColor,
+  rosterSize,
+  rosterWithNumbers,
   videos,
   folders,
   pastAnalyses,
@@ -120,6 +125,7 @@ export default function RankerIQClient({
     homeJerseyColor ? 'home' : awayJerseyColor ? 'away' : 'unknown',
   );
   const [sideChoice, setSideChoice] = useState<SideChoice>('unknown');
+  const [isScrimmage, setIsScrimmage] = useState(false);
   const [coachNote, setCoachNote] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<RankerResult | null>(null);
@@ -156,6 +162,7 @@ export default function RankerIQClient({
         moduleKey: 'RANKERIQ',
         teamId,
         coachNote: coachNote || undefined,
+        filmConditions: isScrimmage ? 'scrimmage' : 'game',
         team: {
           name: teamName,
           age_group: ageGroup,
@@ -278,6 +285,45 @@ export default function RankerIQClient({
                 ))}
               </div>
             </div>
+
+            <div>
+              <label className="flex items-start gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isScrimmage}
+                  onChange={(e) => setIsScrimmage(e.target.checked)}
+                  className="mt-0.5 accent-[var(--brand-navy)]"
+                />
+                <span>
+                  <span className="block text-xs font-medium text-[var(--brand-ink)]">
+                    Scrimmage or practice film
+                  </span>
+                  <span className="block text-[11px] text-[var(--brand-muted)]">
+                    Pinnies and practice jerseys don&apos;t match the roster, so players are graded
+                    by role instead of by number.
+                  </span>
+                </span>
+              </label>
+            </div>
+
+            {!isScrimmage && (
+              rosterWithNumbers === 0 ? (
+                <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                  {rosterSize === 0
+                    ? 'No roster on file, so players will be graded by role (Left Guard, Free Safety) rather than by name.'
+                    : 'Your roster has no jersey numbers, so players will be graded by role rather than by name.'}{' '}
+                  <Link href={`/teams/${teamId}/roster`} className="font-semibold underline">
+                    Add jersey numbers
+                  </Link>{' '}
+                  to grade players individually and build player profiles.
+                </p>
+              ) : (
+                <p className="text-[11px] text-[var(--brand-muted)]">
+                  Numbers are checked against your {rosterWithNumbers}-player roster. Anything that
+                  doesn&apos;t match is graded by role instead.
+                </p>
+              )
+            )}
 
             <div>
               <label className="block text-xs font-medium text-[var(--brand-ink)] mb-1.5">
