@@ -280,6 +280,14 @@ export interface PositionAnalysisResult {
   "Right Guard (white jersey)" to one row (left/right stay distinct — different players). A row
   built from role rather than a number is marked `identifiedBy: 'role'` and the UI says so,
   because such a row can legitimately cover more than one child.
+- A jersey number that was never confirmed against a roster only holds a rollup row together
+  while the reps AGREE on a position. Observed in production: "#55" appeared at six positions
+  across seven reps — one number stuck onto the whole offense. `groupGradesForRollup` abandons
+  such a number and falls back to role rows. A roster-MATCHED number is exempt: there the roster
+  is ground truth and a two-way kid really does play several spots.
+- With no roster on file the roster gate cannot fire, so numbers rest on the frame + confidence
+  gates alone. Entering a roster is what makes player-level (rather than role-level) grading
+  trustworthy.
 - Writes one row per graded player to `player_grades` (migration 030) so grades roll up to player
   profiles and trend over a season, not just live inside one report's jsonb.
 
@@ -373,7 +381,10 @@ Coach multi-selects film (or a folder) in a module screen's FilmPicker
 per-clip pages.** A coach who queues 40 clips wants one film session, not 40 verdicts:
 - `lib/intelligence/aggregate-batch.ts` computes the numbers deterministically — averages,
   how many clips each point repeats in, per-player grade rollups with trend, mistake counts.
-  These are facts handed to the model, never recomputed by it.
+  These are facts handed to the model, never recomputed by it. Repetition is detected by
+  token-overlap similarity, not a word-prefix key: on real film the same problem is worded
+  differently in every clip, and a prefix key merged nothing, leaving every item at 1x — which
+  in turn let the summary model invent its own clip counts.
 - `lib/intelligence/batch-summary.ts` is the System A narrative over that evidence (Claude via
   `report_generation`). It must produce a comment for EVERY clip, and pattern counts must match
   the computed totals.

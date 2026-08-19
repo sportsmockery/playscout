@@ -138,7 +138,7 @@ Produce ONE report across the whole batch, as JSON matching this shape exactly:
   "headline": "one sentence a coach reads first — the single most important thing this film session showed",
   "cumulative_summary": "3-6 sentences on what the batch showed as a whole. Cite how many clips support each claim ('in 7 of 11 clips...'). Say what is consistent versus what was a one-off.",
   "what_repeats": [
-    { "pattern": "the thing that keeps happening", "clips_seen": <integer, from the totals above>, "why_it_matters": "what it costs on the field" }
+    { "pattern": "the thing that keeps happening", "clips_seen": <the exact count from COMPUTED TOTALS>, "why_it_matters": "what it costs on the field" }
   ],
   "per_video": [
     { "video_id": "<exact video_id from the clip list>", "comment": "ONE sentence on what THIS clip specifically showed and how it fits the batch — must be specific to this clip, never interchangeable filler" }
@@ -157,7 +157,16 @@ HARD REQUIREMENTS:
   invent a name, and never merge two differently-labelled players into one. If a label has no
   number, neither does your sentence about them.
 - per_video MUST contain exactly one entry for every clip listed above, using the exact video_id strings given. Do not skip a clip, do not invent one.
-- A pattern's clips_seen must match the counts in COMPUTED TOTALS. If you cannot support a count, leave the pattern out.
+- EVERY entry in what_repeats must correspond to a line in the "weaknesses by how many clips"
+  or "strengths by how many clips" lists in COMPUTED TOTALS, and clips_seen must be that line's
+  number exactly. You may reword the pattern for readability, but you may NOT invent a count,
+  estimate one, add up clips yourself, or include a pattern that isn't in those lists. If a list
+  shows nothing appearing in more than one clip, return an empty what_repeats array and say in
+  cumulative_summary that no pattern repeated across clips yet — that is a real, useful finding,
+  not a gap to paper over.
+- The same rule governs the prose: any count you state in cumulative_summary ("in 7 of 11
+  clips...") must come from COMPUTED TOTALS. Do not count clips yourself from the per-clip
+  findings — you will get it wrong, and a coach cannot tell.
 - Prioritize what repeats across clips over what was dramatic in one clip. A single bad rep is not a trend, and say so when a coach might read it as one.
 - If the batch is small or the film was unclear, say that plainly in evidence_note and keep your claims proportionally modest.
 - Every drill must respect the safety rules above.
