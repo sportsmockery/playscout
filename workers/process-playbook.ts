@@ -18,6 +18,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { createServiceClient } from './lib/service-client'
 import { Sentry } from './lib/sentry'
 import { renderPdfPages } from './lib/pdf-render'
+import { supervise } from './lib/supervise'
 import { analyzeFramesWithGemini } from '../lib/ai/providers/google'
 import { getRoute } from '../lib/ai/model-router'
 import { recordUsage, hashCacheKey, getCachedResponse, setCachedResponse } from '../lib/ai/record-usage'
@@ -394,7 +395,6 @@ async function main() {
   process.exit(0)
 }
 
-main().catch((err) => {
-  log('fatal', err instanceof Error ? err.stack ?? err.message : err)
-  process.exit(1)
-})
+// Supervised rather than fatal: this loop shares a process with the video and
+// analysis workers, and one of them dying must not stop the others.
+supervise('playbook worker', main, log)

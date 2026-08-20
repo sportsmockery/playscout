@@ -3,9 +3,23 @@
 Background processing that must **never** run on Vercel. Deploy target: **Railway**.
 
 `npm run worker` (the Railway start command) runs `workers/index.ts`, which
-starts both poll loops below in one process. Each also runs standalone via
-its own `npm run worker:video` / `worker:playbook` script, for local testing
-without spinning up the other one.
+starts all three poll loops below in one process. Each also runs standalone via
+its own `npm run worker:video` / `worker:playbook` / `worker:analysis` script,
+for local testing without spinning up the others.
+
+**One process, three loops — so no loop is allowed to exit it.** Each `main()`
+is wrapped in `lib/supervise.ts`, which logs a crash and restarts that loop
+with backoff. They previously ended in `main().catch(() => process.exit(1))`,
+which meant a fatal error in any one of them killed the other two: a video
+worker that died also stopped every queued analysis, silently, and Railway's
+`restartPolicyMaxRetries` eventually stopped restarting the service at all.
+That is what "I queued a batch, closed my laptop, and nothing had run"
+looks like.
+
+The analysis queue additionally has a Vercel-side safety net
+(`/api/analysis/cron`, every 5 minutes) so batches still drain when this
+service is down. That net covers analysis only — frame extraction is ffmpeg
+on multi-gigabyte files and stays here.
 
 ## `process-video.ts`
 
@@ -70,6 +84,24 @@ Failures set `playbooks.pages_status = 'failed'` with `pages_error` once
 single page's vision call failing doesn't fail the whole playbook — it's
 logged and skipped so the rest of the book still comes through.
 
+## `process-analysis.ts`
+
+Polls `analysis_batch_jobs` and runs each queued module analysis to completion.
+This is what makes "queue a folder of film and close the laptop" real — a batch
+of 40 clips is 40 vision calls, far past any request's lifetime, so a coach's
+browser is never the thing keeping it alive.
+
+Per job: load the video's frames → replay the batch's saved module context →
+`analyzePosition` → save to `position_analysis_results`. Results land as each
+clip finishes, so a coach who returns mid-batch sees partial work rather than
+nothing. Finishing a batch's last clip triggers its cumulative report.
+
+A clip selected before its frames exist parks at `waiting_for_film` and is
+retried once `WAITING_RETRY_MS` has passed — that is normal, not an error.
+The backoff is applied **in the claim query, not after it**: filtering parked
+rows out in JS let them fill the candidate limit and starve ready clips behind
+them, so a batch could sit still with runnable work in it.
+
 ## Run locally
 
 ```bash
@@ -86,7 +118,7 @@ SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... GOOGLE_API_KEY=... npm run worker
 1. New service from this repo. Nixpacks auto-detects Node and runs `npm install`
    (which fetches the ffmpeg binary — no extra buildpack needed).
 2. Start command: `npm run worker` (also set via `Procfile` / `railway.json`) —
-   runs both pollers in one process/service.
+   runs all three pollers in one process/service.
 3. Set service variables:
 
    | Variable | Required | Notes |

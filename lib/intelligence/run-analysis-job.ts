@@ -65,10 +65,21 @@ export function buildJobInput(context: unknown, job: AnalysisJobRow): PositionAn
   })
 }
 
+/** How many rows a single claim attempt looks at before giving up. */
+export const CANDIDATE_LIMIT = 10
+
 /**
  * Optimistically claim the next runnable job. The conditional UPDATE (status
  * must still be claimable) is atomic, so when two runners race only one
  * update matches the row. Same pattern as workers/process-video.ts.
+ *
+ * The backoff on `waiting_for_film` is applied in the QUERY, not after it.
+ * Filtering in JS let parked clips eat every candidate slot: a 20-clip batch
+ * whose ten oldest clips were all still extracting frames returned "nothing to
+ * do" on every poll, because those ten filled the limit and were then skipped
+ * — while ready, queued clips sat behind them making no progress until the
+ * film caught up. Excluding them in SQL means the rows we get back are the
+ * rows we can actually run.
  */
 export async function claimNextAnalysisJob(
   supabase: SupabaseClient,
@@ -78,20 +89,17 @@ export async function claimNextAnalysisJob(
 
   let query = supabase
     .from('analysis_batch_jobs')
-    .select(`${JOB_COLUMNS}, updated_at`)
-    .in('status', CLAIMABLE_JOB_STATUSES)
+    .select(JOB_COLUMNS)
+    .or(`status.eq.queued,and(status.eq.waiting_for_film,updated_at.lte.${waitingCutoff})`)
     .order('created_at', { ascending: true })
-    .limit(10)
+    .limit(CANDIDATE_LIMIT)
   if (opts.teamId) query = query.eq('team_id', opts.teamId)
 
   const { data: candidates } = await query
   if (!candidates?.length) return null
 
   const now = new Date().toISOString()
-  for (const c of candidates as (AnalysisJobRow & { updated_at: string })[]) {
-    // Back off on clips still being processed instead of spinning on them.
-    if (c.status === 'waiting_for_film' && c.updated_at > waitingCutoff) continue
-
+  for (const c of candidates as AnalysisJobRow[]) {
     const { data: claimed } = await supabase
       .from('analysis_batch_jobs')
       .update({

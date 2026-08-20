@@ -24,6 +24,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { createServiceClient } from './lib/service-client'
 import { Sentry } from './lib/sentry'
 import { downloadRemoteVideo, RemoteVideoError } from './lib/fetch-remote-video'
+import { supervise } from './lib/supervise'
 import {
   probeDurationSeconds,
   extractFrameAt,
@@ -445,7 +446,6 @@ async function main() {
   process.exit(0)
 }
 
-main().catch((err) => {
-  log('fatal', err instanceof Error ? err.stack ?? err.message : err)
-  process.exit(1)
-})
+// Supervised rather than fatal: this loop shares a process with the playbook
+// and analysis workers, and one of them dying must not stop the others.
+supervise('video worker', main, log)

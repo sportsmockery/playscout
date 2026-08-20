@@ -18,6 +18,8 @@ import {
   AlertTriangle,
   BookOpen,
   Crosshair,
+  ListOrdered,
+  LifeBuoy,
 } from 'lucide-react';
 
 interface NavItem {
@@ -33,6 +35,7 @@ const MODULE_ITEMS: NavItem[] = [
   { label: 'OLIQ', href: 'oliq', icon: Shield },
   { label: 'TeamIQ', href: 'teamiq', icon: TrendingUp },
   { label: 'MistakeIQ', href: 'mistakeiq', icon: AlertTriangle },
+  { label: 'RankerIQ', href: 'rankeriq', icon: ListOrdered },
   { label: 'ScoutIQ', href: 'scoutiq', icon: Crosshair },
   { label: 'PlaybookIQ', href: 'playbookiq', icon: BookOpen },
 ];
@@ -179,6 +182,13 @@ export default function Sidebar({ teamId: teamIdProp, isAdmin }: SidebarProps) {
             <span>Users &amp; Roles</span>
           </Link>
         )}
+        <Link
+          href="/help"
+          className={cn('sidebar-nav-item', isActive('/help') && 'active')}
+        >
+          <LifeBuoy size={18} className="flex-shrink-0" />
+          <span>Help &amp; Guide</span>
+        </Link>
         <Link
           href={activeTeamId ? `/teams/${activeTeamId}/settings` : '/settings'}
           className={cn(

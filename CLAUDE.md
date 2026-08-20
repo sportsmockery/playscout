@@ -958,6 +958,9 @@ PERPLEXITY_API_KEY=
 # Workers
 WORKER_ID=playscout-worker-001
 
+# Vercel Cron (analysis-queue safety net — see Deployment Rules)
+CRON_SECRET=
+
 # Vercel
 VERCEL_PROJECT_ID=prj_6z7NumR6q2aUsjZkqooMHdYCBwB4
 VERCEL_ORG_ID=team_tyYugyFj05x63r5t9jwqFWq3
@@ -978,6 +981,16 @@ VERCEL_ORG_ID=team_tyYugyFj05x63r5t9jwqFWq3
 - There is an orphaned duplicate project `playscout-scaffold` in the same Vercel scope (from an early accidental deploy under the pre-rename package name). Do not deploy to it; the real project is `playscout`. Safe to delete once confirmed unused, but ask before deleting.
 - The Railway worker service runs all three pollers via `npm run worker` (`workers/index.ts` →
   video + playbook + analysis). Deploying a new worker file means redeploying that service.
+  All three share ONE process, so each `main()` is wrapped in `workers/lib/supervise.ts` — a
+  crash restarts that loop instead of exiting and taking the other two down with it. Do not
+  reintroduce `main().catch(() => process.exit(1))` there.
+- **The analysis queue has a Vercel-side safety net**: `/api/analysis/cron` (`vercel.json` →
+  every 5 minutes) drains queued clips with no session and no Railway, so a coach who queues a
+  batch and closes the laptop still gets results if the worker is down. It requires
+  `CRON_SECRET` and `SUPABASE_SERVICE_ROLE_KEY` in the Vercel project — with no `CRON_SECRET`
+  set the route returns 503 and drains nothing rather than running open to the internet. Note
+  Vercel's Hobby plan permits only one cron run per day; the 5-minute schedule needs Pro.
+  This covers analysis ONLY — frame extraction is ffmpeg on multi-GB files and stays on Railway.
 - Workers run on Railway (not Vercel) — they authenticate to Supabase directly via `SUPABASE_SERVICE_ROLE_KEY` (see `workers/lib/service-client.ts`), not a separate shared secret
 - Use `apply_migration` for all DB schema changes — never raw DDL in production
 

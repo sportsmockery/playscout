@@ -15,6 +15,7 @@
  */
 import { createServiceClient } from './lib/service-client'
 import { Sentry } from './lib/sentry'
+import { supervise } from './lib/supervise'
 import {
   claimNextAnalysisJob,
   runAnalysisJob,
@@ -100,7 +101,6 @@ async function main() {
   process.exit(0)
 }
 
-main().catch((err) => {
-  log('fatal', err instanceof Error ? err.stack ?? err.message : err)
-  process.exit(1)
-})
+// Supervised rather than fatal: this loop shares a process with the video and
+// playbook workers, and one of them dying must not stop the others.
+supervise('analysis worker', main, log)
