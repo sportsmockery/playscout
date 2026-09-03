@@ -42,7 +42,7 @@ export async function classifyIntent(message: string): Promise<ChatIntent> {
     // own jsdom-based unit tests) — deferring the import means those tests
     // never pay that cost since they only exercise the heuristic path.
     const { callClaude } = await import('@/lib/ai/providers/anthropic')
-    const result = await callClaude('claude-haiku-4-5-20251001', CLASSIFIER_SYSTEM, [
+    const result = await callClaude('claude-haiku-4-5', CLASSIFIER_SYSTEM, [
       { role: 'user', content: message },
     ], 16)
     const label = result.text.trim().toLowerCase()

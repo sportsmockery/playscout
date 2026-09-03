@@ -146,7 +146,10 @@ export async function maybeSummarizeBatch(
       route.model,
       systemPrompt,
       [{ role: 'user', content: 'Write the cumulative report now, following the JSON shape exactly.' }],
-      4000
+      // Synthesis across a whole game is the one call in the pipeline where
+      // reasoning depth earns its cost, and the report is long — a low
+      // max_tokens truncates it mid-clip.
+      { maxTokens: 8000, thinking: true, effort: 'high' }
     )
 
     await recordUsage(supabase, {

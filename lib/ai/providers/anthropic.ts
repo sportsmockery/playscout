@@ -17,8 +17,8 @@ export function getAnthropic(): Anthropic {
   return client
 }
 
-export const CLAUDE_SONNET = 'claude-sonnet-4-5'
-export const CLAUDE_OPUS = 'claude-opus-4-5'
+export const CLAUDE_SONNET = 'claude-sonnet-5'
+export const CLAUDE_OPUS = 'claude-opus-5'
 
 export async function streamClaude(
   model: string,
@@ -31,19 +31,65 @@ export async function streamClaude(
 
 export interface ClaudeResult {
   text: string
-  usage: { inputTokens: number; outputTokens: number }
+  usage: {
+    inputTokens: number
+    outputTokens: number
+    /** Tokens served from the prompt cache — verify caching is actually working. */
+    cacheReadTokens: number
+    cacheWriteTokens: number
+  }
+}
+
+export interface ClaudeOptions {
+  maxTokens?: number
+  /**
+   * Cache the system prompt. Worth it whenever the same system prefix is sent
+   * across many calls — a batch of 60 clips shares its rubric, level
+   * calibration and football brain byte for byte, and that prefix is most of
+   * the input cost.
+   */
+  cacheSystem?: boolean
+  /** Adaptive thinking. On by default for Opus 5; harmless to state explicitly. */
+  thinking?: boolean
+  /** How hard to think. Defaults to the API's own default when unset. */
+  effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 }
 
 export async function callClaude(
   model: string,
   system: string,
   messages: Array<{ role: 'user' | 'assistant'; content: string }>,
-  maxTokens = 2048
+  optsOrMaxTokens: ClaudeOptions | number = {}
 ): Promise<ClaudeResult> {
-  const response = await getAnthropic().messages.create({ model, max_tokens: maxTokens, system, messages })
-  const block = response.content[0]
+  const opts: ClaudeOptions =
+    typeof optsOrMaxTokens === 'number' ? { maxTokens: optsOrMaxTokens } : optsOrMaxTokens
+
+  const response = await getAnthropic().messages.create({
+    model,
+    max_tokens: opts.maxTokens ?? 2048,
+    system: opts.cacheSystem
+      ? [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }]
+      : system,
+    messages,
+    ...(opts.thinking ? { thinking: { type: 'adaptive' as const } } : {}),
+    ...(opts.effort ? { output_config: { effort: opts.effort } } : {}),
+  })
+
+  // Find the text block rather than taking content[0]: with thinking enabled
+  // the first block is a thinking block, and indexing would silently return
+  // an empty response.
+  const text = response.content
+    .filter((b): b is Extract<typeof b, { type: 'text' }> => b.type === 'text')
+    .map((b) => b.text)
+    .join('')
+
   return {
-    text: block.type === 'text' ? block.text : '',
-    usage: { inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens },
+    text,
+    usage: {
+      inputTokens: response.usage.input_tokens,
+      outputTokens: response.usage.output_tokens,
+      cacheReadTokens: response.usage.cache_read_input_tokens ?? 0,
+      cacheWriteTokens: response.usage.cache_creation_input_tokens ?? 0,
+    },
   }
 }

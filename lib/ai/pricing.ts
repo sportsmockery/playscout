@@ -10,6 +10,10 @@ interface ModelPrice {
 
 const PRICING: Record<string, ModelPrice> = {
   'google:gemini-2.5-pro': { inputPer1M: 1.25, outputPer1M: 10.0 },
+  'anthropic:claude-sonnet-5': { inputPer1M: 2.0, outputPer1M: 10.0 },
+  'anthropic:claude-opus-5': { inputPer1M: 5.0, outputPer1M: 25.0 },
+  'anthropic:claude-haiku-4-5': { inputPer1M: 1.0, outputPer1M: 5.0 },
+  // Kept so historical ledger rows still cost out correctly.
   'anthropic:claude-sonnet-4-5': { inputPer1M: 3.0, outputPer1M: 15.0 },
   'anthropic:claude-opus-4-5': { inputPer1M: 15.0, outputPer1M: 75.0 },
   'perplexity:sonar-pro': { inputPer1M: 3.0, outputPer1M: 15.0 },
