@@ -1,4 +1,4 @@
-import { buildFootballBrain } from '../football-brain'
+import { buildFootballBrain, buildGameTypeContext } from '../football-brain'
 import { resolveLevelTier } from '../levels'
 import { Type } from '@google/genai'
 import type { ModulePromptInput } from '../schemas'
@@ -8,6 +8,7 @@ import { RBIQ_CUES } from '../rubrics/cues'
 export function buildRBIQSystemPrompt(input: ModulePromptInput): string {
   const { player, team, playSequence, coachNote } = input
   const tier = resolveLevelTier(team)
+  const gameTypeContext = buildGameTypeContext(team?.game_type)
 
   const playerProfile = player && (player.name || player.position)
     ? `ATHLETE PROFILE:
@@ -34,6 +35,7 @@ Calibrate expectations to this team's competition level (see COMPETITION LEVEL a
 You are RBIQ — Running Back Intelligence.
 ${playerProfile}
 ${teamContext}
+${gameTypeContext}
 ${playContext}
 ${noteContext}
 

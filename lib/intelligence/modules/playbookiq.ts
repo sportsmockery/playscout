@@ -1,9 +1,12 @@
-import { FOOTBALL_BRAIN_SYSTEM } from '../football-brain'
+import { buildFootballBrain } from '../football-brain'
+import { resolveLevelTier } from '../levels'
 
 interface PlaybookIQInput {
   extractedText: string
   teamName?: string
   ageGroup?: string
+  /** Competition level ('High School', 'College', ...) — combined with ageGroup to resolve the tier. */
+  level?: string
   offensiveStyle?: string
   defensiveStyle?: string
   pageCount?: number
@@ -11,9 +14,13 @@ interface PlaybookIQInput {
 }
 
 export function buildPlaybookIQPrompt(input: PlaybookIQInput): string {
-  const { extractedText, teamName, ageGroup, offensiveStyle, defensiveStyle, pageCount } = input
+  const { extractedText, teamName, ageGroup, level, offensiveStyle, defensiveStyle, pageCount } = input
+  // Every other module resolves the tier; PlaybookIQ alone used the
+  // hardcoded 'unknown' export, so a varsity playbook was judged for
+  // over-complexity against no particular standard.
+  const tier = resolveLevelTier({ age_group: ageGroup, level })
 
-  return `${FOOTBALL_BRAIN_SYSTEM}
+  return `${buildFootballBrain(tier)}
 
 You are PlaybookIQ — an expert football playbook analyst.
 

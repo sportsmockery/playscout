@@ -67,12 +67,23 @@ export async function POST(req: NextRequest) {
     return new NextResponse(message, { status: 422 })
   }
 
+  // Level calibration decides how hard to penalize scheme complexity, so it
+  // is read from the playbook's real team rather than the request body —
+  // the same reason analyze-position.ts stopped trusting a client-supplied
+  // game_type. The body values remain a fallback for display context only.
+  const { data: teamRow } = await supabase
+    .from('teams')
+    .select('name, age_group, level, offensive_style, defensive_style')
+    .eq('id', playbook.team_id)
+    .maybeSingle()
+
   const systemPrompt = buildPlaybookIQPrompt({
     extractedText,
-    teamName,
-    ageGroup,
-    offensiveStyle,
-    defensiveStyle,
+    teamName: teamRow?.name ?? teamName,
+    ageGroup: teamRow?.age_group ?? ageGroup,
+    level: teamRow?.level ?? undefined,
+    offensiveStyle: teamRow?.offensive_style ?? offensiveStyle,
+    defensiveStyle: teamRow?.defensive_style ?? defensiveStyle,
     pageCount: playbook.page_count ?? undefined,
   })
 
