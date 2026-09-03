@@ -3,6 +3,7 @@ import { buildTaxonomyPrompt, EXPLOSIVE_PLAY_YARDS, TENDENCY_TYPES, OFFENSIVE_FO
 import { resolveLevelTier } from '../levels'
 import { Type } from '@google/genai'
 import type { ModulePromptInput } from '../schemas'
+import { buildPlayContext } from '../play-context'
 
 function buildSideContext(
   side: 'offense' | 'defense' | 'both' | 'unknown' | undefined,
@@ -33,6 +34,7 @@ export function buildTEAMIQSystemPrompt(input: ModulePromptInput): string {
 
   const sideContext = buildSideContext(team?.side_of_ball, teamLabel, team?.jersey_color)
   const gameTypeContext = buildGameTypeContext(team?.game_type)
+  const playContext = buildPlayContext(input.playSequence)
 
   return `${buildFootballBrain(tier, input.evidenceMode)}
 
@@ -41,6 +43,7 @@ ${team ? `TEAM: ${team.name ?? ''} | ${team.age_group ?? ''} | Offense: ${team.o
 ${team?.name ? `Always refer to this team by its exact full name, "${team.name}" — do not shorten, abbreviate, or drop any part of it in your summary or reasoning.` : ''}
 ${jerseyContext}
 ${gameTypeContext}
+${playContext}
 ${sideContext}
 ${playSequence?.coach_label ? `CONTEXT: ${playSequence.coach_label}` : ''}
 ${coachNote ? `COACH NOTE: ${coachNote}` : ''}

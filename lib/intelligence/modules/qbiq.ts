@@ -2,6 +2,7 @@ import { buildFootballBrain, buildGameTypeContext } from '../football-brain'
 import { resolveLevelTier } from '../levels'
 import { Type } from '@google/genai'
 import type { ModulePromptInput } from '../schemas'
+import { buildPlayContext } from '../play-context'
 import { buildBreakdownPrompt, REP_BREAKDOWN_SCHEMA } from '../breakdown'
 import { CONFIDENCE_PROMPT, SUBJECT_IDENTIFICATION, VIEW_QUALITY } from '../confidence'
 import { QBIQ_CUES, QBIQ_RUBRIC, buildRubricPrompt, buildDrillMenuPrompt, drillMenuFor, allCueIds } from '../rubrics'
@@ -25,9 +26,7 @@ Calibrate expectations to this team's competition level (see COMPETITION LEVEL a
     ? `TEAM CONTEXT: ${team.name ?? 'Unknown team'} | ${team.age_group ?? ''} | ${team.offensive_style ?? ''}`
     : ''
 
-  const playContext = playSequence
-    ? `PLAY CONTEXT: ${playSequence.down ? `${playSequence.down}${['st','nd','rd','th'][Math.min(playSequence.down-1,3)]} & ${playSequence.distance}` : ''} ${playSequence.yard_line ?? ''} ${playSequence.coach_label ?? ''}`
-    : ''
+  const playContext = buildPlayContext(playSequence)
 
   const noteContext = coachNote ? `COACH NOTE: ${coachNote}` : ''
 

@@ -2,6 +2,7 @@ import { buildFootballBrain, buildGameTypeContext } from '../football-brain'
 import { resolveLevelTier } from '../levels'
 import { Type } from '@google/genai'
 import type { ModulePromptInput } from '../schemas'
+import { buildPlayContext } from '../play-context'
 
 /**
  * RANKERIQ — grades and ranks every player on the team's own unit in a clip.
@@ -64,6 +65,7 @@ export function buildRANKERIQSystemPrompt(input: ModulePromptInput): string {
   const { team, player, playSequence, coachNote, roster, filmConditions } = input
   const tier = resolveLevelTier(team)
   const gameTypeContext = buildGameTypeContext(team?.game_type)
+  const playContext = buildPlayContext(input.playSequence)
 
   const jerseyContext = team?.jersey_color
     ? `IDENTIFYING ${team.name ?? 'this team'}: they wear ${team.jersey_color}. Grade ONLY players wearing that. If you cannot tell which side a player is on, leave them out rather than guessing.`
@@ -89,6 +91,7 @@ ${team?.name ? `Always refer to this team by its exact full name, "${team.name}"
 ${jerseyContext}
 ${sideContext}
 ${gameTypeContext}
+${playContext}
 
 ${buildRosterContext(roster, filmConditions)}
 ${playSequence?.coach_label ? `PLAY: ${playSequence.coach_label}` : ''}

@@ -3,6 +3,7 @@ import { buildTaxonomyPrompt, EXPLOSIVE_PLAY_YARDS, TENDENCY_TYPES, OFFENSIVE_FO
 import { resolveLevelTier } from '../levels'
 import { Type } from '@google/genai'
 import type { ModulePromptInput } from '../schemas'
+import { buildPlayContext } from '../play-context'
 
 /**
  * ScoutIQ Stage 1 (System B, per-clip) — scouts an OPPONENT's film. Unlike
@@ -23,6 +24,7 @@ export function buildSCOUTIQSystemPrompt(input: ModulePromptInput): string {
       : `IDENTIFYING ${opponentLabel}: no jersey/helmet color was provided for either side. Do not guess. If you cannot tell the two sides apart, say so and describe only what is generically visible rather than attributing anything to "the opponent."`
 
   const gameTypeContext = buildGameTypeContext(team?.game_type)
+  const playContext = buildPlayContext(input.playSequence)
 
   return `${buildFootballBrain(tier, input.evidenceMode)}
 
@@ -31,6 +33,7 @@ SUBJECT: You are scouting ${opponentLabel}${opponent?.age_group ? ` (${opponent.
 ${team?.name ? `The coach's team is ${team.name} — never analyze their play as if it were the opponent's, and never grade the coach's own team here.` : ''}
 ${jerseyContext}
 ${gameTypeContext}
+${playContext}
 ${playSequence?.coach_label ? `CONTEXT: ${playSequence.coach_label}` : ''}
 ${coachNote ? `COACH NOTE: ${coachNote}` : ''}
 

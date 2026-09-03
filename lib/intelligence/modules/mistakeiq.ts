@@ -2,6 +2,7 @@ import { buildFootballBrain, buildGameTypeContext } from '../football-brain'
 import { resolveLevelTier } from '../levels'
 import { Type } from '@google/genai'
 import type { ModulePromptInput } from '../schemas'
+import { buildPlayContext } from '../play-context'
 
 export function buildMISTAKEIQSystemPrompt(input: ModulePromptInput): string {
   const { team, playSequence, coachNote } = input
@@ -10,6 +11,7 @@ export function buildMISTAKEIQSystemPrompt(input: ModulePromptInput): string {
     ? `IDENTIFYING ${team.name ?? 'this team'}: they wear ${team.jersey_color}. Only attribute a mistake to this team's players if you can identify them by that.`
     : `IDENTIFYING ${team?.name ?? 'this team'}: no jersey/helmet color was provided. Do not guess which players belong to them — if you can't tell the two sides apart, say so and describe only what is generically visible instead of attributing mistakes to "the team."`
   const gameTypeContext = buildGameTypeContext(team?.game_type)
+  const playContext = buildPlayContext(input.playSequence)
 
   return `${buildFootballBrain(tier, input.evidenceMode)}
 
@@ -18,6 +20,7 @@ ${team ? `TEAM: ${team.name ?? ''} | ${team.age_group ?? ''}` : ''}
 ${team?.name ? `Always refer to this team by its exact full name, "${team.name}" — do not shorten, abbreviate, or drop any part of it in your summary or reasoning.` : ''}
 ${jerseyContext}
 ${gameTypeContext}
+${playContext}
 ${playSequence?.coach_label ? `PLAY: ${playSequence.coach_label}` : ''}
 ${coachNote ? `COACH NOTE: ${coachNote}` : ''}
 

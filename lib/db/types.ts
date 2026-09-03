@@ -81,6 +81,12 @@ export interface PlaySequence {
   start_time_seconds?: number; end_time_seconds?: number
   down?: number; distance?: number; yard_line?: string
   result?: string; coach_label?: string; ai_summary?: string; confidence?: number; created_at: string
+  // What the coaching staff tagged in their own breakdown — fact the model is
+  // told rather than asked to infer from the film.
+  odk?: 'O' | 'D' | 'K' | null; hash?: 'L' | 'M' | 'R' | null
+  offensive_formation?: string | null; defensive_front?: string | null
+  play_type?: string | null; play_direction?: string | null; play_name?: string | null
+  gain_loss?: number | null; breakdown?: Json | null; source_row_index?: number | null
 }
 
 export interface PositionAnalysisResult {

@@ -2,6 +2,7 @@ import { buildFootballBrain, buildGameTypeContext } from '../football-brain'
 import { resolveLevelTier } from '../levels'
 import { Type } from '@google/genai'
 import type { ModulePromptInput } from '../schemas'
+import { buildPlayContext } from '../play-context'
 import { buildBreakdownPrompt, REP_BREAKDOWN_SCHEMA } from '../breakdown'
 import { CONFIDENCE_PROMPT, SUBJECT_IDENTIFICATION, VIEW_QUALITY } from '../confidence'
 import { OLIQ_CUES, OLIQ_RUBRIC, buildRubricPrompt, buildDrillMenuPrompt, drillMenuFor, allCueIds } from '../rubrics'
@@ -22,7 +23,7 @@ Calibrate expectations to this athlete's age and level.`
     : 'ATHLETE PROFILE: No profile provided. Grade the offensive lineman in the clip against age-appropriate fundamentals. If you cannot determine which lineman is the subject, say which one you graded and why.'
 
   const teamContext = team ? `TEAM: ${team.name ?? ''} | ${team.age_group ?? ''}` : ''
-  const playContext = playSequence?.coach_label ? `PLAY: ${playSequence.coach_label}` : ''
+  const playContext = buildPlayContext(playSequence)
   const noteContext = coachNote ? `COACH NOTE: ${coachNote}` : ''
 
   // The menu is filtered to this team's allowed contact level BEFORE it is

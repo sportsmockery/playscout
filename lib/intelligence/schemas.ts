@@ -39,11 +39,28 @@ export const PositionAnalysisInputSchema = z.object({
     side_of_ball: z.enum(['offense', 'defense', 'both', 'unknown']).optional(),
     game_type: z.enum(['flag', 'tackle', 'rookie_tackle']).optional(),
   }).optional(),
+  /**
+   * What the coach's own breakdown recorded about this play. Every field here
+   * is something the prompts used to ask the model to infer from the film —
+   * telling it instead removes a class of guessing, and means a tendency is
+   * counted from what the staff tagged rather than from what a model thought
+   * it saw. A field the staff left blank stays absent rather than becoming
+   * "unknown", which the model would otherwise reason about.
+   */
   playSequence: z.object({
     down: z.number().optional(),
     distance: z.number().optional(),
     yard_line: z.string().optional(),
     coach_label: z.string().optional(),
+    odk: z.enum(['O', 'D', 'K']).optional(),
+    hash: z.enum(['L', 'M', 'R']).optional(),
+    offensive_formation: z.string().optional(),
+    defensive_front: z.string().optional(),
+    play_type: z.string().optional(),
+    play_direction: z.string().optional(),
+    play_name: z.string().optional(),
+    gain_loss: z.number().optional(),
+    result: z.string().optional(),
   }).optional(),
   /**
    * RANKERIQ only. Populated SERVER-SIDE in analyze-position.ts from the
