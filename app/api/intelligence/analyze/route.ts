@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { analyzePosition } from '@/lib/intelligence/analyze-position'
 import { saveAnalysisResult } from '@/lib/intelligence/save-analysis'
 import { PositionAnalysisInputSchema } from '@/lib/intelligence/schemas'
-import { getVideoFramesBase64 } from '@/lib/intelligence/get-frames'
+import { getVideoFrames } from '@/lib/intelligence/get-frames'
 import { createClient } from '@/lib/supabase/server'
 import { requireTeamMember, WRITE_ROLES } from '@/lib/auth/require-team-member'
 import { guardAIRequest } from '@/lib/ai/guard'
@@ -45,18 +45,24 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    let frames = input.frames
-    if (!frames.length && input.videoId) {
-      frames = await getVideoFramesBase64(input.videoId, supabase)
-    }
-    if (!frames.length) {
+    // Quick-clip uploads post base64 frames extracted in the browser; film
+    // already in the library is read from `video_frames`, which additionally
+    // carries each frame's real index and capture time so the model's
+    // citations point at a moment a coach can seek to.
+    const evidenceFrames = input.frames.length
+      ? undefined
+      : input.videoId
+        ? await getVideoFrames(input.videoId, supabase)
+        : undefined
+
+    if (!input.frames.length && !evidenceFrames?.length) {
       return NextResponse.json(
         { error: 'No film frames available yet. Has this video finished processing?' },
         { status: 400 }
       )
     }
 
-    const result = await analyzePosition({ ...input, frames }, user.id, supabase)
+    const result = await analyzePosition({ ...input, evidenceFrames }, user.id, supabase)
 
     // Result row + MISTAKEIQ mistakes + TEAMIQ tendencies + team memory.
     // Shared with the background batch runner so both paths persist alike.

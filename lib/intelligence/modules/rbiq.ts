@@ -70,7 +70,10 @@ numeric guess. Likewise, if there is no run/carry to grade, VISION_DECISION may 
 Still write a reasoning string explaining there was no evidence. When computing overall_score,
 use only the dimensions that do have a score, reweighted proportionally.
 
-For each dimension: 2-3 sentences referencing specific things visible in frames.
+For each dimension: work through every sub-cue listed for it. Give one observation per cue
+you could actually see, each naming the labelled frame and the visible marker you read it from.
+List the cues you could NOT evaluate and why (angle, occlusion, the play never tested it) rather
+than skipping them silently — a coach needs to know what the film didn't show.
 Return ONLY the JSON schema. No preamble.`
 }
 

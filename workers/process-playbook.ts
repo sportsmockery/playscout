@@ -153,11 +153,9 @@ async function processPage(
     } else {
       const result = await analyzeFramesWithGemini(
         buildPageClassificationPrompt(),
-        [base64],
+        [{ index: 0, timestampSeconds: null, base64 }],
         PAGE_CLASSIFICATION_SCHEMA,
-        undefined,
-        route.model,
-        'image/png',
+        { model: route.model, mimeType: 'image/png', labelFrames: false },
       )
       classifyJson = result.text
       await recordUsage(supabase, {
@@ -207,11 +205,9 @@ async function processPage(
     } else {
       const result = await analyzeFramesWithGemini(
         systemPrompt,
-        [base64],
+        [{ index: 0, timestampSeconds: null, base64 }],
         PLAYBOOK_PLAY_RESPONSE_SCHEMA,
-        undefined,
-        route.model,
-        'image/png',
+        { model: route.model, mimeType: 'image/png', labelFrames: false },
       )
       rawJson = result.text
       await recordUsage(supabase, {

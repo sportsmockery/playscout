@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { analyzePosition } from './analyze-position'
-import { getVideoFramesBase64 } from './get-frames'
+import { getVideoFrames } from './get-frames'
 import { saveAnalysisResult } from './save-analysis'
 import { PositionAnalysisInputSchema, type PositionAnalysisInput } from './schemas'
 import { maybeSummarizeBatch } from './run-batch-summary'
@@ -177,8 +177,8 @@ export async function runAnalysisJob(
       return 'failed'
     }
 
-    const frames = await getVideoFramesBase64(job.video_id, supabase)
-    if (!frames.length) {
+    const evidenceFrames = await getVideoFrames(job.video_id, supabase)
+    if (!evidenceFrames.length) {
       // Selecting film that's still extracting frames is a normal thing for a
       // coach to do — park the job and pick it up once the video worker is
       // done, rather than failing something that isn't wrong yet.
@@ -197,8 +197,8 @@ export async function runAnalysisJob(
       .update({ attempts: job.attempts + 1, updated_at: new Date().toISOString() })
       .eq('id', job.id)
 
-    const result = await analyzePosition({ ...input, frames }, batch.created_by ?? null, supabase)
-    const analysisId = await saveAnalysisResult(supabase, { ...input, frames }, result, {
+    const result = await analyzePosition({ ...input, evidenceFrames }, batch.created_by ?? null, supabase)
+    const analysisId = await saveAnalysisResult(supabase, input, result, {
       videoTitle: video.title,
     })
 

@@ -10,6 +10,7 @@ import { buildMISTAKEIQSystemPrompt, MISTAKEIQ_RESPONSE_SCHEMA } from './modules
 import { buildSCOUTIQSystemPrompt, SCOUTIQ_RESPONSE_SCHEMA } from './modules/scoutiq'
 import { buildRANKERIQSystemPrompt, RANKERIQ_RESPONSE_SCHEMA } from './modules/rankeriq'
 import { PositionAnalysisOutputSchema, type PositionAnalysisInput, type PositionAnalysisResult } from './schemas'
+import { framesFromBase64, type EvidenceFrame } from './get-frames'
 import { applyDrillSafetyFilter, scrubProhibitedDrillMentions } from './safety'
 import { rankPlayerGrades } from './player-grades'
 import { resolveLevelTier } from './levels'
@@ -29,8 +30,19 @@ const MODULE_MAP: Record<string, ModuleConfig> = {
   RANKERIQ:  { buildPrompt: buildRANKERIQSystemPrompt,  schema: RANKERIQ_RESPONSE_SCHEMA },
 }
 
+/**
+ * `frames` is the wire contract with the browser (bare base64 strings, no
+ * timing). Callers that read frames from `video_frames` have the real frame
+ * index and capture time and should pass `evidenceFrames` instead, so the
+ * labels shown to the model — and therefore every citation it makes — refer
+ * to a real moment rather than a position in an array.
+ */
+export type AnalyzePositionInput = PositionAnalysisInput & {
+  evidenceFrames?: EvidenceFrame[]
+}
+
 export async function analyzePosition(
-  input: PositionAnalysisInput,
+  input: AnalyzePositionInput,
   // null when a background batch job runs film queued by a coach whose
   // account has since been removed — the usage ledger takes a null user.
   userId: string | null,
@@ -38,6 +50,8 @@ export async function analyzePosition(
 ): Promise<PositionAnalysisResult> {
   const config = MODULE_MAP[input.moduleKey]
   if (!config) throw new Error(`Unknown module: ${input.moduleKey}`)
+
+  const frames = input.evidenceFrames ?? framesFromBase64(input.frames)
 
   // game_type drives the flag/tackle contact-drill safety gate — fetched
   // authoritatively from the DB rather than trusted from the client, since
@@ -78,7 +92,11 @@ export async function analyzePosition(
   // truth (lib/ai/model-router.ts) instead of being hardcoded per provider.
   const route = getRoute('frame_observation')
 
-  const cacheHash = hashCacheKey('frame_observation', `${input.moduleKey}:${systemPrompt}`, input.frames)
+  const cacheHash = hashCacheKey(
+    'frame_observation',
+    `${input.moduleKey}:${systemPrompt}`,
+    frames.map((f) => f.base64)
+  )
   const cached = await getCachedResponse<string>(supabase, cacheHash)
 
   let rawJson: string
@@ -90,7 +108,7 @@ export async function analyzePosition(
       inputTokens: 0, outputTokens: 0, cacheHit: true,
     })
   } else {
-    const result = await analyzeFramesWithGemini(systemPrompt, input.frames, config.schema, undefined, route.model)
+    const result = await analyzeFramesWithGemini(systemPrompt, frames, config.schema, { model: route.model })
     rawJson = result.text
     await recordUsage(supabase, {
       teamId: input.teamId, userId, jobType: 'frame_observation',
@@ -125,8 +143,16 @@ export async function analyzePosition(
     const drill = m.drill
       ? applyDrillSafetyFilter([m.drill], gameType, tier).drills[0]
       : m.drill
-    return { ...m, correction, drill }
+    return { ...m, correction, drill, evidence_frames: keepCited(m.evidence_frames) }
   })
+
+  // The model can only cite a frame it was actually shown. An index outside
+  // that set is the cheapest hallucination signal we have — and rendering it
+  // would seek a coach to nothing — so drop it here rather than pass it on.
+  // Frames are labelled by their real `video_frames.frame_index`, so this
+  // compares against identity, not array position.
+  const shownIndexes = new Set(frames.map((f) => f.index))
+  const keepCited = (cited?: number[]) => (cited ?? []).filter((i) => shownIndexes.has(i))
 
   // RANKERIQ: the model reports observations; the grade itself is computed
   // here from those factors so a 78 in clip 3 means what a 78 means in clip
@@ -148,7 +174,7 @@ export async function analyzePosition(
     drills: safeDrills,
     summary: parsed.summary,
     confidence: parsed.confidence ?? 0.7,
-    evidence_frames: parsed.evidence_frames ?? [],
+    evidence_frames: keepCited(parsed.evidence_frames),
     plays_observed: parsed.plays_observed,
     head_contact_flag: parsed.head_contact_flag,
     offensive_tendencies: parsed.offensive_tendencies,
@@ -163,6 +189,6 @@ export async function analyzePosition(
     players_not_evaluable: parsed.players_not_evaluable,
     target_players: parsed.target_players,
     model: route.model,
-    framesAnalyzed: input.frames.length,
+    framesAnalyzed: frames.length,
   }
 }
