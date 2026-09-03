@@ -86,7 +86,7 @@ const STOPWORDS = new Set([
  * making the same point cite different frames, and letting those count as
  * differences is what kept real repeats apart.
  */
-function contentWords(text: string): Set<string> {
+export function contentWords(text: string): Set<string> {
   return new Set(
     text
       .toLowerCase()
@@ -97,7 +97,7 @@ function contentWords(text: string): Set<string> {
   )
 }
 
-function jaccard(a: Set<string>, b: Set<string>): number {
+export function jaccard(a: Set<string>, b: Set<string>): number {
   if (!a.size || !b.size) return 0
   let shared = 0
   for (const w of a) if (b.has(w)) shared += 1
