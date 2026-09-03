@@ -5,6 +5,7 @@ import {
   parseDelimited,
   parseHudlExport,
   toPlaySequenceFields,
+  matchBreakdownToSequences,
 } from './hudl-breakdown'
 
 describe('fieldForColumn', () => {
@@ -157,5 +158,43 @@ describe('toPlaySequenceFields', () => {
     expect(fields.offensive_formation).toBeNull()
     expect(fields.play_name).toBeNull()
     expect(fields.breakdown).toBeNull()
+  })
+})
+
+describe('matchBreakdownToSequences', () => {
+  const seq = (n: number) => ({ id: `s${n}`, sequence_number: n })
+  const plays = parseHudlExport('DN,DIST\n1,10\n2,7\n3,2')
+
+  it('pairs rows with clips in order', () => {
+    const out = matchBreakdownToSequences(plays, [seq(1), seq(2), seq(3)])
+    expect(out.matched.map((m) => [m.sequenceId, m.play.down])).toEqual([
+      ['s1', 1],
+      ['s2', 2],
+      ['s3', 3],
+    ])
+    expect(out.unmatchedRows).toEqual([])
+    expect(out.unmatchedSequences).toEqual([])
+  })
+
+  it('sorts clips by sequence number before pairing', () => {
+    const out = matchBreakdownToSequences(plays, [seq(3), seq(1), seq(2)])
+    expect(out.matched.map((m) => m.sequenceId)).toEqual(['s1', 's2', 's3'])
+  })
+
+  it('reports the leftovers rather than guessing at them', () => {
+    // An export usually covers plays that were not filmed, and scene detection
+    // finds cuts that are not plays. The coach is the one who can see which is
+    // which, so the mismatch is surfaced, not resolved.
+    const fewer = matchBreakdownToSequences(plays, [seq(1), seq(2)])
+    expect(fewer.matched).toHaveLength(2)
+    expect(fewer.unmatchedRows.map((p) => p.down)).toEqual([3])
+
+    const more = matchBreakdownToSequences(plays.slice(0, 1), [seq(1), seq(2)])
+    expect(more.unmatchedSequences.map((s) => s.id)).toEqual(['s2'])
+  })
+
+  it('handles either side being empty', () => {
+    expect(matchBreakdownToSequences([], [seq(1)]).matched).toEqual([])
+    expect(matchBreakdownToSequences(plays, []).unmatchedRows).toHaveLength(3)
   })
 })

@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 import PlaySequencesClient from './PlaySequencesClient';
+import AttachBreakdown from './AttachBreakdown';
 
 export async function generateMetadata({ params }: { params: Promise<{ videoId: string }> }) {
   const { videoId } = await params;
@@ -41,6 +42,10 @@ export default async function PlaySequencesPage({
             ? 'Confirm or correct the boundaries below — automatic detection is a starting point, not ground truth.'
             : 'No plays detected automatically for this film yet. Add play boundaries manually below.'}
         </p>
+      </div>
+
+      <div className="mb-6">
+        <AttachBreakdown videoId={videoId} />
       </div>
 
       <PlaySequencesClient

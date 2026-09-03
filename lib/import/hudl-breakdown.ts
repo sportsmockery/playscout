@@ -238,3 +238,66 @@ export function toPlaySequenceFields(play: HudlPlayRow): Record<string, unknown>
     source_row_index: play.sourceRowIndex,
   }
 }
+
+export interface PlaySequenceRef {
+  id: string
+  sequence_number: number
+}
+
+export interface BreakdownMatch {
+  sequenceId: string
+  sequenceNumber: number
+  play: HudlPlayRow
+}
+
+export interface BreakdownMatchResult {
+  matched: BreakdownMatch[]
+  /** Rows with no clip to attach to — usually the export covers plays that weren't filmed. */
+  unmatchedRows: HudlPlayRow[]
+  /** Clips with no row — usually scene detection found a cut that isn't a play. */
+  unmatchedSequences: PlaySequenceRef[]
+}
+
+/**
+ * Pairs breakdown rows with the clips already detected in a film.
+ *
+ * Matching is by ORDER, not by the export's play number. A play number counts
+ * plays in the game; a sequence counts cuts in the film, and the two diverge
+ * the moment a play goes unfilmed or the camera cuts mid-series. Order is the
+ * only thing both sides genuinely share — and where it is wrong, the coach is
+ * the one who can see it, which is why the mismatch is reported rather than
+ * resolved silently.
+ */
+export function matchBreakdownToSequences(
+  plays: HudlPlayRow[],
+  sequences: PlaySequenceRef[]
+): BreakdownMatchResult {
+  const ordered = [...sequences].sort((a, b) => a.sequence_number - b.sequence_number)
+  const pairs = Math.min(plays.length, ordered.length)
+
+  return {
+    matched: ordered.slice(0, pairs).map((seq, i) => ({
+      sequenceId: seq.id,
+      sequenceNumber: seq.sequence_number,
+      play: plays[i],
+    })),
+    unmatchedRows: plays.slice(pairs),
+    unmatchedSequences: ordered.slice(pairs),
+  }
+}
+
+/**
+ * A one-line summary of a row, for the reconciliation screen. Deliberately
+ * separate from the prompt's PLAY CONTEXT block: a coach scanning sixty rows
+ * needs a glanceable line, not the model's instructions.
+ */
+export function describeMatch(play: HudlPlayRow): string {
+  const parts: string[] = []
+  if (play.down) parts.push(`${play.down}&${play.distance ?? '?'}`)
+  if (play.offensiveFormation) parts.push(play.offensiveFormation)
+  if (play.playName) parts.push(play.playName)
+  if (play.playType) parts.push(play.playType)
+  if (play.gainLoss != null) parts.push(`${play.gainLoss >= 0 ? '+' : ''}${play.gainLoss}`)
+  else if (play.result) parts.push(play.result)
+  return parts.join(' · ') || '(no data on this row)'
+}
