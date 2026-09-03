@@ -38,6 +38,9 @@ export interface Video {
   source_type?: 'upload' | 'hudl_link' | 'external_url'; source_url?: string | null
   storage_path?: string | null; thumbnail_path?: string | null; duration_seconds?: number | null
   file_size?: number | null; mime_type?: string | null
+  // Gemini Files API handle, so a merged game film is uploaded once and
+  // then referenced by every play cut out of it.
+  gemini_file_uri?: string | null; gemini_file_expires_at?: string | null
   film_type?: FilmType; opponent_id?: string | null; folder_id?: string | null
   status?: VideoStatus | null; processing_status?: string | null; error_message?: string | null; created_at: string
 }
@@ -86,6 +89,7 @@ export interface PositionAnalysisResult {
   position_scores?: Json | null; reasoning?: Json | null; strengths?: string[] | null
   weaknesses?: string[] | null; drills?: string[] | null; summary?: string | null
   frames_analyzed?: number | null; evidence?: Json | null; model_provider?: string | null; model_name?: string | null; created_at: string
+  analysis_mode?: 'video' | 'frames' | null; confidence?: number | null
   edited_by?: string | null; edited_at?: string | null; original_result?: Json | null
 }
 

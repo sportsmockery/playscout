@@ -45,17 +45,18 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Quick-clip uploads post base64 frames extracted in the browser; film
-    // already in the library is read from `video_frames`, which additionally
-    // carries each frame's real index and capture time so the model's
-    // citations point at a moment a coach can seek to.
+    // Quick-clip uploads post base64 frames extracted in the browser. Film
+    // already in the library is read as video where possible (analyzePosition
+    // resolves that itself); frames are fetched here as the fallback for film
+    // with no stored copy, and carry each frame's real index and capture time
+    // so a citation points at a moment a coach can seek to.
     const evidenceFrames = input.frames.length
       ? undefined
       : input.videoId
         ? await getVideoFrames(input.videoId, supabase)
         : undefined
 
-    if (!input.frames.length && !evidenceFrames?.length) {
+    if (!input.videoId && !input.frames.length) {
       return NextResponse.json(
         { error: 'No film frames available yet. Has this video finished processing?' },
         { status: 400 }

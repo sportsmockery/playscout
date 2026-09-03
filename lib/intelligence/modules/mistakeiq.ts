@@ -1,9 +1,9 @@
 import { buildFootballBrain, buildGameTypeContext } from '../football-brain'
 import { resolveLevelTier } from '../levels'
 import { Type } from '@google/genai'
-import type { PositionAnalysisInput } from '../schemas'
+import type { ModulePromptInput } from '../schemas'
 
-export function buildMISTAKEIQSystemPrompt(input: PositionAnalysisInput): string {
+export function buildMISTAKEIQSystemPrompt(input: ModulePromptInput): string {
   const { team, playSequence, coachNote } = input
   const tier = resolveLevelTier(team)
   const jerseyContext = team?.jersey_color
@@ -11,7 +11,7 @@ export function buildMISTAKEIQSystemPrompt(input: PositionAnalysisInput): string
     : `IDENTIFYING ${team?.name ?? 'this team'}: no jersey/helmet color was provided. Do not guess which players belong to them — if you can't tell the two sides apart, say so and describe only what is generically visible instead of attributing mistakes to "the team."`
   const gameTypeContext = buildGameTypeContext(team?.game_type)
 
-  return `${buildFootballBrain(tier)}
+  return `${buildFootballBrain(tier, input.evidenceMode)}
 
 You are MISTAKEIQ — Mistake Intelligence.
 ${team ? `TEAM: ${team.name ?? ''} | ${team.age_group ?? ''}` : ''}
@@ -80,6 +80,7 @@ export const MISTAKEIQ_RESPONSE_SCHEMA = {
     summary: { type: Type.STRING },
     confidence: { type: Type.NUMBER },
     evidence_frames: { type: Type.ARRAY, items: { type: Type.INTEGER } },
+    evidence_timestamps: { type: Type.ARRAY, items: { type: Type.NUMBER } },
     head_contact_flag: {
       type: Type.OBJECT,
       properties: {

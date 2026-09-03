@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { Type } from '@google/genai'
+import type { EvidenceMode } from './football-brain'
 
 export type IntelligenceModuleKey =
   | 'QBIQ' | 'OLIQ' | 'RBIQ' | 'WRIQ' | 'DLIQ' | 'LBIQ' | 'DBIQ'
@@ -70,6 +71,16 @@ export const PositionAnalysisInputSchema = z.object({
 })
 
 export type PositionAnalysisInput = z.infer<typeof PositionAnalysisInputSchema>
+
+/**
+ * What a module's prompt builder receives. `evidenceMode` is decided
+ * server-side in analyze-position.ts — never sent by a client — and says
+ * whether the model is being handed the clip itself or a labelled set of
+ * stills. It changes what a citation is, so it has to reach the prompt.
+ */
+export type ModulePromptInput = PositionAnalysisInput & {
+  evidenceMode?: EvidenceMode
+}
 
 /**
  * Validates the MODEL's output, not user input — the JSON.parse in
@@ -154,6 +165,13 @@ export const PositionAnalysisOutputSchema = z.object({
   summary: z.string(),
   confidence: z.number().optional(),
   evidence_frames: z.array(z.number()).optional(),
+  /**
+   * Seconds from the start of the clip the model was shown. This is the
+   * citation channel in video mode, where there are no frame indexes to
+   * cite — and it is what lets the UI seek a coach to the moment being
+   * described instead of showing a thumbnail they have to place themselves.
+   */
+  evidence_timestamps: z.array(z.number()).optional(),
   plays_observed: z.number().optional(),
   head_contact_flag: z.object({ flagged: z.boolean(), note: z.string() }).optional(),
   // TEAMIQ / SCOUTIQ structured breakdown — frequency tendencies, never
@@ -208,6 +226,9 @@ export interface PositionAnalysisResult {
   summary: string
   confidence: number
   evidence_frames: number[]
+  evidence_timestamps: number[]
+  /** Whether the model watched the clip or a labelled set of stills. */
+  analysisMode: EvidenceMode
   plays_observed?: number
   head_contact_flag?: { flagged: boolean; note: string }
   offensive_tendencies?: Tendency[]

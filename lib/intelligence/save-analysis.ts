@@ -40,8 +40,14 @@ export async function saveAnalysisResult(
       drills: result.drills,
       summary: result.summary,
       frames_analyzed: result.framesAnalyzed,
+      analysis_mode: result.analysisMode,
+      // Also a column now, not only a jsonb field: calibration ("are
+      // 0.8-confidence claims right about 80% of the time?") is a query, and
+      // it could not be asked while this lived inside `evidence`.
+      confidence: result.confidence,
       evidence: {
         frames: result.evidence_frames,
+        timestamps: result.evidence_timestamps,
         confidence: result.confidence,
         plays_observed: result.plays_observed,
         head_contact_flag: result.head_contact_flag ?? null,

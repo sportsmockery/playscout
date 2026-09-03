@@ -1,7 +1,7 @@
 import { buildFootballBrain, buildGameTypeContext } from '../football-brain'
 import { resolveLevelTier } from '../levels'
 import { Type } from '@google/genai'
-import type { PositionAnalysisInput } from '../schemas'
+import type { ModulePromptInput } from '../schemas'
 
 /**
  * ScoutIQ Stage 1 (System B, per-clip) — scouts an OPPONENT's film. Unlike
@@ -10,7 +10,7 @@ import type { PositionAnalysisInput } from '../schemas'
  * is context only (used for jersey-color disambiguation and later, in Stage
  * 2, for building a game plan matched to the coach's own personnel).
  */
-export function buildSCOUTIQSystemPrompt(input: PositionAnalysisInput): string {
+export function buildSCOUTIQSystemPrompt(input: ModulePromptInput): string {
   const { team, opponent, playSequence, coachNote } = input
   const tier = resolveLevelTier(team)
   const opponentLabel = opponent?.name ?? 'the opponent'
@@ -23,7 +23,7 @@ export function buildSCOUTIQSystemPrompt(input: PositionAnalysisInput): string {
 
   const gameTypeContext = buildGameTypeContext(team?.game_type)
 
-  return `${buildFootballBrain(tier)}
+  return `${buildFootballBrain(tier, input.evidenceMode)}
 
 You are SCOUTIQ — Opponent Scout Intelligence.
 SUBJECT: You are scouting ${opponentLabel}${opponent?.age_group ? ` (${opponent.age_group})` : ''} — this is opponent film, not the coach's own team's film.
@@ -159,6 +159,7 @@ export const SCOUTIQ_RESPONSE_SCHEMA = {
     confidence: { type: Type.NUMBER },
     plays_observed: { type: Type.INTEGER },
     evidence_frames: { type: Type.ARRAY, items: { type: Type.INTEGER } },
+    evidence_timestamps: { type: Type.ARRAY, items: { type: Type.NUMBER } },
   },
   required: [
     'overall_score', 'position_scores', 'reasoning',

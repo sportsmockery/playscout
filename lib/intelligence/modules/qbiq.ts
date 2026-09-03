@@ -1,9 +1,9 @@
 import { buildFootballBrain, buildGameTypeContext } from '../football-brain'
 import { resolveLevelTier } from '../levels'
 import { Type } from '@google/genai'
-import type { PositionAnalysisInput } from '../schemas'
+import type { ModulePromptInput } from '../schemas'
 
-export function buildQBIQSystemPrompt(input: PositionAnalysisInput): string {
+export function buildQBIQSystemPrompt(input: ModulePromptInput): string {
   const { player, team, playSequence, coachNote } = input
   const tier = resolveLevelTier(team)
   const gameTypeContext = buildGameTypeContext(team?.game_type)
@@ -28,7 +28,7 @@ Calibrate expectations to this team's competition level (see COMPETITION LEVEL a
 
   const noteContext = coachNote ? `COACH NOTE: ${coachNote}` : ''
 
-  return `${buildFootballBrain(tier)}
+  return `${buildFootballBrain(tier, input.evidenceMode)}
 
 You are QBIQ — Quarterback Intelligence.
 ${playerProfile}
@@ -104,6 +104,7 @@ export const QBIQ_RESPONSE_SCHEMA = {
     summary: { type: Type.STRING },
     confidence: { type: Type.NUMBER },
     evidence_frames: { type: Type.ARRAY, items: { type: Type.INTEGER } },
+    evidence_timestamps: { type: Type.ARRAY, items: { type: Type.NUMBER } },
   },
   required: ['overall_score', 'position_scores', 'reasoning', 'strengths', 'weaknesses', 'drills', 'summary', 'confidence', 'evidence_frames'],
 }

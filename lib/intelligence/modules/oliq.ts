@@ -1,9 +1,9 @@
 import { buildFootballBrain, buildGameTypeContext } from '../football-brain'
 import { resolveLevelTier } from '../levels'
 import { Type } from '@google/genai'
-import type { PositionAnalysisInput } from '../schemas'
+import type { ModulePromptInput } from '../schemas'
 
-export function buildOLIQSystemPrompt(input: PositionAnalysisInput): string {
+export function buildOLIQSystemPrompt(input: ModulePromptInput): string {
   const { player, team, playSequence, coachNote } = input
   const tier = resolveLevelTier(team)
   const gameTypeContext = buildGameTypeContext(team?.game_type)
@@ -22,7 +22,7 @@ Calibrate expectations to this athlete's age and level.`
   const playContext = playSequence?.coach_label ? `PLAY: ${playSequence.coach_label}` : ''
   const noteContext = coachNote ? `COACH NOTE: ${coachNote}` : ''
 
-  return `${buildFootballBrain(tier)}
+  return `${buildFootballBrain(tier, input.evidenceMode)}
 
 You are OLIQ — Offensive Line Intelligence.
 ${playerProfile}
@@ -95,6 +95,7 @@ export const OLIQ_RESPONSE_SCHEMA = {
     summary: { type: Type.STRING },
     confidence: { type: Type.NUMBER },
     evidence_frames: { type: Type.ARRAY, items: { type: Type.INTEGER } },
+    evidence_timestamps: { type: Type.ARRAY, items: { type: Type.NUMBER } },
   },
   required: ['overall_score', 'position_scores', 'reasoning', 'strengths', 'weaknesses', 'drills', 'summary', 'confidence', 'evidence_frames'],
 }

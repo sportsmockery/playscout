@@ -1,7 +1,7 @@
 import { buildFootballBrain, buildGameTypeContext } from '../football-brain'
 import { resolveLevelTier } from '../levels'
 import { Type } from '@google/genai'
-import type { PositionAnalysisInput } from '../schemas'
+import type { ModulePromptInput } from '../schemas'
 
 /**
  * RANKERIQ — grades and ranks every player on the team's own unit in a clip.
@@ -25,8 +25,8 @@ import type { PositionAnalysisInput } from '../schemas'
  * about that difference.
  */
 function buildRosterContext(
-  roster: PositionAnalysisInput['roster'],
-  filmConditions: PositionAnalysisInput['filmConditions']
+  roster: ModulePromptInput['roster'],
+  filmConditions: ModulePromptInput['filmConditions']
 ): string {
   if (filmConditions === 'scrimmage') {
     return `FILM CONDITIONS: SCRIMMAGE / PRACTICE FILM. Players may be wearing practice pinnies, a
@@ -60,7 +60,7 @@ How to use it — read carefully, this is a constraint, not a lookup table:
 ${positions ? `- The coach's position vocabulary for this team: ${positions}. Use these words for roles where they fit.` : ''}`
 }
 
-export function buildRANKERIQSystemPrompt(input: PositionAnalysisInput): string {
+export function buildRANKERIQSystemPrompt(input: ModulePromptInput): string {
   const { team, player, playSequence, coachNote, roster, filmConditions } = input
   const tier = resolveLevelTier(team)
   const gameTypeContext = buildGameTypeContext(team?.game_type)
@@ -81,7 +81,7 @@ export function buildRANKERIQSystemPrompt(input: PositionAnalysisInput): string 
     ? `The coach flagged ${player.name}${player.jersey_number ? ` (#${player.jersey_number})` : ''} — include them if visible, but grade the whole unit, not just them.`
     : ''
 
-  return `${buildFootballBrain(tier)}
+  return `${buildFootballBrain(tier, input.evidenceMode)}
 
 You are RANKERIQ — Player Ranking Intelligence.
 ${team ? `TEAM: ${team.name ?? ''} | ${team.age_group ?? ''}` : ''}
@@ -197,6 +197,7 @@ export const RANKERIQ_RESPONSE_SCHEMA = {
     summary: { type: Type.STRING },
     confidence: { type: Type.NUMBER },
     evidence_frames: { type: Type.ARRAY, items: { type: Type.INTEGER } },
+    evidence_timestamps: { type: Type.ARRAY, items: { type: Type.NUMBER } },
     head_contact_flag: {
       type: Type.OBJECT,
       properties: {

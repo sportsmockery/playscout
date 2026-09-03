@@ -155,7 +155,7 @@ export async function runAnalysisJob(
 
     const { data: video } = await supabase
       .from('videos')
-      .select('id, title, status, team_id')
+      .select('id, title, status, team_id, storage_path')
       .eq('id', job.video_id)
       .maybeSingle()
 
@@ -177,11 +177,15 @@ export async function runAnalysisJob(
       return 'failed'
     }
 
-    const evidenceFrames = await getVideoFrames(job.video_id, supabase)
-    if (!evidenceFrames.length) {
-      // Selecting film that's still extracting frames is a normal thing for a
-      // coach to do — park the job and pick it up once the video worker is
-      // done, rather than failing something that isn't wrong yet.
+    // Film with a stored copy is read as video and needs no extracted frames
+    // at all, so a job no longer waits on frame extraction that only the
+    // fallback path uses. Film added from an external link has no stored copy
+    // and still does.
+    const evidenceFrames = video.storage_path ? [] : await getVideoFrames(job.video_id, supabase)
+    if (!video.storage_path && !evidenceFrames.length) {
+      // Selecting film that's still processing is a normal thing for a coach
+      // to do — park the job and pick it up once the video worker is done,
+      // rather than failing something that isn't wrong yet.
       await finish(supabase, job.id, {
         status: 'waiting_for_film',
         error_message: null,

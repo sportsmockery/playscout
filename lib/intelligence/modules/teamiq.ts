@@ -1,7 +1,7 @@
 import { buildFootballBrain, buildGameTypeContext } from '../football-brain'
 import { resolveLevelTier } from '../levels'
 import { Type } from '@google/genai'
-import type { PositionAnalysisInput } from '../schemas'
+import type { ModulePromptInput } from '../schemas'
 
 function buildSideContext(
   side: 'offense' | 'defense' | 'both' | 'unknown' | undefined,
@@ -21,7 +21,7 @@ function buildSideContext(
   }
 }
 
-export function buildTEAMIQSystemPrompt(input: PositionAnalysisInput): string {
+export function buildTEAMIQSystemPrompt(input: ModulePromptInput): string {
   const { team, playSequence, coachNote } = input
   const tier = resolveLevelTier(team)
   const teamLabel = team?.name ?? 'the subject team'
@@ -33,7 +33,7 @@ export function buildTEAMIQSystemPrompt(input: PositionAnalysisInput): string {
   const sideContext = buildSideContext(team?.side_of_ball, teamLabel, team?.jersey_color)
   const gameTypeContext = buildGameTypeContext(team?.game_type)
 
-  return `${buildFootballBrain(tier)}
+  return `${buildFootballBrain(tier, input.evidenceMode)}
 
 You are TEAMIQ — Team Intelligence.
 ${team ? `TEAM: ${team.name ?? ''} | ${team.age_group ?? ''} | Offense: ${team.offensive_style ?? 'unknown'} | Defense: ${team.defensive_style ?? 'unknown'}` : ''}
@@ -161,6 +161,7 @@ export const TEAMIQ_RESPONSE_SCHEMA = {
     confidence: { type: Type.NUMBER },
     plays_observed: { type: Type.INTEGER },
     evidence_frames: { type: Type.ARRAY, items: { type: Type.INTEGER } },
+    evidence_timestamps: { type: Type.ARRAY, items: { type: Type.NUMBER } },
   },
   required: [
     'overall_score', 'position_scores', 'reasoning',
