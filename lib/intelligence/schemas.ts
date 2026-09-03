@@ -3,6 +3,7 @@ import { Type } from '@google/genai'
 import type { EvidenceMode } from './football-brain'
 import { RepBreakdownSchema, type RepBreakdown } from './breakdown'
 import type { DrillPrescription } from './rubrics/drills'
+import type { ConfidenceSignals } from './confidence'
 
 export type IntelligenceModuleKey =
   | 'QBIQ' | 'OLIQ' | 'RBIQ' | 'WRIQ' | 'DLIQ' | 'LBIQ' | 'DBIQ'
@@ -158,7 +159,7 @@ export const PlayerGradeSchema = z.object({
 export type PlayerGrade = z.infer<typeof PlayerGradeSchema>
 
 export const PositionAnalysisOutputSchema = z.object({
-  overall_score: z.number(),
+  overall_score: z.number().optional(),
   position_scores: z.record(z.string(), z.number().nullable()),
   reasoning: z.record(z.string(), z.string()),
   strengths: z.array(z.string()),
@@ -166,6 +167,16 @@ export const PositionAnalysisOutputSchema = z.object({
   drills: z.array(z.string()),
   summary: z.string(),
   confidence: z.number().optional(),
+  /** What the model could see. The confidence NUMBER is derived from this in code. */
+  confidence_signals: z
+    .object({
+      subject_identified: z.string().nullable().optional(),
+      view_quality: z.string().nullable().optional(),
+      criteria_visible: z.number().nullable().optional(),
+      criteria_attempted: z.number().nullable().optional(),
+      occlusion_events: z.number().nullable().optional(),
+    })
+    .optional(),
   evidence_frames: z.array(z.number()).optional(),
   /**
    * Seconds from the start of the clip the model was shown. This is the
@@ -233,6 +244,9 @@ export interface PositionAnalysisResult {
   drills: string[]
   summary: string
   confidence: number
+  /** Why confidence is what it is, so a low number is explained rather than asserted. */
+  confidence_reasons: string[]
+  confidence_signals?: ConfidenceSignals
   evidence_frames: number[]
   evidence_timestamps: number[]
   breakdown?: RepBreakdown

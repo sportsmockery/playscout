@@ -3,6 +3,7 @@ import { resolveLevelTier } from '../levels'
 import { Type } from '@google/genai'
 import type { ModulePromptInput } from '../schemas'
 import { buildBreakdownPrompt, REP_BREAKDOWN_SCHEMA } from '../breakdown'
+import { CONFIDENCE_PROMPT, SUBJECT_IDENTIFICATION, VIEW_QUALITY } from '../confidence'
 import { OLIQ_CUES, OLIQ_RUBRIC, buildRubricPrompt, buildDrillMenuPrompt, drillMenuFor, allCueIds } from '../rubrics'
 
 export function buildOLIQSystemPrompt(input: ModulePromptInput): string {
@@ -44,6 +45,8 @@ ${buildRubricPrompt(OLIQ_RUBRIC, tier)}
 
 ${drillMenu}
 
+${CONFIDENCE_PROMPT}
+
 ${buildBreakdownPrompt(OLIQ_CUES, input.evidenceMode)}
 
 Return ONLY the JSON schema. No preamble.`
@@ -52,7 +55,6 @@ Return ONLY the JSON schema. No preamble.`
 export const OLIQ_RESPONSE_SCHEMA = {
   type: Type.OBJECT,
   properties: {
-    overall_score: { type: Type.INTEGER },
     position_scores: {
       type: Type.OBJECT,
       properties: {
@@ -79,6 +81,17 @@ export const OLIQ_RESPONSE_SCHEMA = {
     evidence_frames: { type: Type.ARRAY, items: { type: Type.INTEGER } },
     evidence_timestamps: { type: Type.ARRAY, items: { type: Type.NUMBER } },
     breakdown: REP_BREAKDOWN_SCHEMA,
+    confidence_signals: {
+      type: Type.OBJECT,
+      properties: {
+        subject_identified: { type: Type.STRING, enum: [...SUBJECT_IDENTIFICATION] },
+        view_quality: { type: Type.STRING, enum: [...VIEW_QUALITY] },
+        criteria_visible: { type: Type.INTEGER },
+        criteria_attempted: { type: Type.INTEGER },
+        occlusion_events: { type: Type.INTEGER },
+      },
+      required: ['subject_identified', 'view_quality', 'criteria_visible', 'criteria_attempted'],
+    },
     prescriptions: {
       type: Type.ARRAY,
       items: {
@@ -92,5 +105,5 @@ export const OLIQ_RESPONSE_SCHEMA = {
       },
     },
   },
-  required: ['overall_score', 'position_scores', 'reasoning', 'strengths', 'weaknesses', 'drills', 'summary', 'confidence', 'evidence_frames', 'breakdown', 'prescriptions'],
+  required: ['position_scores', 'reasoning', 'strengths', 'weaknesses', 'drills', 'summary', 'confidence', 'evidence_frames', 'breakdown', 'prescriptions', 'confidence_signals'],
 }

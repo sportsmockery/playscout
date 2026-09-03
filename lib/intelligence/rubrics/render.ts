@@ -43,8 +43,8 @@ export function buildRubricPrompt(rubric: ModuleRubric, tier: LevelTier): string
     .join('\n\n')
 
   const weights = rubric.dimensions
-    .map((d) => `${d.weight} * ${d.key.toUpperCase()}`)
-    .join(' + ')
+    .map((d) => `${d.key} ${Math.round(d.weight * 100)}%`)
+    .join(', ')
 
   const benchmarks = renderBenchmarks(rubric, tier)
 
@@ -52,7 +52,9 @@ export function buildRubricPrompt(rubric: ModuleRubric, tier: LevelTier): string
 
 ${dimensions}
 
-OVERALL = round(${weights}). When a dimension is null, reweight the remaining ones proportionally.
+The overall score is computed from your dimension scores (${weights}) — do NOT return one, and
+do not do the arithmetic. A dimension you return as null is dropped and the rest reweighted
+automatically, so return null honestly rather than guessing a number to keep the maths tidy.
 
 ${benchmarks}
 

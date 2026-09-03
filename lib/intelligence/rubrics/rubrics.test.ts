@@ -181,8 +181,16 @@ describe('rendered prompt', () => {
 
   it('states the weights and the null-handling rule', () => {
     const prompt = buildRubricPrompt(OLIQ_RUBRIC, 'jv')
-    expect(prompt).toContain('0.4 * PASS_PROTECTION')
+    expect(prompt).toContain('PASS_PROTECTION (40% of overall)')
     expect(prompt).toContain('the clip contains no pass attempt at all')
+  })
+
+  it('tells the model not to compute the overall score', () => {
+    // The score is arithmetic, and arithmetic inside a vision call is where
+    // the stated formula quietly stopped being followed on null dimensions.
+    const prompt = buildRubricPrompt(OLIQ_RUBRIC, 'varsity')
+    expect(prompt).toContain('do NOT return one')
+    expect(prompt).toContain('reweighted')
   })
 
   it('lists only ids the model is allowed to choose', () => {

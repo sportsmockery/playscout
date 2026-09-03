@@ -23,6 +23,8 @@ import { framesFromBase64, type EvidenceFrame } from './get-frames'
 import { getAnalysisClip, type ResolvedClip } from './get-clip'
 import { pruneBreakdownCitations } from './breakdown'
 import { RUBRICS, allCueIds, drillMenuFor, resolvePrescriptions, renderPrescriptions } from './rubrics'
+import { computeOverall, weightsFor } from './scoring'
+import { deriveConfidence, type ConfidenceSignals, type SubjectIdentification, type ViewQuality } from './confidence'
 import type { EvidenceMode } from './football-brain'
 import { applyDrillSafetyFilter, scrubProhibitedDrillMentions } from './safety'
 import { rankPlayerGrades } from './player-grades'
@@ -218,6 +220,35 @@ export async function analyzePosition(
   // rubric. A drill id the model made up — or one off this team's contact
   // menu — is dropped rather than shown to a coach as a prescription.
   const rubric = RUBRICS[input.moduleKey]
+
+  // The headline number is computed, not asked for. The prompts stated the
+  // formula and then had the model apply it inside a vision call — including
+  // reweighting by hand whenever a dimension came back null, which is where
+  // the formula quietly stopped being followed. Same argument player-grades.ts
+  // already makes for RankerIQ: a score a model invents per call cannot be
+  // compared across clips, and a trend line needs it to be.
+  const overall = rubric
+    ? computeOverall(parsed.position_scores, weightsFor(rubric))
+    : { value: parsed.overall_score ?? null, weights: {}, skipped: [] }
+
+  // Confidence likewise: the model reports what it could see, code turns that
+  // into the number, so it is reproducible and the UI can say why it is low.
+  const signals = (parsed.confidence_signals ?? {}) as {
+    subject_identified?: string | null
+    view_quality?: string | null
+    criteria_visible?: number | null
+    criteria_attempted?: number | null
+    occlusion_events?: number | null
+  }
+  const confidenceSignals: ConfidenceSignals = {
+    subject_identified: (signals.subject_identified as SubjectIdentification | null) ?? null,
+    view_quality: (signals.view_quality as ViewQuality | null) ?? null,
+    criteria_visible: signals.criteria_visible ?? null,
+    criteria_attempted: signals.criteria_attempted ?? null,
+    occlusion_events: signals.occlusion_events ?? null,
+  }
+  const hasSignals = Object.values(confidenceSignals).some((v) => v != null)
+  const derived = hasSignals ? deriveConfidence(confidenceSignals) : null
   const prescriptions = rubric
     ? resolvePrescriptions(parsed.prescriptions, {
         menu: drillMenuFor({ cueIds: allCueIds(rubric), gameType, tier }),
@@ -270,7 +301,7 @@ export async function analyzePosition(
     : parsed.player_grades
 
   return {
-    overall_score: parsed.overall_score,
+    overall_score: overall.value ?? 0,
     position_scores: parsed.position_scores,
     reasoning: parsed.reasoning,
     strengths: parsed.strengths,
@@ -278,7 +309,11 @@ export async function analyzePosition(
     drills: safeDrills,
     prescriptions,
     summary: parsed.summary,
-    confidence: parsed.confidence ?? 0.7,
+    // No silent 0.7 default: an unexplained number is what made confidence
+    // decoration in the first place.
+    confidence: derived?.value ?? parsed.confidence ?? 0.5,
+    confidence_reasons: derived?.reasons ?? [],
+    confidence_signals: hasSignals ? confidenceSignals : undefined,
     evidence_frames: keepCited(parsed.evidence_frames),
     evidence_timestamps: keepTimestamps(parsed.evidence_timestamps),
     breakdown: pruneBreakdownCitations(parsed.breakdown, {

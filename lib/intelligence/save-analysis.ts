@@ -51,6 +51,10 @@ export async function saveAnalysisResult(
         // The per-rep film breakdown — the part a coach clicks through.
         breakdown: result.breakdown ?? null,
         confidence: result.confidence,
+        // Why confidence is what it is, so the UI can explain a low number
+        // instead of asserting it.
+        confidence_reasons: result.confidence_reasons,
+        confidence_signals: result.confidence_signals ?? null,
         plays_observed: result.plays_observed,
         head_contact_flag: result.head_contact_flag ?? null,
         // TEAMIQ/SCOUTIQ structured breakdown — not columns of its own,

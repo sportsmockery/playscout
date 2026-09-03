@@ -20,6 +20,7 @@ interface EvidenceShape {
   timestamps?: number[];
   breakdown?: RepBreakdown | null;
   confidence?: number;
+  confidence_reasons?: string[];
   plays_observed?: number;
   head_contact_flag?: { flagged: boolean; note: string } | null;
   offensive_tendencies?: TendencyEvidence | null;
@@ -149,9 +150,9 @@ export default async function SavedAnalysisPage({
         </div>
       )}
 
-      {analysis.video_id && evidence.frames && evidence.frames.length > 0 && (
+      {analysis.video_id && ((evidence.frames?.length ?? 0) > 0 || (evidence.confidence_reasons?.length ?? 0) > 0) && (
         <div className="mb-5 print:hidden">
-          <EvidenceFrames videoId={analysis.video_id} frameIndices={evidence.frames} confidence={evidence.confidence} />
+          <EvidenceFrames videoId={analysis.video_id} frameIndices={evidence.frames ?? []} confidence={evidence.confidence} confidenceReasons={evidence.confidence_reasons} />
         </div>
       )}
 

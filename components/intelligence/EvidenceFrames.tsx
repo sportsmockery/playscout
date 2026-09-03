@@ -12,6 +12,8 @@ interface Props {
   videoId: string;
   frameIndices: number[];
   confidence?: number;
+  /** Why confidence is what it is. A low number a coach can't interrogate is just a decoration. */
+  confidenceReasons?: string[];
 }
 
 function confidenceLabel(confidence?: number) {
@@ -24,7 +26,7 @@ function confidenceLabel(confidence?: number) {
   return { pct, tone };
 }
 
-export default function EvidenceFrames({ videoId, frameIndices, confidence }: Props) {
+export default function EvidenceFrames({ videoId, frameIndices, confidence, confidenceReasons }: Props) {
   const [frames, setFrames] = useState<Frame[] | null>(null);
   const [error, setError] = useState('');
 
@@ -57,7 +59,11 @@ export default function EvidenceFrames({ videoId, frameIndices, confidence }: Pr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoId, frameIndices.join(',')]);
 
-  if (frameIndices.length === 0) return null;
+  const hasFrames = frameIndices.length > 0;
+  const hasConfidence = confidence != null || (confidenceReasons?.length ?? 0) > 0;
+  // Video-mode analyses cite timestamps, not frames, so there is no strip to
+  // draw — but the confidence read still belongs on the report.
+  if (!hasFrames && !hasConfidence) return null;
 
   const badge = confidenceLabel(confidence);
 
@@ -66,7 +72,7 @@ export default function EvidenceFrames({ videoId, frameIndices, confidence }: Pr
       <div className="flex items-center justify-between mb-3">
         <h3 className="font-bold text-[var(--brand-navy)] text-sm uppercase tracking-wide flex items-center gap-2">
           <Film size={15} />
-          Evidence Frames
+          {hasFrames ? 'Evidence Frames' : 'Evidence Quality'}
         </h3>
         {badge && (
           <span className={`flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full border ${badge.tone}`}>
@@ -76,11 +82,11 @@ export default function EvidenceFrames({ videoId, frameIndices, confidence }: Pr
         )}
       </div>
 
-      {error && (
+      {hasFrames && error && (
         <p className="text-xs text-[var(--brand-muted)]">{error}</p>
       )}
 
-      {frames === null && !error && (
+      {hasFrames && frames === null && !error && (
         <div className="flex gap-3 overflow-x-auto pb-1">
           {frameIndices.map((i) => (
             <div key={i} className="w-32 h-20 flex-shrink-0 rounded-lg bg-[var(--brand-bg)] animate-pulse" />
@@ -88,13 +94,13 @@ export default function EvidenceFrames({ videoId, frameIndices, confidence }: Pr
         </div>
       )}
 
-      {frames && frames.length === 0 && !error && (
+      {hasFrames && frames && frames.length === 0 && !error && (
         <p className="text-xs text-[var(--brand-muted)]">
           The frames this finding was based on aren&apos;t available anymore.
         </p>
       )}
 
-      {frames && frames.length > 0 && (
+      {hasFrames && frames && frames.length > 0 && (
         <div className="flex gap-3 overflow-x-auto pb-1">
           {frames.map((f) => (
             // eslint-disable-next-line @next/next/no-img-element
@@ -109,9 +115,21 @@ export default function EvidenceFrames({ videoId, frameIndices, confidence }: Pr
           ))}
         </div>
       )}
-      <p className="text-[11px] text-[var(--brand-muted)] mt-2">
-        These are the specific frames the analysis above was based on.
-      </p>
+      {hasFrames && (
+        <p className="text-[11px] text-[var(--brand-muted)] mt-2">
+          These are the specific frames the analysis above was based on.
+        </p>
+      )}
+
+      {confidenceReasons && confidenceReasons.length > 0 && (
+        <ul className="mt-2 space-y-0.5">
+          {confidenceReasons.map((reason, i) => (
+            <li key={i} className="text-[11px] text-[var(--brand-muted)]">
+              &middot; {reason}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
