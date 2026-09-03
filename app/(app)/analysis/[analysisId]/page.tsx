@@ -3,6 +3,8 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 import EvidenceFrames from '@/components/intelligence/EvidenceFrames';
+import RepBreakdownPanel, { type RepBreakdown } from '@/components/intelligence/RepBreakdownPanel';
+import { createClient } from '@/lib/supabase/server';
 import PrintButton from './PrintButton';
 
 export async function generateMetadata({ params }: { params: Promise<{ analysisId: string }> }) {
@@ -15,6 +17,8 @@ type TendencyEvidence = { tendency_type: string; label: string; rate: number | n
 
 interface EvidenceShape {
   frames?: number[];
+  timestamps?: number[];
+  breakdown?: RepBreakdown | null;
   confidence?: number;
   plays_observed?: number;
   head_contact_flag?: { flagged: boolean; note: string } | null;
@@ -58,6 +62,36 @@ export default async function SavedAnalysisPage({
     teams?: { name: string } | null;
   };
   const evidence = (analysis.evidence ?? {}) as EvidenceShape;
+
+  // A breakdown anchor is only worth clicking if there is film behind it, so
+  // resolve a playable URL the same way the film detail page does.
+  let videoSrc: string | null = null;
+  let playStartSeconds = 0;
+  if (evidence.breakdown && analysis.video_id) {
+    const supabase = await createClient();
+    const { data: video } = await supabase
+      .from('videos')
+      .select('storage_path, source_url')
+      .eq('id', analysis.video_id)
+      .maybeSingle();
+    if (video?.storage_path) {
+      videoSrc =
+        (await supabase.storage.from('videos').createSignedUrl(video.storage_path, 3600)).data
+          ?.signedUrl ?? null;
+    } else {
+      videoSrc = video?.source_url ?? null;
+    }
+    if (analysis.play_sequence_id) {
+      const { data: play } = await supabase
+        .from('play_sequences')
+        .select('start_time_seconds')
+        .eq('id', analysis.play_sequence_id)
+        .maybeSingle();
+      // Breakdown times are measured from the start of the clip the model saw,
+      // which is not the start of the file when one video holds many plays.
+      playStartSeconds = Number(play?.start_time_seconds ?? 0) || 0;
+    }
+  }
   const teamId = analysis.team_id;
 
   return (
@@ -119,6 +153,14 @@ export default async function SavedAnalysisPage({
         <div className="mb-5 print:hidden">
           <EvidenceFrames videoId={analysis.video_id} frameIndices={evidence.frames} confidence={evidence.confidence} />
         </div>
+      )}
+
+      {evidence.breakdown && (
+        <RepBreakdownPanel
+          breakdown={evidence.breakdown}
+          videoSrc={videoSrc}
+          playStartSeconds={playStartSeconds}
+        />
       )}
 
       {analysis.summary && (

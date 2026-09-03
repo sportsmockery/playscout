@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Gauge, ChevronDown, AlertCircle, Layers } from 'lucide-react';
 import type { Player, Video, PositionAnalysisResult } from '@/lib/db/types';
 import EvidenceFrames from '@/components/intelligence/EvidenceFrames';
+import RepBreakdownPanel, { type RepBreakdown } from '@/components/intelligence/RepBreakdownPanel';
 import QuickClipUpload from '@/components/intelligence/QuickClipUpload';
 import AnalysisCorrections from '@/components/intelligence/AnalysisCorrections';
 import FilmPicker, { isReadyNow, type FilmPickerFolder } from '@/components/intelligence/FilmPicker';
@@ -39,6 +40,7 @@ interface AnalysisResult {
   summary: string;
   confidence: number;
   evidence_frames: number[];
+  breakdown?: RepBreakdown;
   edited_at?: string | null;
 }
 
@@ -354,6 +356,8 @@ export default function RBIQClient({ teamId, teamName, ageGroup, rbs, videos, fo
                 </div>
               </div>
             </div>
+
+            {result.breakdown && <RepBreakdownPanel breakdown={result.breakdown} />}
 
             {selectedVideo && (
               <EvidenceFrames

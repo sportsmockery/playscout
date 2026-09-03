@@ -1,5 +1,6 @@
 'use client';
 
+import RepBreakdownPanel, { type RepBreakdown } from '@/components/intelligence/RepBreakdownPanel';
 import { useState } from 'react';
 import Link from 'next/link';
 import { ChevronDown, ChevronRight, Film } from 'lucide-react';
@@ -20,6 +21,7 @@ interface EvidenceShape {
   frames?: number[];
   confidence?: number;
   player_grades?: PlayerGradeShape[] | null;
+  breakdown?: RepBreakdown | null;
   mistakes?: { title: string; category: string; severity: string; description?: string }[] | null;
 }
 
@@ -178,6 +180,8 @@ export default function ClipBreakdown({ teamId, videoId, videoTitle, comment, re
               )}
             </div>
           )}
+
+          {evidence.breakdown && <RepBreakdownPanel breakdown={evidence.breakdown} />}
 
           {evidence.frames && evidence.frames.length > 0 && (
             <EvidenceFrames
