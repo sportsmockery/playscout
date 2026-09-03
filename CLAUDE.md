@@ -70,12 +70,12 @@ export const MODEL_ROUTES: Record<AIJobType, { provider: string; model: string }
   sequence_analysis:   { provider: 'google',    model: 'gemini-2.5-pro' },
   assignment_grading:  { provider: 'google',    model: 'gemini-2.5-pro' },
   mistake_detection:   { provider: 'google',    model: 'gemini-2.5-pro' },
-  tendency_update:     { provider: 'anthropic', model: 'claude-sonnet-4-5' },
-  report_generation:   { provider: 'anthropic', model: 'claude-opus-4-5' },
-  quick_question:      { provider: 'anthropic', model: 'claude-sonnet-4-5' },
-  deep_analysis:       { provider: 'anthropic', model: 'claude-opus-4-5' },
-  practice_plan:       { provider: 'anthropic', model: 'claude-opus-4-5' },
-  game_strategy:       { provider: 'anthropic', model: 'claude-opus-4-5' },
+  tendency_update:     { provider: 'anthropic', model: 'claude-sonnet-5' },
+  report_generation:   { provider: 'anthropic', model: 'claude-opus-5' },
+  quick_question:      { provider: 'anthropic', model: 'claude-sonnet-5' },
+  deep_analysis:       { provider: 'anthropic', model: 'claude-opus-5' },
+  practice_plan:       { provider: 'anthropic', model: 'claude-opus-5' },
+  game_strategy:       { provider: 'anthropic', model: 'claude-opus-5' },
   football_knowledge:  { provider: 'perplexity', model: 'sonar-pro' },
 };
 ```
@@ -753,23 +753,25 @@ create policy "Members can read teams"
 | `/pricing` | Pricing (placeholder) |
 | `/demo` | Example report (placeholder) |
 
-### Authenticated (`/app`)
+### Authenticated
+
+**There is no `/app` prefix.** Pages live under the `(app)` route group, and a
+route group adds no path segment — `app/(app)/dashboard/page.tsx` serves
+`/dashboard`. Earlier versions of this table said otherwise and were wrong.
+
 | Route | Page |
 |---|---|
-| `/app` | Main dashboard |
-| `/app/teams` | Teams list |
-| `/app/teams/new` | Create team |
-| `/app/teams/[teamId]` | Team command center |
-| `/app/teams/[teamId]/roster` | Roster + player profiles |
-| `/app/teams/[teamId]/film` | Film library |
-| `/app/teams/[teamId]/intelligence` | Team intelligence dashboard |
-| `/app/teams/[teamId]/modules/qbiq` | Quarterback Intelligence |
-| `/app/teams/[teamId]/modules/oliq` | Offensive Line Intelligence |
-| `/app/film/[filmId]` | Film detail |
-| `/app/film/[filmId]/plays` | Play sequence list |
-| `/app/film/[filmId]/plays/[playId]` | Single-play analysis |
-| `/app/analysis/[analysisId]` | Saved intelligence report |
-| `/app/reports/[reportId]` | Generated scouting/coaching report |
+| `/dashboard` | Main dashboard |
+| `/teams`, `/teams/new`, `/teams/[teamId]` | Teams list, create, command center |
+| `/teams/[teamId]/roster` | Roster (no player profile page exists yet) |
+| `/teams/[teamId]/film` | Film library |
+| `/teams/[teamId]/film/[videoId]` | Film detail |
+| `/teams/[teamId]/film/[videoId]/plays` | Play sequences + Hudl breakdown attach |
+| `/teams/[teamId]/intelligence` | Team intelligence dashboard |
+| `/teams/[teamId]/modules/{qbiq,oliq,rbiq,teamiq,mistakeiq,scoutiq,rankeriq,playbookiq}` | Module screens |
+| `/analysis/[analysisId]` | Saved intelligence report |
+| `/analysis/batch/[batchId]` | Cumulative batch report |
+| `/admin`, `/admin/usage` | Admin |
 
 ---
 
@@ -1041,6 +1043,123 @@ The project ref reads from the `SUPABASE_PROJECT_REF` env var (already in `.env.
 
 ---
 
+## How a module analysis actually runs (current)
+
+This supersedes the "16 frames" description above wherever they disagree. The
+frame path still exists, but it is the fallback now, not the default.
+
+### Evidence: the clip, not stills sampled out of it
+
+`lib/intelligence/get-clip.ts` resolves a video (and optionally ONE play within
+it) to something Gemini reads as video. The rubrics grade motion — kick slide,
+weight transfer, hand timing, leg drive — none of which exists between frames
+sampled ~2.7fps apart, so a frame-based read of those cues was inference
+dressed as observation.
+
+- Sample rate is a rubric decision, set per module in `analyze-position.ts`:
+  8fps for QBIQ/OLIQ/RBIQ, 6 for RANKERIQ, 4 for MISTAKEIQ, 2 at low resolution
+  for TEAMIQ/SCOUTIQ (which grade alignment, and therefore cost LESS than the
+  frame path they replace).
+- One play is read out of a longer film by start/end offset — no re-encode. The
+  frame path has no play filter, so it showed the model the whole film.
+- Film too large to inline uploads to the Files API once; the handle is cached
+  on the video row, so a 60-play breakdown of one game is one upload.
+- **Frames remain the fallback** for film with no stored copy (external links),
+  browser quick-clip uploads, and any storage failure. Which path ran is
+  recorded on the result as `analysis_mode`.
+
+### Citations must point at something real
+
+- Frame path: each frame is labelled ("FRAME 07 — t=2.34s") immediately before
+  its image. It used to be sixteen anonymous images while the prompt asked for
+  frame indices, so every citation was a guess.
+- Video path: `evidence_timestamps`, measured from the start of the clip shown.
+- Both are validated against what was actually sent and dropped when out of
+  range. `get-frames.ts` keeps a surviving frame on its real `frame_index`;
+  compacting the array silently renumbered every citation after a gap.
+
+### Two passes: observe, then write
+
+`PLAYSCOUTIQ_SPEC`'s System B / System A split, finally real.
+
+1. **Gemini** reads the film and records observations: per rubric cue, a verdict
+   from a closed ordinal set, the visible marker, and when it happened; plus
+   what could NOT be graded and why.
+2. **Claude** (`lib/intelligence/write-report.ts`) writes the report from that
+   record and is told plainly it did not see the film — no cue may be added, no
+   verdict upgraded. The system half of its prompt is byte-identical across a
+   batch and sits behind a cache breakpoint.
+
+A failed write pass falls back to pass one's own prose.
+
+### Numbers are computed, not asked for
+
+- `scoring.ts` — overall score from the rubric's weights, reweighting when a
+  dimension has no evidence. The model is told not to do the arithmetic.
+- `confidence.ts` — the model reports what it could SEE (subject identified?
+  angle? how many cues visible? occlusions?) and the number is derived, with
+  coach-readable reasons. The old free number defaulted to 0.7 when absent.
+- `player-grades.ts` — RankerIQ's per-player grade, unchanged; this is the
+  pattern the other two generalise.
+
+### The rubrics are data
+
+`lib/intelligence/rubrics/` holds each module's cues with the two columns that
+never used to reach the model: the MARKER (where on screen to read it) and the
+STANDARD per level. Benchmarks cover every tier including JV and varsity, which
+the knowledge base tables never did.
+
+Drills come from a catalog (`rubrics/drills.ts`) keyed to the cues they fix and
+filtered to the team's allowed contact BEFORE the prompt is built — a flag team
+is never shown a bag drill to choose from. Before this the only drill knowledge
+in the system was the prohibited list.
+
+**Both knowledge-base markdown files are now partially loaded** via this
+directory. They are still the source of record; `rubrics/` is the transcription
+that actually ships. Keep them in step.
+
+### Shared vocabulary
+
+`lib/intelligence/taxonomy.ts` — the 16 tendency types, formations, fronts,
+situation buckets and the explosive-play threshold, as enums in the response
+schema. The prompts used to emit a set disjoint from the documented one, and
+`team_tendencies` matched rows on exact string equality of a free-text label,
+so one real tendency became several rows each holding a fraction of the sample.
+Rows are now matched by content-word similarity.
+
+### Play context
+
+A coach's Hudl breakdown (down, distance, hash, formation, call, direction,
+gain) is attached on the film's Plays screen and stored on `play_sequences`.
+`lib/intelligence/play-context.ts` renders it for ALL seven modules — each used
+to build its own, and the four team modules rendered none, so the same clip
+told different modules different amounts about the situation.
+
+`lib/import/hudl-breakdown.ts` is a pure parser over rows: the same code serves
+a pasted spreadsheet and, later, a browser extension. Rows pair with clips by
+order, previewed and confirmed by the coach rather than applied on trust.
+
+### Measurement
+
+- `lib/intelligence/report-quality.ts` — depth, specificity and boilerplate
+  metrics that need no graded film, so a baseline can be taken today.
+- `prompt_version` is derived from the rendered prompt and stored on the result,
+  so a coach's correction names the prompt that produced it. The global
+  `PROMPT_VERSION` constant has never been bumped and is not the mechanism.
+
+### Known gaps
+
+- `player_grades` is written on every RankerIQ run and **read by nothing**.
+  There is no player profile page; the roster is a list.
+- WRIQ, DLIQ, LBIQ, DBIQ and PRACTICEIQ are declared and unbuilt — no defensive
+  player can be graded individually.
+- `AnalysisCorrections` is in 4 of 8 module clients and only works in the
+  moments after a run; the saved-report and batch pages have no edit path.
+- No eval harness runs against real film yet — the metrics exist, the runner
+  does not.
+
+---
+
 ## Future Modules
 RBIQ, WRIQ, DLIQ, LBIQ, DBIQ, SCOUTIQ, PRACTICEIQ
 
@@ -1062,10 +1181,10 @@ Reads System B's output. Converses with coaches. Never watches video. Only reaso
 |---|---|---|
 | Frame analysis (System B) | Google | `gemini-2.5-pro` |
 | Assignment grading (System B) | Google | `gemini-2.5-pro` |
-| Quick coach Q&A (System A) | Anthropic | `claude-sonnet-4-5` |
-| Deep trend analysis (System A) | Anthropic | `claude-opus-4-5` |
-| Practice plan generation (System A) | Anthropic | `claude-opus-4-5` |
-| Game strategy (System A) | Anthropic | `claude-opus-4-5` |
+| Quick coach Q&A (System A) | Anthropic | `claude-sonnet-5` |
+| Deep trend analysis (System A) | Anthropic | `claude-opus-5` |
+| Practice plan generation (System A) | Anthropic | `claude-opus-5` |
+| Game strategy (System A) | Anthropic | `claude-opus-5` |
 | Football rules / scheme knowledge (System A) | Perplexity | `sonar-pro` |
 | Memory embeddings (bridge) | OpenAI | `text-embedding-3-small` |
 
