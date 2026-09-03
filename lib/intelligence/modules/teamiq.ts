@@ -1,4 +1,5 @@
 import { buildFootballBrain, buildGameTypeContext } from '../football-brain'
+import { buildTaxonomyPrompt, EXPLOSIVE_PLAY_YARDS, TENDENCY_TYPES, OFFENSIVE_FORMATIONS, DEFENSIVE_FRONTS, SITUATION_BUCKETS, EXPLOSIVE_CAUSES } from '../taxonomy'
 import { resolveLevelTier } from '../levels'
 import { Type } from '@google/genai'
 import type { ModulePromptInput } from '../schemas'
@@ -55,22 +56,23 @@ The only 0-100 score in this module is execution_consistency (how cleanly ${team
 executed its own assignments, regardless of scheme) — this is a genuine quality
 judgment, everything else below is an observation with a rate/confidence/sample size.
 
-For each tendency you report (in offensive_tendencies / defensive_tendencies), use one
-of these tendency_type values where it applies, or a short snake_case type if none fit:
-  Offense: formation_frequency, run_direction, play_family, motion_frequency, down_distance_tendency
-  Defense: front, coverage_shell, blitz_tendency, edge_setting, pursuit_angle
-For each: label (short name), rate (0.0-1.0 share of observed plays, or null if not a
-rate-style tendency), confidence (0.0-1.0), sample_size (plays this tendency was
-observed across), description (1 sentence, evidence-based).
-Example: { tendency_type: "run_direction", label: "Runs right", rate: 0.71,
-confidence: 0.62, sample_size: 14, description: "12 of 14 observed runs went to the
-offense's right side, often out of a tight double wing." }
+${buildTaxonomyPrompt()}
 
-formations: distinct formations ${teamLabel} lined up in (name + which side + a note).
-explosive_plays: any big play and the alignment/leverage cause that created it, with
-evidence_frames.
-situational_tells: situational patterns (e.g. "3rd and short", "red zone") and what
-${teamLabel} tends to do in that situation.
+For each tendency in offensive_tendencies / defensive_tendencies give: tendency_type (from
+the list above), label (a short name — keep the wording you would use for the same tendency
+next week, since these accumulate across clips), rate (0.0-1.0 share of observed plays, or
+null if not a rate-style tendency), confidence (0.0-1.0), sample_size (plays it was observed
+across), description (1 sentence, evidence-based).
+Example: { tendency_type: "perimeter_run", label: "Sweeps right from double wing",
+rate: 0.71, confidence: 0.62, sample_size: 14, description: "12 of 14 observed runs went to
+the offense's right edge out of a tight double wing." }
+
+formations: which formations ${teamLabel} lined up in — use a FORMATIONS id above for "name",
+plus which side and a note.
+explosive_plays: every gain of ${EXPLOSIVE_PLAY_YARDS}+ yards, with which failure created it
+(force_failure, gap_failure or pursuit_failure) and evidence.
+situational_tells: use a SITUATIONS id above for "situation", and say what ${teamLabel} tends
+to do in it.
 attack_points: concrete, evidence-based things an opponent could exploit — only include
 what the frames actually support.
 
@@ -87,7 +89,7 @@ Return ONLY the JSON schema. No preamble.`
 const TENDENCY_ITEM_SCHEMA = {
   type: Type.OBJECT,
   properties: {
-    tendency_type: { type: Type.STRING },
+    tendency_type: { type: Type.STRING, enum: [...TENDENCY_TYPES] },
     label: { type: Type.STRING },
     rate: { type: Type.NUMBER, nullable: true },
     confidence: { type: Type.NUMBER },
@@ -122,7 +124,7 @@ export const TEAMIQ_RESPONSE_SCHEMA = {
       items: {
         type: Type.OBJECT,
         properties: {
-          name: { type: Type.STRING },
+          name: { type: Type.STRING, enum: [...OFFENSIVE_FORMATIONS, ...DEFENSIVE_FRONTS] },
           side: { type: Type.STRING },
           note: { type: Type.STRING },
         },
@@ -134,7 +136,7 @@ export const TEAMIQ_RESPONSE_SCHEMA = {
       items: {
         type: Type.OBJECT,
         properties: {
-          cause: { type: Type.STRING },
+          cause: { type: Type.STRING, enum: [...EXPLOSIVE_CAUSES] },
           description: { type: Type.STRING },
           evidence_frames: { type: Type.ARRAY, items: { type: Type.INTEGER } },
         },
@@ -146,7 +148,7 @@ export const TEAMIQ_RESPONSE_SCHEMA = {
       items: {
         type: Type.OBJECT,
         properties: {
-          situation: { type: Type.STRING },
+          situation: { type: Type.STRING, enum: [...SITUATION_BUCKETS] },
           tell: { type: Type.STRING },
           confidence: { type: Type.NUMBER },
         },

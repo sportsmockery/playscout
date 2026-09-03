@@ -1,4 +1,5 @@
 import { buildFootballBrain, buildGameTypeContext } from '../football-brain'
+import { buildTaxonomyPrompt, EXPLOSIVE_PLAY_YARDS, TENDENCY_TYPES, OFFENSIVE_FORMATIONS, DEFENSIVE_FRONTS, SITUATION_BUCKETS, EXPLOSIVE_CAUSES } from '../taxonomy'
 import { resolveLevelTier } from '../levels'
 import { Type } from '@google/genai'
 import type { ModulePromptInput } from '../schemas'
@@ -42,14 +43,16 @@ quality scores. The only 0-100 score is execution_consistency, describing how co
 ${opponentLabel} executes their own scheme (useful for judging how disciplined they are,
 not how "good" they are).
 
-For each tendency (offensive_tendencies / defensive_tendencies), use one of:
-  Offense: formation_frequency, run_direction, play_family, motion_frequency, down_distance_tendency
-  Defense: front, coverage_shell, blitz_tendency, edge_setting, pursuit_angle
-Each: label, rate (0.0-1.0 or null), confidence, sample_size, description — same format as TEAMIQ.
+${buildTaxonomyPrompt()}
 
-formations: distinct formations ${opponentLabel} lines up in.
-explosive_plays: any big play ${opponentLabel} gave up or created, and the cause.
-situational_tells: what ${opponentLabel} tends to do in specific situations (3rd-and-short, red zone, etc).
+For each tendency (offensive_tendencies / defensive_tendencies): tendency_type from the list
+above, label (keep the wording you would use for the same tendency next week — these
+accumulate across clips), rate (0.0-1.0 or null), confidence, sample_size, description.
+
+formations: which formations ${opponentLabel} lines up in — use a FORMATIONS id above.
+explosive_plays: every gain of ${EXPLOSIVE_PLAY_YARDS}+ yards ${opponentLabel} gave up or
+created, and which failure caused it (force_failure, gap_failure, pursuit_failure).
+situational_tells: use a SITUATIONS id above, and what ${opponentLabel} tends to do in it.
 attack_points: concrete, evidence-based things about ${opponentLabel} an opponent (the coach's team) could exploit.
 
 target_players — weak or exploitable players on ${opponentLabel}:
@@ -72,7 +75,7 @@ Return ONLY the JSON schema. No preamble.`
 const TENDENCY_ITEM_SCHEMA = {
   type: Type.OBJECT,
   properties: {
-    tendency_type: { type: Type.STRING },
+    tendency_type: { type: Type.STRING, enum: [...TENDENCY_TYPES] },
     label: { type: Type.STRING },
     rate: { type: Type.NUMBER, nullable: true },
     confidence: { type: Type.NUMBER },
@@ -107,7 +110,7 @@ export const SCOUTIQ_RESPONSE_SCHEMA = {
       items: {
         type: Type.OBJECT,
         properties: {
-          name: { type: Type.STRING },
+          name: { type: Type.STRING, enum: [...OFFENSIVE_FORMATIONS, ...DEFENSIVE_FRONTS] },
           side: { type: Type.STRING },
           note: { type: Type.STRING },
         },
@@ -119,7 +122,7 @@ export const SCOUTIQ_RESPONSE_SCHEMA = {
       items: {
         type: Type.OBJECT,
         properties: {
-          cause: { type: Type.STRING },
+          cause: { type: Type.STRING, enum: [...EXPLOSIVE_CAUSES] },
           description: { type: Type.STRING },
           evidence_frames: { type: Type.ARRAY, items: { type: Type.INTEGER } },
         },
@@ -131,7 +134,7 @@ export const SCOUTIQ_RESPONSE_SCHEMA = {
       items: {
         type: Type.OBJECT,
         properties: {
-          situation: { type: Type.STRING },
+          situation: { type: Type.STRING, enum: [...SITUATION_BUCKETS] },
           tell: { type: Type.STRING },
           confidence: { type: Type.NUMBER },
         },

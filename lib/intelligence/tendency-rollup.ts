@@ -1,3 +1,5 @@
+import { contentWords, jaccard } from './aggregate-batch'
+
 // Weighted rollup for team_tendencies: each new clip analyzed contributes a
 // sample_size-weighted vote toward the team's rolling tendency, so a team
 // with 10 clips of evidence isn't jerked around by one weird clip the way a
@@ -50,4 +52,36 @@ export function rollupTendency(
     sample_size: totalSample,
     confidence: totalSample <= 1 ? Math.min(confidence, LONE_SAMPLE_CONFIDENCE_CAP) : confidence,
   }
+}
+
+/**
+ * Finds the existing row a new observation belongs to.
+ *
+ * persist-intelligence used to match on exact string equality of a free-text
+ * label, so "Runs right from tight double wing" and "Runs to the right out of
+ * the tight double wing" became two rows with half the sample each — and a
+ * season aggregate built from them under-counted every tendency it held. The
+ * same problem aggregate-batch already solved for repeated coaching points,
+ * with the same tool: compare content words, not characters.
+ */
+const SAME_TENDENCY_SIMILARITY = 0.5
+
+export function matchTendencyLabel<T extends { label: string }>(
+  candidates: T[],
+  incomingLabel: string,
+  similarity = SAME_TENDENCY_SIMILARITY
+): T | null {
+  const words = contentWords(incomingLabel)
+  if (!words.size) return null
+
+  let best: T | null = null
+  let bestScore = 0
+  for (const c of candidates) {
+    const score = jaccard(words, contentWords(c.label))
+    if (score >= similarity && score > bestScore) {
+      best = c
+      bestScore = score
+    }
+  }
+  return best
 }

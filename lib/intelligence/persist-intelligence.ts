@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { MistakeItem, PlayerGrade, Tendency } from './schemas'
 import { matchRosterPlayer, type RosterEntry } from './player-grades'
-import { rollupTendency } from './tendency-rollup'
+import { rollupTendency, matchTendencyLabel } from './tendency-rollup'
 
 /**
  * MISTAKEIQ writes one row per identified mistake to mistake_events. Before
@@ -49,23 +49,30 @@ export async function persistTeamTendencies(
   if (!all.length) return
 
   for (const t of all) {
-    const { data: existingRow, error: fetchError } = await supabase
+    // Match on what the label MEANS, not on its characters. Exact equality
+    // split "Runs right from tight double wing" from "Runs to the right out of
+    // the tight double wing" into two rows with half the sample each, so the
+    // season aggregate under-counted every tendency it held.
+    const { data: candidates, error: fetchError } = await supabase
       .from('team_tendencies')
-      .select('id, value, sample_size, confidence')
+      .select('id, label, value, sample_size, confidence')
       .eq('team_id', teamId)
       .eq('tendency_type', t.tendency_type)
-      .eq('label', t.label)
-      .maybeSingle()
 
     if (fetchError) {
       console.error('[persist-intelligence] failed to read existing tendency', fetchError)
       continue
     }
 
+    const existingRow = matchTendencyLabel(
+      (candidates ?? []) as { id: string; label: string; value: unknown; sample_size: number | null; confidence: number | null }[],
+      t.label
+    )
+
     const existing = existingRow
       ? {
           tendency_type: t.tendency_type,
-          label: t.label,
+          label: existingRow.label,
           rate: (existingRow.value as { rate?: number | null } | null)?.rate ?? null,
           confidence: existingRow.confidence ?? 0,
           sample_size: existingRow.sample_size ?? 0,
@@ -74,7 +81,7 @@ export async function persistTeamTendencies(
 
     const rolled = rollupTendency(existing, {
       tendency_type: t.tendency_type,
-      label: t.label,
+      label: existingRow?.label ?? t.label,
       rate: t.rate ?? null,
       confidence: t.confidence,
       sample_size: t.sample_size,
