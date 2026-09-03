@@ -48,6 +48,8 @@ export async function saveAnalysisResult(
       evidence: {
         frames: result.evidence_frames,
         timestamps: result.evidence_timestamps,
+        // The per-rep film breakdown — the part a coach clicks through.
+        breakdown: result.breakdown ?? null,
         confidence: result.confidence,
         plays_observed: result.plays_observed,
         head_contact_flag: result.head_contact_flag ?? null,

@@ -2,6 +2,8 @@ import { buildFootballBrain, buildGameTypeContext } from '../football-brain'
 import { resolveLevelTier } from '../levels'
 import { Type } from '@google/genai'
 import type { ModulePromptInput } from '../schemas'
+import { buildBreakdownPrompt, REP_BREAKDOWN_SCHEMA } from '../breakdown'
+import { QBIQ_CUES } from '../rubrics/cues'
 
 export function buildQBIQSystemPrompt(input: ModulePromptInput): string {
   const { player, team, playSequence, coachNote } = input
@@ -73,6 +75,8 @@ For each dimension: work through every sub-cue listed for it. Give one observati
 you could actually see, each naming the labelled frame and the visible marker you read it from.
 List the cues you could NOT evaluate and why (angle, occlusion, the play never tested it) rather
 than skipping them silently — a coach needs to know what the film didn't show.
+${buildBreakdownPrompt(QBIQ_CUES, input.evidenceMode)}
+
 Return ONLY the JSON schema. No preamble.`
 }
 
@@ -105,6 +109,7 @@ export const QBIQ_RESPONSE_SCHEMA = {
     confidence: { type: Type.NUMBER },
     evidence_frames: { type: Type.ARRAY, items: { type: Type.INTEGER } },
     evidence_timestamps: { type: Type.ARRAY, items: { type: Type.NUMBER } },
+    breakdown: REP_BREAKDOWN_SCHEMA,
   },
-  required: ['overall_score', 'position_scores', 'reasoning', 'strengths', 'weaknesses', 'drills', 'summary', 'confidence', 'evidence_frames'],
+  required: ['overall_score', 'position_scores', 'reasoning', 'strengths', 'weaknesses', 'drills', 'summary', 'confidence', 'evidence_frames', 'breakdown'],
 }

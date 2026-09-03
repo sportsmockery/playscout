@@ -2,6 +2,8 @@ import { buildFootballBrain, buildGameTypeContext } from '../football-brain'
 import { resolveLevelTier } from '../levels'
 import { Type } from '@google/genai'
 import type { ModulePromptInput } from '../schemas'
+import { buildBreakdownPrompt, REP_BREAKDOWN_SCHEMA } from '../breakdown'
+import { OLIQ_CUES } from '../rubrics/cues'
 
 export function buildOLIQSystemPrompt(input: ModulePromptInput): string {
   const { player, team, playSequence, coachNote } = input
@@ -64,6 +66,8 @@ RUN_BLOCKING may be null. Still write a reasoning string explaining there was no
 evidence. When computing overall_score, use only the dimensions that do have a score,
 reweighted proportionally.
 
+${buildBreakdownPrompt(OLIQ_CUES, input.evidenceMode)}
+
 Return ONLY the JSON schema. No preamble.`
 }
 
@@ -96,6 +100,7 @@ export const OLIQ_RESPONSE_SCHEMA = {
     confidence: { type: Type.NUMBER },
     evidence_frames: { type: Type.ARRAY, items: { type: Type.INTEGER } },
     evidence_timestamps: { type: Type.ARRAY, items: { type: Type.NUMBER } },
+    breakdown: REP_BREAKDOWN_SCHEMA,
   },
-  required: ['overall_score', 'position_scores', 'reasoning', 'strengths', 'weaknesses', 'drills', 'summary', 'confidence', 'evidence_frames'],
+  required: ['overall_score', 'position_scores', 'reasoning', 'strengths', 'weaknesses', 'drills', 'summary', 'confidence', 'evidence_frames', 'breakdown'],
 }

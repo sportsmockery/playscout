@@ -21,6 +21,7 @@ import {
 } from './schemas'
 import { framesFromBase64, type EvidenceFrame } from './get-frames'
 import { getAnalysisClip, type ResolvedClip } from './get-clip'
+import { pruneBreakdownCitations } from './breakdown'
 import type { EvidenceMode } from './football-brain'
 import { applyDrillSafetyFilter, scrubProhibitedDrillMentions } from './safety'
 import { rankPlayerGrades } from './player-grades'
@@ -262,6 +263,11 @@ export async function analyzePosition(
     confidence: parsed.confidence ?? 0.7,
     evidence_frames: keepCited(parsed.evidence_frames),
     evidence_timestamps: keepTimestamps(parsed.evidence_timestamps),
+    breakdown: pruneBreakdownCitations(parsed.breakdown, {
+      clipSeconds,
+      shownFrames: shownIndexes,
+      mode: evidenceMode,
+    }),
     analysisMode: evidenceMode,
     plays_observed: parsed.plays_observed,
     head_contact_flag: parsed.head_contact_flag,

@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { Type } from '@google/genai'
 import type { EvidenceMode } from './football-brain'
+import { RepBreakdownSchema, type RepBreakdown } from './breakdown'
 
 export type IntelligenceModuleKey =
   | 'QBIQ' | 'OLIQ' | 'RBIQ' | 'WRIQ' | 'DLIQ' | 'LBIQ' | 'DBIQ'
@@ -172,6 +173,8 @@ export const PositionAnalysisOutputSchema = z.object({
    * described instead of showing a thumbnail they have to place themselves.
    */
   evidence_timestamps: z.array(z.number()).optional(),
+  /** The per-rep film breakdown — see lib/intelligence/breakdown.ts. */
+  breakdown: RepBreakdownSchema.optional(),
   plays_observed: z.number().optional(),
   head_contact_flag: z.object({ flagged: z.boolean(), note: z.string() }).optional(),
   // TEAMIQ / SCOUTIQ structured breakdown — frequency tendencies, never
@@ -227,6 +230,7 @@ export interface PositionAnalysisResult {
   confidence: number
   evidence_frames: number[]
   evidence_timestamps: number[]
+  breakdown?: RepBreakdown
   /** Whether the model watched the clip or a labelled set of stills. */
   analysisMode: EvidenceMode
   plays_observed?: number
