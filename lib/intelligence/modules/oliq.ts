@@ -3,7 +3,7 @@ import { resolveLevelTier } from '../levels'
 import { Type } from '@google/genai'
 import type { ModulePromptInput } from '../schemas'
 import { buildBreakdownPrompt, REP_BREAKDOWN_SCHEMA } from '../breakdown'
-import { OLIQ_CUES } from '../rubrics/cues'
+import { OLIQ_CUES, OLIQ_RUBRIC, buildRubricPrompt, buildDrillMenuPrompt, drillMenuFor, allCueIds } from '../rubrics'
 
 export function buildOLIQSystemPrompt(input: ModulePromptInput): string {
   const { player, team, playSequence, coachNote } = input
@@ -24,6 +24,13 @@ Calibrate expectations to this athlete's age and level.`
   const playContext = playSequence?.coach_label ? `PLAY: ${playSequence.coach_label}` : ''
   const noteContext = coachNote ? `COACH NOTE: ${coachNote}` : ''
 
+  // The menu is filtered to this team's allowed contact level BEFORE it is
+  // rendered, so a flag team is never shown a live-contact drill to pick
+  // from. safety.ts still screens the output as a backstop.
+  const drillMenu = buildDrillMenuPrompt(
+    drillMenuFor({ cueIds: allCueIds(OLIQ_RUBRIC), gameType: team?.game_type, tier })
+  )
+
   return `${buildFootballBrain(tier, input.evidenceMode)}
 
 You are OLIQ — Offensive Line Intelligence.
@@ -33,38 +40,9 @@ ${gameTypeContext}
 ${playContext}
 ${noteContext}
 
-OLIQ RUBRIC — Score three dimensions, each 0-100:
+${buildRubricPrompt(OLIQ_RUBRIC, tier)}
 
-1. PASS_PROTECTION (40% of overall)
-   Evaluate: set type and depth, first kick quickness, hand timing and placement (inside hands, thumbs up),
-   anchor vs bull rush, mirror/redirect vs counters and games, pass-set posture, recovery after contact.
-
-2. RUN_BLOCKING (40% of overall)
-   Evaluate: first-step explosion, pad level and leverage (low man wins), hand placement and fit,
-   hip roll and leg drive, angle and aiming point on drive/reach/zone, combo block and climb to LB, finish.
-
-3. FOOTWORK_LEVERAGE (20% of overall)
-   Evaluate: base width and balance, staying square vs over-extending, knee bend and ankle flexion,
-   avoiding crossing feet or lunging, recovery and re-fit after losing position.
-
-OVERALL = round(0.4 * PASS_PROTECTION + 0.4 * RUN_BLOCKING + 0.2 * FOOTWORK_LEVERAGE)
-
-AGE-BAND BENCHMARKS — calibrate scores to the lineman's age band (use the row nearest
-the profile's age group; if age is unknown, state which band you assumed):
-| Cue              | 8U target                | 10U target             | 12U target                 |
-| Stance/first step| Balanced, correct dir    | Explosive, low         | Explosive + landmark accurate |
-| Hand fit         | Hands inside, some late  | Inside, on time        | Inside, timed, re-fits     |
-| Pad level        | "Low man wins" understood| Wins leverage most reps| Wins leverage + finishes   |
-| Assignment busts | Occasional               | < 10%                  | < 5%                       |
-Meeting the age target is Advanced (80-89) FOR THAT AGE; do not penalize a young lineman
-for lacking older-band skills, and do NOT clamp a varsity player to youth targets — an elite varsity player earns an Elite varsity grade.
-
-SCORING A DIMENSION WITH NO EVIDENCE: if the clip has no pass attempt at all (e.g. it's
-a single run play), PASS_PROTECTION may have zero applicable evidence — return null for
-that dimension's score instead of a numeric guess. Likewise if there's no run play,
-RUN_BLOCKING may be null. Still write a reasoning string explaining there was no
-evidence. When computing overall_score, use only the dimensions that do have a score,
-reweighted proportionally.
+${drillMenu}
 
 ${buildBreakdownPrompt(OLIQ_CUES, input.evidenceMode)}
 
@@ -101,6 +79,18 @@ export const OLIQ_RESPONSE_SCHEMA = {
     evidence_frames: { type: Type.ARRAY, items: { type: Type.INTEGER } },
     evidence_timestamps: { type: Type.ARRAY, items: { type: Type.NUMBER } },
     breakdown: REP_BREAKDOWN_SCHEMA,
+    prescriptions: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          drill_id: { type: Type.STRING },
+          fixes_cue: { type: Type.STRING },
+          why_this_rep: { type: Type.STRING },
+        },
+        required: ['drill_id', 'fixes_cue', 'why_this_rep'],
+      },
+    },
   },
-  required: ['overall_score', 'position_scores', 'reasoning', 'strengths', 'weaknesses', 'drills', 'summary', 'confidence', 'evidence_frames', 'breakdown'],
+  required: ['overall_score', 'position_scores', 'reasoning', 'strengths', 'weaknesses', 'drills', 'summary', 'confidence', 'evidence_frames', 'breakdown', 'prescriptions'],
 }

@@ -22,6 +22,7 @@ import {
 import { framesFromBase64, type EvidenceFrame } from './get-frames'
 import { getAnalysisClip, type ResolvedClip } from './get-clip'
 import { pruneBreakdownCitations } from './breakdown'
+import { RUBRICS, allCueIds, drillMenuFor, resolvePrescriptions, renderPrescriptions } from './rubrics'
 import type { EvidenceMode } from './football-brain'
 import { applyDrillSafetyFilter, scrubProhibitedDrillMentions } from './safety'
 import { rankPlayerGrades } from './player-grades'
@@ -212,9 +213,25 @@ export async function analyzePosition(
   }
   const parsed = result.data
 
+  // Drills are chosen from this team's filtered catalog, not invented, so the
+  // ones that survive here name a real drill fixing a cue in this module's
+  // rubric. A drill id the model made up — or one off this team's contact
+  // menu — is dropped rather than shown to a coach as a prescription.
+  const rubric = RUBRICS[input.moduleKey]
+  const prescriptions = rubric
+    ? resolvePrescriptions(parsed.prescriptions, {
+        menu: drillMenuFor({ cueIds: allCueIds(rubric), gameType, tier }),
+        cueIds: allCueIds(rubric),
+      })
+    : []
+
   // Belt-and-suspenders: the prompt already bans these, but scrub the
   // structured output too before it can reach a coach's screen.
-  const { drills: safeDrills } = applyDrillSafetyFilter(parsed.drills, gameType, tier)
+  const { drills: safeDrills } = applyDrillSafetyFilter(
+    prescriptions.length ? renderPrescriptions(prescriptions) : parsed.drills,
+    gameType,
+    tier
+  )
   const safeMistakes = parsed.mistakes?.map((m) => {
     const correction = scrubProhibitedDrillMentions(m.correction)
     const drill = m.drill
@@ -259,6 +276,7 @@ export async function analyzePosition(
     strengths: parsed.strengths,
     weaknesses: parsed.weaknesses,
     drills: safeDrills,
+    prescriptions,
     summary: parsed.summary,
     confidence: parsed.confidence ?? 0.7,
     evidence_frames: keepCited(parsed.evidence_frames),

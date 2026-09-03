@@ -6,7 +6,7 @@ import {
   findBoilerplate,
   type QualityInput,
 } from './report-quality'
-import { QBIQ_CUES } from './rubrics/cues'
+import { QBIQ_CUES } from './rubrics'
 
 const note = (over: Partial<{ cue: string; visible_marker: string; at_seconds: number | null }> = {}) => ({
   cue: 'base_width',

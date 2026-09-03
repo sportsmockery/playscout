@@ -7,7 +7,7 @@ import {
   CUE_VERDICTS,
   type RepBreakdown,
 } from './breakdown'
-import { QBIQ_CUES, OLIQ_CUES, RBIQ_CUES } from './rubrics/cues'
+import { QBIQ_CUES, OLIQ_CUES, RBIQ_CUES } from './rubrics'
 import { buildQBIQSystemPrompt } from './modules/qbiq'
 
 describe('buildBreakdownPrompt', () => {

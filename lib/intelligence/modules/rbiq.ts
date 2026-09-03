@@ -3,7 +3,7 @@ import { resolveLevelTier } from '../levels'
 import { Type } from '@google/genai'
 import type { ModulePromptInput } from '../schemas'
 import { buildBreakdownPrompt, REP_BREAKDOWN_SCHEMA } from '../breakdown'
-import { RBIQ_CUES } from '../rubrics/cues'
+import { RBIQ_CUES, RBIQ_RUBRIC, buildRubricPrompt, buildDrillMenuPrompt, drillMenuFor, allCueIds } from '../rubrics'
 
 export function buildRBIQSystemPrompt(input: ModulePromptInput): string {
   const { player, team, playSequence, coachNote } = input
@@ -30,6 +30,13 @@ Calibrate expectations to this team's competition level (see COMPETITION LEVEL a
 
   const noteContext = coachNote ? `COACH NOTE: ${coachNote}` : ''
 
+  // The menu is filtered to this team's allowed contact level BEFORE it is
+  // rendered, so a flag team is never shown a live-contact drill to pick
+  // from. safety.ts still screens the output as a backstop.
+  const drillMenu = buildDrillMenuPrompt(
+    drillMenuFor({ cueIds: allCueIds(RBIQ_RUBRIC), gameType: team?.game_type, tier })
+  )
+
   return `${buildFootballBrain(tier, input.evidenceMode)}
 
 You are RBIQ — Running Back Intelligence.
@@ -39,45 +46,10 @@ ${gameTypeContext}
 ${playContext}
 ${noteContext}
 
-RBIQ RUBRIC — Score three dimensions, each 0-100:
+${buildRubricPrompt(RBIQ_RUBRIC, tier)}
 
-1. VISION_DECISION (40% of overall)
-   Evaluate: reading the block/landmark, hitting the correct gap, pressing the hole then cutting,
-   patience vs. bouncing everything outside, decisiveness once the lane appears, following the
-   lead blocker, finding the cutback when the frontside is closed.
+${drillMenu}
 
-2. BALL_SECURITY (35% of overall)
-   Evaluate: high-and-tight carry, carrying in the correct arm (away from the nearest defender),
-   two hands / covering up in traffic, protecting the ball through contact and at the pile,
-   no unnecessary exposure on cuts or spins.
-
-3. FOOTWORK_CONTACT (25% of overall)
-   Evaluate: path/landmark accuracy, one-cut decisiveness (plant and go, no dancing), pad level
-   through contact, running behind the pads and falling forward, finishing north-south, effort
-   and balance after contact.
-
-OVERALL = round(0.4 * VISION_DECISION + 0.35 * BALL_SECURITY + 0.25 * FOOTWORK_CONTACT)
-
-AGE-BAND BENCHMARKS — calibrate scores to the athlete's age band (use the row nearest
-the profile's age group; if age is unknown, state which band you assumed):
-| Cue           | 8U target                     | 10U target                    | 12U target                        |
-| Ball security | High-and-tight, occasional loose | Correct arm, secure in traffic | Secures through contact + pile    |
-| Vision/gap    | Follows the hole              | Reads one block, one cut      | Presses then cuts, finds cutback  |
-| Footwork      | North-south, falls forward    | Decisive one-cut              | One-cut + finishes through contact|
-Meeting the age target is Advanced (80-89) FOR THAT AGE; do not penalize a young athlete
-for lacking older-band skills, and do NOT clamp a varsity player to youth targets — an elite varsity player earns an Elite varsity grade.
-
-SCORING A DIMENSION WITH NO EVIDENCE: if the clip shows no ball-carry by the back at all
-(e.g. the back only pass-protects or runs a route and never touches the ball), BALL_SECURITY
-may have zero applicable evidence — return null for that dimension's score instead of a
-numeric guess. Likewise, if there is no run/carry to grade, VISION_DECISION may be null.
-Still write a reasoning string explaining there was no evidence. When computing overall_score,
-use only the dimensions that do have a score, reweighted proportionally.
-
-For each dimension: work through every sub-cue listed for it. Give one observation per cue
-you could actually see, each naming the labelled frame and the visible marker you read it from.
-List the cues you could NOT evaluate and why (angle, occlusion, the play never tested it) rather
-than skipping them silently — a coach needs to know what the film didn't show.
 ${buildBreakdownPrompt(RBIQ_CUES, input.evidenceMode)}
 
 Return ONLY the JSON schema. No preamble.`
@@ -113,6 +85,18 @@ export const RBIQ_RESPONSE_SCHEMA = {
     evidence_frames: { type: Type.ARRAY, items: { type: Type.INTEGER } },
     evidence_timestamps: { type: Type.ARRAY, items: { type: Type.NUMBER } },
     breakdown: REP_BREAKDOWN_SCHEMA,
+    prescriptions: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          drill_id: { type: Type.STRING },
+          fixes_cue: { type: Type.STRING },
+          why_this_rep: { type: Type.STRING },
+        },
+        required: ['drill_id', 'fixes_cue', 'why_this_rep'],
+      },
+    },
   },
-  required: ['overall_score', 'position_scores', 'reasoning', 'strengths', 'weaknesses', 'drills', 'summary', 'confidence', 'evidence_frames', 'breakdown'],
+  required: ['overall_score', 'position_scores', 'reasoning', 'strengths', 'weaknesses', 'drills', 'summary', 'confidence', 'evidence_frames', 'breakdown', 'prescriptions'],
 }
