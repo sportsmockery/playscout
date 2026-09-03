@@ -96,6 +96,7 @@ export interface PositionAnalysisResult {
   weaknesses?: string[] | null; drills?: string[] | null; summary?: string | null
   frames_analyzed?: number | null; evidence?: Json | null; model_provider?: string | null; model_name?: string | null; created_at: string
   analysis_mode?: 'video' | 'frames' | null; confidence?: number | null
+  prompt_version?: string | null
   edited_by?: string | null; edited_at?: string | null; original_result?: Json | null
 }
 

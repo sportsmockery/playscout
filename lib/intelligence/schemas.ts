@@ -270,6 +270,8 @@ export interface PositionAnalysisResult {
   prescriptions?: DrillPrescription[]
   /** Whether the model watched the clip or a labelled set of stills. */
   analysisMode: EvidenceMode
+  /** Which rendered prompt produced this, so a later correction can name it. */
+  promptVersion?: string
   plays_observed?: number
   head_contact_flag?: { flagged: boolean; note: string }
   offensive_tendencies?: Tendency[]

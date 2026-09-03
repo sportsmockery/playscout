@@ -56,6 +56,23 @@ export async function recordUsage(supabase: SupabaseClient, input: RecordUsageIn
  * naturally busts the cache instead of silently serving a stale response. */
 export const PROMPT_VERSION = '1'
 
+/**
+ * A version derived from the prompt itself.
+ *
+ * The global PROMPT_VERSION above is one constant that has never been bumped
+ * in the life of the product, which makes it useless for the thing
+ * output_corrections wanted it for: telling which prompt produced a result a
+ * coach then corrected. A hash of the rendered prompt cannot be forgotten on
+ * the way past — it changes the moment the prompt does, per module, per level,
+ * because those render different text.
+ *
+ * Short by design: it labels rows for grouping, it is not a security digest.
+ */
+export function promptVersion(moduleKey: string, systemPrompt: string): string {
+  const digest = createHash('sha256').update(moduleKey).update(systemPrompt).digest('hex')
+  return `${moduleKey.toLowerCase()}-${digest.slice(0, 10)}`
+}
+
 export function hashCacheKey(jobType: string, promptKey: string, frames: string[]): string {
   const hash = createHash('sha256')
   hash.update(jobType)

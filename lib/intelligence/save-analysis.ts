@@ -41,6 +41,7 @@ export async function saveAnalysisResult(
       summary: result.summary,
       frames_analyzed: result.framesAnalyzed,
       analysis_mode: result.analysisMode,
+      prompt_version: result.promptVersion ?? null,
       // Also a column now, not only a jsonb field: calibration ("are
       // 0.8-confidence claims right about 80% of the time?") is a query, and
       // it could not be asked while this lived inside `evidence`.

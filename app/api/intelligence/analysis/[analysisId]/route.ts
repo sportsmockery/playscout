@@ -51,7 +51,7 @@ export async function PATCH(
 
   const { data: existing, error: fetchErr } = await supabase
     .from('position_analysis_results')
-    .select('team_id, overall_score, position_scores, strengths, weaknesses, summary, drills, original_result, evidence, model_name')
+    .select('team_id, overall_score, position_scores, strengths, weaknesses, summary, drills, original_result, evidence, model_name, prompt_version')
     .eq('id', analysisId)
     .single()
   if (fetchErr || !existing) {
@@ -103,6 +103,11 @@ export async function PATCH(
       corrected_value: patch[field] ?? null,
       ai_confidence: aiConfidence,
       model: existing.model_name,
+      // The prompt that produced the result being corrected — not whichever
+      // prompt is current now. Migration 024 provisioned this column for the
+      // flywheel and no writer ever set it, so every correction recorded
+      // before this was unattributable.
+      prompt_version: existing.prompt_version ?? null,
       corrected_by: user.id,
     }))
   if (corrections.length) {

@@ -26,7 +26,7 @@ export async function PATCH(
 
   const { data: existing, error: fetchErr } = await supabase
     .from('playbook_plays')
-    .select('team_id, play_name, assignments, blocking_summary, original_play, confidence')
+    .select('team_id, play_name, assignments, blocking_summary, original_play, confidence, prompt_version')
     .eq('id', playId)
     .single()
   if (fetchErr || !existing) {
@@ -69,7 +69,10 @@ export async function PATCH(
       ai_value: (originalValues as Record<string, unknown>)[field] ?? null,
       corrected_value: patch[field] ?? null,
       ai_confidence: existing.confidence ?? null,
+      // playbook_plays records no model, so this stays honestly null rather
+      // than guessing at whatever the router happens to point at today.
       model: null,
+      prompt_version: existing.prompt_version ?? null,
       corrected_by: user.id,
     }))
   if (corrections.length) {

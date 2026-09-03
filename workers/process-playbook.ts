@@ -20,7 +20,7 @@ import { Sentry } from './lib/sentry'
 import { renderPdfPages } from './lib/pdf-render'
 import { analyzeFramesWithGemini } from '../lib/ai/providers/google'
 import { getRoute } from '../lib/ai/model-router'
-import { recordUsage, hashCacheKey, getCachedResponse, setCachedResponse } from '../lib/ai/record-usage'
+import { recordUsage, hashCacheKey, getCachedResponse, setCachedResponse, promptVersion } from '../lib/ai/record-usage'
 import {
   buildPlaybookPlaySystemPrompt,
   PLAYBOOK_PLAY_RESPONSE_SCHEMA,
@@ -243,6 +243,8 @@ async function processPage(
     blocking_summary: parsed.blocking_summary,
     assignments: parsed.assignments ?? [],
     confidence: parsed.confidence,
+    // So a coach's later correction can name the prompt that produced this.
+    prompt_version: promptVersion('PLAYBOOKIQ', systemPrompt),
     page_type: 'live_play',
   })
   if (insertErr) throw new Error(`Page ${page.pageNumber} insert failed: ${insertErr.message}`)

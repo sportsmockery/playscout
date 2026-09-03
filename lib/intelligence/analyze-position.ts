@@ -5,7 +5,7 @@ import {
   type ClipResolution,
 } from '@/lib/ai/providers/google'
 import { getRoute } from '@/lib/ai/model-router'
-import { recordUsage, hashCacheKey, getCachedResponse, setCachedResponse } from '@/lib/ai/record-usage'
+import { recordUsage, hashCacheKey, getCachedResponse, setCachedResponse, promptVersion } from '@/lib/ai/record-usage'
 import { buildQBIQSystemPrompt, QBIQ_RESPONSE_SCHEMA } from './modules/qbiq'
 import { buildOLIQSystemPrompt, OLIQ_RESPONSE_SCHEMA } from './modules/oliq'
 import { buildRBIQSystemPrompt, RBIQ_RESPONSE_SCHEMA } from './modules/rbiq'
@@ -357,6 +357,10 @@ export async function analyzePosition(
     evidence_timestamps: keepTimestamps(parsed.evidence_timestamps),
     breakdown: prunedBreakdown,
     analysisMode: evidenceMode,
+    // Recorded where it is known. A correction made three weeks from now
+    // needs to name the prompt that produced the result, not whichever
+    // prompt happens to be current when the coach fixes it.
+    promptVersion: promptVersion(input.moduleKey, systemPrompt),
     plays_observed: parsed.plays_observed,
     head_contact_flag: parsed.head_contact_flag,
     offensive_tendencies: parsed.offensive_tendencies,
