@@ -24,6 +24,7 @@ import { getAnalysisClip, type ResolvedClip } from './get-clip'
 import { pruneBreakdownCitations } from './breakdown'
 import { RUBRICS, allCueIds, drillMenuFor, resolvePrescriptions, renderPrescriptions } from './rubrics'
 import { computeOverall, weightsFor } from './scoring'
+import { writeReport } from './write-report'
 import { deriveConfidence, type ConfidenceSignals, type SubjectIdentification, type ViewQuality } from './confidence'
 import type { EvidenceMode } from './football-brain'
 import { applyDrillSafetyFilter, scrubProhibitedDrillMentions } from './safety'
@@ -215,10 +216,6 @@ export async function analyzePosition(
   }
   const parsed = result.data
 
-  // Drills are chosen from this team's filtered catalog, not invented, so the
-  // ones that survive here name a real drill fixing a cue in this module's
-  // rubric. A drill id the model made up — or one off this team's contact
-  // menu — is dropped rather than shown to a coach as a prescription.
   const rubric = RUBRICS[input.moduleKey]
 
   // The headline number is computed, not asked for. The prompts stated the
@@ -249,6 +246,10 @@ export async function analyzePosition(
   }
   const hasSignals = Object.values(confidenceSignals).some((v) => v != null)
   const derived = hasSignals ? deriveConfidence(confidenceSignals) : null
+  // Drills are chosen from this team's filtered catalog, not invented, so the
+  // ones that survive here name a real drill fixing a cue in this module's
+  // rubric. A drill id the model made up — or one off this team's contact
+  // menu — is dropped rather than shown to a coach as a prescription.
   const prescriptions = rubric
     ? resolvePrescriptions(parsed.prescriptions, {
         menu: drillMenuFor({ cueIds: allCueIds(rubric), gameType, tier }),
@@ -289,6 +290,42 @@ export async function analyzePosition(
       (t) => Number.isFinite(t) && t >= 0 && (clipSeconds == null || t <= clipSeconds)
     )
 
+  const prunedBreakdown = pruneBreakdownCitations(parsed.breakdown, {
+    clipSeconds,
+    shownFrames: shownIndexes,
+    mode: evidenceMode,
+  })
+
+  // Pass two. The observation pass read the film; this one writes from what it
+  // recorded, and can see nothing else. PLAYSCOUTIQ_SPEC has always described
+  // these as separate systems — one call was doing both, and the prose was the
+  // half that suffered for it.
+  const written = rubric
+    ? await writeReport(
+        {
+          moduleKey: input.moduleKey,
+          positionScores: parsed.position_scores,
+          overallScore: overall.value,
+          breakdown: prunedBreakdown,
+          prescriptions,
+          confidenceReasons: derived?.reasons ?? [],
+          playerName: input.player?.name,
+          playContext: [
+            input.playSequence?.down
+              ? `${input.playSequence.down} & ${input.playSequence.distance ?? '?'}`
+              : null,
+            input.playSequence?.yard_line,
+            input.playSequence?.coach_label,
+          ]
+            .filter(Boolean)
+            .join(' · ') || undefined,
+          coachNote: input.coachNote,
+        },
+        { rubric, tier, teamId: input.teamId, userId },
+        supabase
+      )
+    : null
+
   // RANKERIQ: the model reports observations; the grade itself is computed
   // here from those factors so a 78 in clip 3 means what a 78 means in clip
   // 40 — otherwise ranking players across a game is comparing scales, not
@@ -303,12 +340,14 @@ export async function analyzePosition(
   return {
     overall_score: overall.value ?? 0,
     position_scores: parsed.position_scores,
-    reasoning: parsed.reasoning,
-    strengths: parsed.strengths,
-    weaknesses: parsed.weaknesses,
+    reasoning: written?.reasoning && Object.keys(written.reasoning).length
+      ? written.reasoning
+      : parsed.reasoning,
+    strengths: written?.strengths ?? parsed.strengths,
+    weaknesses: written?.weaknesses ?? parsed.weaknesses,
     drills: safeDrills,
     prescriptions,
-    summary: parsed.summary,
+    summary: written?.summary ?? parsed.summary,
     // No silent 0.7 default: an unexplained number is what made confidence
     // decoration in the first place.
     confidence: derived?.value ?? parsed.confidence ?? 0.5,
@@ -316,11 +355,7 @@ export async function analyzePosition(
     confidence_signals: hasSignals ? confidenceSignals : undefined,
     evidence_frames: keepCited(parsed.evidence_frames),
     evidence_timestamps: keepTimestamps(parsed.evidence_timestamps),
-    breakdown: pruneBreakdownCitations(parsed.breakdown, {
-      clipSeconds,
-      shownFrames: shownIndexes,
-      mode: evidenceMode,
-    }),
+    breakdown: prunedBreakdown,
     analysisMode: evidenceMode,
     plays_observed: parsed.plays_observed,
     head_contact_flag: parsed.head_contact_flag,
