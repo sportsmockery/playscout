@@ -25,7 +25,8 @@ const ffmpegPath = resolveFfmpegPath()
 
 type RunResult = { code: number | null; stderr: string }
 
-function runFfmpeg(args: string[], timeoutMs: number = FFMPEG_TIMEOUT_MS): Promise<RunResult> {
+/** Exported so other worker modules (e.g. the Hudl clip pull) share one binary. */
+export function runFfmpeg(args: string[], timeoutMs: number = FFMPEG_TIMEOUT_MS): Promise<RunResult> {
   return new Promise((resolve, reject) => {
     const child = spawn(ffmpegPath, args, { stdio: ['ignore', 'ignore', 'pipe'] })
     let stderr = ''
