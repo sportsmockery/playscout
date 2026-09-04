@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft, Settings } from 'lucide-react';
 import TeamSettingsClient from './TeamSettingsClient';
+import HudlConnectionCard from './HudlConnectionCard';
 
 export async function generateMetadata({ params }: { params: Promise<{ teamId: string }> }) {
   const { teamId } = await params;
@@ -41,6 +42,10 @@ export default async function TeamSettingsPage({
       </div>
 
       <TeamSettingsClient team={team} />
+
+      <div className="mt-8">
+        <HudlConnectionCard teamId={teamId} />
+      </div>
     </div>
   );
 }

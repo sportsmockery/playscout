@@ -435,6 +435,39 @@ Coach pastes a direct file link → POST /api/videos/from-link (validates, recor
 - A link failure is terminal on the first attempt (`RemoteVideoError` in the worker): a 404 or an
   expired signature fails identically on every retry, and the message is already actionable.
 
+### Film from Hudl, under the coach's own login (`source_type: 'hudl_link'`)
+```
+Coach connects their Hudl account once (team settings) → sealed into hudl_credentials
+Coach pastes a playlist URL → POST /api/integrations/hudl/import (validates, records, queues)
+→ hudl_import_jobs row
+→ Railway hudl worker signs in as the coach in headless Chromium, reads the playlist,
+   downloads each clip, uploads it to the `videos` bucket
+→ one `videos` row per clip WITH a storage_path + the usual full_pipeline job
+→ everything downstream (frames, native-video analysis, folders, batches, modules) unchanged
+```
+- Hudl publishes no API for your own cut-ups, so this drives their web app. It reads live
+  markup and can break on any redesign; the **breakdown-paste path stays as the fallback**.
+  This is the one place the "do not scrape watch pages" rule above does not apply — it is the
+  coach's own account and their own film, at their explicit instruction.
+- **The playlist payload shape is undocumented**, so `workers/lib/hudl-playlist.ts` is a
+  shape-tolerant reader, not a parser for one schema, and it returns NOTHING rather than
+  something wrong. A half-read playlist attaches the wrong down and distance to real film,
+  which is worse than a failed import. On failure the job keeps the page's request URLs with
+  every query VALUE stripped — the names identify the endpoint, the values are session tokens.
+- Breakdown columns go through the SAME `mapHudlRow` → `toPlaySequenceFields` as the paste
+  path. One alias table, three ways in.
+- Secrets never reach a screen or a backup: `error_message`/`diagnostics` are hand-written
+  coach sentences, ffmpeg stderr is log-only with URLs redacted, cookies are filtered by domain
+  and path so a media CDN never receives the app session, and the browser context is disposed
+  per job with no profile on disk.
+- A challenge screen (MFA, captcha, "verify it's you") is detected explicitly and checked
+  BEFORE a rejection — verification pages carry "try again" copy, and calling that a bad
+  password sends a coach to reset one that was fine.
+- Clips are pulled SERIALLY with a delay. This runs against the coach's own account; getting it
+  flagged costs them Hudl.
+- Needs `HUDL_CREDENTIAL_KEY` on both Vercel (encrypts) and Railway (decrypts), and
+  `playwright` + Chromium on the worker.
+
 ### Seeing work in flight
 - `AnalysisDock` (app shell, next to `UploadDock`) shows every running batch across all the
   coach's teams from any page, and pokes `/api/analysis/run` per team so a batch keeps draining
@@ -845,6 +878,7 @@ playscout/
   workers/
     process-video.ts        # Background video processing pipeline
     process-analysis.ts     # Background module analysis queue (analysis_batch_jobs)
+    process-hudl-import.ts  # Pulls a Hudl playlist in as film (hudl_import_jobs)
   supabase/
     migrations/
       001_initial_schema.sql
@@ -978,8 +1012,9 @@ VERCEL_ORG_ID=team_tyYugyFj05x63r5t9jwqFWq3
 - Vercel project env vars are separate from `.env.local` and must be pushed explicitly: `vercel env add <NAME> <production|preview|development>` (reads value from stdin, prompts per environment — non-interactive shells should pipe the value in and pass the environment as one call per target). Preview environment additions may require selecting "Add to all Preview branches" — rerun the suggested command if it errors asking to disambiguate.
 - At minimum, `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` must exist in the Vercel project (used by `lib/supabase/client.ts`, `server.ts`, and `proxy.ts`). A blank/missing `NEXT_PUBLIC_SUPABASE_ANON_KEY` causes every route to 500 in production, because `proxy.ts` runs `createServerClient` on nearly every request via its matcher.
 - There is an orphaned duplicate project `playscout-scaffold` in the same Vercel scope (from an early accidental deploy under the pre-rename package name). Do not deploy to it; the real project is `playscout`. Safe to delete once confirmed unused, but ask before deleting.
-- The Railway worker service runs all three pollers via `npm run worker` (`workers/index.ts` →
-  video + playbook + analysis). Deploying a new worker file means redeploying that service.
+- The Railway worker service runs all four pollers via `npm run worker` (`workers/index.ts` →
+  video + playbook + analysis + hudl import). Deploying a new worker file means redeploying that
+  service. The Hudl poller additionally needs Chromium available to Playwright.
 - Workers run on Railway (not Vercel) — they authenticate to Supabase directly via `SUPABASE_SERVICE_ROLE_KEY` (see `workers/lib/service-client.ts`), not a separate shared secret
 - Use `apply_migration` for all DB schema changes — never raw DDL in production
 

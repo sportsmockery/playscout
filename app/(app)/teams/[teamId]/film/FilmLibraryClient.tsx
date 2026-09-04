@@ -18,6 +18,7 @@ import {
 import type { Video, VideoFolder } from '@/lib/db/types';
 import UploadVideoButton from './UploadVideoButton';
 import AddFilmLinkButton from './AddFilmLinkButton';
+import ImportFromHudl from './ImportFromHudl';
 import VideoCard from './VideoCard';
 
 type FolderWithCount = VideoFolder & { video_count: number };
@@ -225,6 +226,11 @@ export default function FilmLibraryClient({ teamId, teamName, videos, folders }:
               folders={folders.map((f) => ({ id: f.id, name: f.name }))}
               defaultFolderId={activeFolder && activeFolder !== UNFILED ? activeFolder : undefined}
             />
+            <ImportFromHudl
+              teamId={teamId}
+              folders={folders.map((f) => ({ id: f.id, name: f.name }))}
+              defaultFolderId={activeFolder && activeFolder !== UNFILED ? activeFolder : undefined}
+            />
             <UploadVideoButton
               teamId={teamId}
               teamName={teamName}
@@ -304,6 +310,11 @@ export default function FilmLibraryClient({ teamId, teamName, videos, folders }:
                 defaultFolderId={activeFolder && activeFolder !== UNFILED ? activeFolder : undefined}
               />
               <AddFilmLinkButton
+                teamId={teamId}
+                folders={folders.map((f) => ({ id: f.id, name: f.name }))}
+                defaultFolderId={activeFolder && activeFolder !== UNFILED ? activeFolder : undefined}
+              />
+              <ImportFromHudl
                 teamId={teamId}
                 folders={folders.map((f) => ({ id: f.id, name: f.name }))}
                 defaultFolderId={activeFolder && activeFolder !== UNFILED ? activeFolder : undefined}
