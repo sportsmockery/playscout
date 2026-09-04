@@ -327,6 +327,46 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
                   <p className="text-sm text-[var(--brand-ink)]">{latestReport.summary}</p>
                 )}
 
+                {/* The evidence the plan was built from, ranked. A coach asking
+                    for "the top things to attack" wants the count behind each
+                    one — a weakness seen in 30 of 52 clips is a different
+                    claim from one seen once, and the prose above cannot show
+                    that. */}
+                {(() => {
+                  const points = (latestReport.attack_points ?? []) as {
+                    point: string;
+                    category?: string;
+                    clips: number;
+                  }[];
+                  if (!points.length) return null;
+                  const clipCount = latestReport.based_on_video_ids.length;
+                  return (
+                    <div>
+                      <h3 className="text-xs font-bold text-[var(--brand-navy)] uppercase tracking-wide mb-2">
+                        What The Film Showed ({points.length} ranked by how often)
+                      </h3>
+                      <ol className="space-y-1.5">
+                        {points.map((a, i) => (
+                          <li key={i} className="flex items-start gap-2 text-sm text-[var(--brand-ink)]">
+                            <span
+                              className="shrink-0 font-mono text-[11px] tabular-nums text-[var(--brand-muted)] mt-0.5"
+                              title={`Seen in ${a.clips} of ${clipCount} clips`}
+                            >
+                              {a.clips}/{clipCount}
+                            </span>
+                            {a.category && (
+                              <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border border-[var(--brand-border)] text-[var(--brand-navy)] mt-0.5">
+                                {a.category.replace(/_/g, ' ')}
+                              </span>
+                            )}
+                            <span>{a.point}</span>
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  );
+                })()}
+
                 {(['offensive_game_plan', 'defensive_game_plan', 'target_players_plan', 'practice_week_focus'] as const).map((key) => {
                   const items = (latestReport.game_plan as Record<string, string[]> | null)?.[key];
                   if (!items?.length) return null;

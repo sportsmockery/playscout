@@ -218,6 +218,8 @@ export interface ScoutReport {
   plays?: Json | null
   target_players?: Json | null
   situational_tells?: Json | null
+  /** Ranked ways to attack this opponent, with the clip count behind each. */
+  attack_points?: Json | null
   game_plan?: Json | null
   evidence_sufficiency?: Json | null
   summary?: string | null

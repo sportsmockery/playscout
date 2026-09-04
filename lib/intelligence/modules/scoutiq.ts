@@ -1,5 +1,5 @@
 import { buildFootballBrain, buildGameTypeContext } from '../football-brain'
-import { buildTaxonomyPrompt, EXPLOSIVE_PLAY_YARDS, TENDENCY_TYPES, OFFENSIVE_FORMATIONS, DEFENSIVE_FRONTS, SITUATION_BUCKETS, EXPLOSIVE_CAUSES } from '../taxonomy'
+import { buildTaxonomyPrompt, EXPLOSIVE_PLAY_YARDS, TENDENCY_TYPES, OFFENSIVE_FORMATIONS, DEFENSIVE_FRONTS, SITUATION_BUCKETS, EXPLOSIVE_CAUSES, ATTACK_CATEGORIES } from '../taxonomy'
 import { resolveLevelTier } from '../levels'
 import { Type } from '@google/genai'
 import type { ModulePromptInput } from '../schemas'
@@ -56,7 +56,10 @@ formations: which formations ${opponentLabel} lines up in — use a FORMATIONS i
 explosive_plays: every gain of ${EXPLOSIVE_PLAY_YARDS}+ yards ${opponentLabel} gave up or
 created, and which failure caused it (force_failure, gap_failure, pursuit_failure).
 situational_tells: use a SITUATIONS id above, and what ${opponentLabel} tends to do in it.
-attack_points: concrete, evidence-based things about ${opponentLabel} an opponent (the coach's team) could exploit.
+attack_points: concrete, evidence-based ways to attack ${opponentLabel}, each with the part of a
+game plan it belongs to (category: ${ATTACK_CATEGORIES.join(', ')}). Describe the WEAKNESS you saw,
+not a play call — these are counted across every clip of this opponent, so a point worded the same
+way each time accumulates evidence and one worded freshly every clip looks like a one-off.
 
 target_players — weak or exploitable players on ${opponentLabel}:
 - identifier: how to point this player out to the coach. Use the jersey number ONLY if it
@@ -144,7 +147,17 @@ export const SCOUTIQ_RESPONSE_SCHEMA = {
         required: ['situation', 'tell'],
       },
     },
-    attack_points: { type: Type.ARRAY, items: { type: Type.STRING } },
+    attack_points: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          point: { type: Type.STRING },
+          category: { type: Type.STRING, enum: [...ATTACK_CATEGORIES] },
+        },
+        required: ['point', 'category'],
+      },
+    },
     target_players: {
       type: Type.ARRAY,
       items: {

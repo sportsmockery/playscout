@@ -102,6 +102,7 @@ export async function POST(req: NextRequest) {
       opponentAgeGroup: opponent.age_group,
       teamName: team?.name,
       teamAgeGroup: team?.age_group,
+      teamLevel: team?.level,
       teamOffensiveStyle: team?.offensive_style,
       teamDefensiveStyle: team?.defensive_style,
       gameType: team?.game_type,
@@ -147,6 +148,9 @@ export async function POST(req: NextRequest) {
         formations: aggregated.formations,
         target_players: aggregated.target_players,
         situational_tells: aggregated.situational_tells,
+        // Ranked by how many clips each appeared in. Previously computed,
+        // fed to the game-plan prompt, and then thrown away.
+        attack_points: aggregated.attack_points,
         game_plan: gamePlan,
         evidence_sufficiency: aggregated.evidence_sufficiency,
         summary: gamePlan.summary,

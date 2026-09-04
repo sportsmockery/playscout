@@ -1,4 +1,6 @@
-import { FOOTBALL_BRAIN_SYSTEM, buildGameTypeContext } from '../football-brain'
+import { buildFootballBrain, buildGameTypeContext } from '../football-brain'
+import { resolveLevelTier, tierLabel } from '../levels'
+import { ATTACK_CATEGORY_LABELS, type AttackCategory } from '../taxonomy'
 import type { AggregatedScoutReport } from '../scoutiq-aggregate'
 
 export interface ScoutIQGamePlanContext {
@@ -6,12 +8,24 @@ export interface ScoutIQGamePlanContext {
   opponentAgeGroup?: string | null
   teamName?: string | null
   teamAgeGroup?: string | null
+  /** Competition level ('High School', ...), so a varsity plan isn't written for a 10U coach. */
+  teamLevel?: string | null
   teamOffensiveStyle?: string | null
   teamDefensiveStyle?: string | null
   gameType?: string | null
   aggregated: AggregatedScoutReport
   ownRosterSummary?: string
   ownPlaybookSummary?: string
+}
+
+function formatAttackPoints(points: AggregatedScoutReport['attack_points']): string {
+  if (!points.length) return '(none observed yet)'
+  return points
+    .map((a) => {
+      const label = ATTACK_CATEGORY_LABELS[a.category as AttackCategory] ?? a.category
+      return `- [${label}] ${a.point} — seen in ${a.clips} clip${a.clips === 1 ? '' : 's'}`
+    })
+    .join('\n')
 }
 
 function formatTendencyLines(tendencies: AggregatedScoutReport['offensive_tendencies']): string {
@@ -30,8 +44,12 @@ function formatTendencyLines(tendencies: AggregatedScoutReport['offensive_tenden
 export function buildScoutIQGamePlanPrompt(ctx: ScoutIQGamePlanContext): string {
   const { aggregated } = ctx
   const gameTypeContext = buildGameTypeContext(ctx.gameType)
+  // This module used the hardcoded 'unknown'-tier export and then wrote every
+  // plan for a "volunteer 9U-10U coach" — the youth-only ceiling this product
+  // explicitly removed everywhere else.
+  const tier = resolveLevelTier({ age_group: ctx.teamAgeGroup, level: ctx.teamLevel })
 
-  return `${FOOTBALL_BRAIN_SYSTEM}
+  return `${buildFootballBrain(tier)}
 
 You are SCOUTIQ's game-plan synthesizer (System A). You do NOT watch video — you reason
 only over the aggregated scouting evidence below, already extracted from ${aggregated.evidence_sufficiency.clips_analyzed} film clip(s) of the opponent.
@@ -51,10 +69,12 @@ ${formatTendencyLines(aggregated.defensive_tendencies)}
 Formations observed: ${aggregated.formations.map((f) => f.name).join(', ') || '(none observed yet)'}
 
 Situational tells:
-${aggregated.situational_tells.map((t) => `- ${t.situation}: ${t.tell}`).join('\n') || '(none observed yet)'}
+${aggregated.situational_tells.map((t) => `- ${t.situation}: ${t.tell} (${t.clips} clip${t.clips === 1 ? '' : 's'})`).join('\n') || '(none observed yet)'}
 
-Attack points already identified per-clip:
-${aggregated.attack_points.map((a) => `- ${a}`).join('\n') || '(none observed yet)'}
+Ways to attack them, RANKED by how many clips each showed up in (${aggregated.evidence_sufficiency.clips_analyzed} clips analyzed).
+Order your plan by this evidence — something seen in most clips is a tendency, something seen once
+may be a one-off, and you must not present them as equally reliable:
+${formatAttackPoints(aggregated.attack_points)}
 
 Target players (weakness identified by legible jersey number or position/alignment — never a guessed number):
 ${aggregated.target_players.map((p) => `- ${p.identifier}: ${p.reason} (confidence ${p.confidence.toFixed(2)})`).join('\n') || '(none identified yet)'}
@@ -64,7 +84,7 @@ ${ctx.ownRosterSummary ?? '(no roster on file)'}
 ${ctx.ownPlaybookSummary ?? '(no playbook on file)'}
 
 ## Task
-Produce a game plan a volunteer 9U-10U coach can actually use this week:
+Produce a game plan a ${tierLabel(tier)} coach can actually use this week:
 1. offensive_game_plan — how to attack this opponent on offense, matched to YOUR team's own personnel/playbook where possible.
 2. defensive_game_plan — how to stop this opponent's offense.
 3. target_players_plan — how to specifically exploit the target players listed above (only if the evidence above lists any).
@@ -76,7 +96,7 @@ RULES:
 - Only reference opponent tendencies, formations, or target players that appear in the evidence above. Never invent a tendency, jersey number, or player detail not listed there.
 - If a category above has no evidence (e.g. no target players identified), say so in that section rather than inventing one to fill it.
 - Respect the safety rules above: no prohibited drills, no live-contact drills unless GAME TYPE is tackle.
-- Keep every recommendation specific to 9U-10U — no NFL/college-caliber schemes.
+- Pitch every recommendation at ${tierLabel(tier)} — see the COMPETITION LEVEL block above. Do not clamp a varsity staff to youth-lean schemes, and do not hand a youth staff college-caliber ones.
 
 Return ONLY JSON matching this schema, no preamble, no markdown fences:
 {

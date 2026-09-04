@@ -113,7 +113,13 @@ export function jaccard(a: Set<string>, b: Set<string>): number {
  */
 const REPEAT_SIMILARITY = 0.5
 
-function countRepeats(lists: string[][], limit = 8): RepeatedItem[] {
+/**
+ * Clusters near-identical items across clips and counts how many clips each
+ * appeared in. Exported because opponent scouting needs exactly this: a list
+ * of ways to attack a defense is worthless unranked, and the same weakness is
+ * worded differently in every clip.
+ */
+export function countRepeats(lists: string[][], limit = 8): RepeatedItem[] {
   const clusters: { text: string; words: Set<string>; clips: number }[] = []
 
   for (const list of lists) {

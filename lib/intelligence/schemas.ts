@@ -230,7 +230,9 @@ export const PositionAnalysisOutputSchema = z.object({
     tell: z.string(),
     confidence: z.number().optional(),
   })).optional(),
-  attack_points: z.array(z.string()).optional(),
+  attack_points: z
+    .array(z.object({ point: z.string(), category: z.string().optional() }))
+    .optional(),
   // MISTAKEIQ per-mistake taxonomy — written one row per item to
   // mistake_events (see lib/intelligence/persist-intelligence.ts).
   mistakes: z.array(MistakeItemSchema).optional(),
@@ -279,7 +281,7 @@ export interface PositionAnalysisResult {
   formations?: { name: string; side?: string; note?: string }[]
   explosive_plays?: { cause: string; description: string; evidence_frames?: number[] }[]
   situational_tells?: { situation: string; tell: string; confidence?: number }[]
-  attack_points?: string[]
+  attack_points?: { point: string; category?: string }[]
   mistakes?: MistakeItem[]
   player_grades?: PlayerGrade[]
   unit_graded?: string

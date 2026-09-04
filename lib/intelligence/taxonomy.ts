@@ -125,3 +125,36 @@ ${SITUATION_BUCKETS.map((b) => `  - ${b}: ${SITUATION_DEFINITIONS[b]}`).join('\n
 EXPLOSIVE PLAYS: a gain of ${EXPLOSIVE_PLAY_YARDS}+ yards. For each one, name which failure
 created it — ${EXPLOSIVE_CAUSES.join(', ')} — because that is the coaching point, not the yardage.`
 }
+
+/**
+ * How a way to attack an opponent is filed.
+ *
+ * A scout report that returns twenty-five sentences in a flat list is a wall,
+ * not a plan. Grouping them by what a coach would actually install lets the
+ * list be read as "here are four things on the perimeter, three off motion"
+ * rather than twenty-five equally-weighted bullets.
+ */
+export const ATTACK_CATEGORIES = [
+  'perimeter_run',
+  'interior_run',
+  'play_action',
+  'dropback_pass',
+  'motion',
+  'tempo',
+  'personnel_mismatch',
+  'situational',
+  'special_teams',
+] as const
+export type AttackCategory = (typeof ATTACK_CATEGORIES)[number]
+
+export const ATTACK_CATEGORY_LABELS: Record<AttackCategory, string> = {
+  perimeter_run: 'Perimeter run',
+  interior_run: 'Interior run',
+  play_action: 'Play action',
+  dropback_pass: 'Dropback pass',
+  motion: 'Motion',
+  tempo: 'Tempo',
+  personnel_mismatch: 'Personnel mismatch',
+  situational: 'Situational',
+  special_teams: 'Special teams',
+}
