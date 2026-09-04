@@ -3,9 +3,17 @@
 Background processing that must **never** run on Vercel. Deploy target: **Railway**.
 
 `npm run worker` (the Railway start command) runs `workers/index.ts`, which
-starts both poll loops below in one process. Each also runs standalone via
-its own `npm run worker:video` / `worker:playbook` script, for local testing
-without spinning up the other one.
+starts every poll loop below in one process. Each also runs standalone via its
+own `npm run worker:video` / `worker:playbook` / `worker:analysis` /
+`worker:hudl` script, for local testing without spinning up the others.
+
+**Chromium is a deployment requirement now.** `process-hudl-import.ts` drives a
+headless browser, so `railway.json` installs it at build time
+(`npx playwright install --with-deps chromium`). If that step is removed or
+fails, the other three pollers keep running — only Hudl imports fail, and they
+fail with a message on the job rather than silently. Set
+`PLAYWRIGHT_CHROMIUM_PATH` if the binary lives somewhere Playwright will not
+find on its own.
 
 ## `process-video.ts`
 
@@ -101,3 +109,38 @@ SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... GOOGLE_API_KEY=... npm run worker
 
 Scale by running multiple instances with distinct `WORKER_ID`s — job claiming is
 race-safe via a conditional status update, so workers won't double-process.
+
+## `process-hudl-import.ts`
+
+Polls `hudl_import_jobs` and pulls a coach's Hudl playlist into PlayScout as
+ordinary film:
+
+```
+Signing in to Hudl → Finding Clips → Downloading Clip n of N → Complete
+```
+
+Per job it signs in with the team's sealed credentials (reusing a cached
+session when one is still live), reads the playlist page, and for each clip
+downloads it with ffmpeg, uploads it to the `videos` bucket, writes a `videos`
+row with `source_type: 'hudl_link'` and a `storage_path`, attaches the Hudl
+breakdown to a `play_sequences` row via the shared `mapHudlRow`, and queues the
+normal `full_pipeline` job. From there nothing downstream knows Hudl exists.
+
+Three rules this worker exists to keep:
+
+1. **No secret reaches a coach-facing string.** `error_message` and
+   `diagnostics` are hand-written sentences and redacted URLs. Playwright
+   errors, ffmpeg stderr and Hudl's own URLs all embed session tokens, so none
+   of them is ever stored verbatim.
+2. **Clips are pulled serially, with a delay.** This runs against the coach's
+   own Hudl account. Getting it flagged costs them Hudl, not us a feature.
+3. **An unreadable playlist fails rather than half-succeeds.** Guessing which
+   column is the down would attach a wrong situation to real film.
+
+The playlist payload shape is private and undocumented, so the first real run
+against a live account is a discovery run: when enumeration fails, the job
+records the request URLs the page made with every query VALUE stripped, which
+is what makes the second attempt cheap instead of blind.
+
+One bad clip does not sink an import — the job finishes `partial`, the clips
+that landed stay in the library, and the message says how many did not.
