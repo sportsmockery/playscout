@@ -11,16 +11,15 @@ own `npm run worker:video` / `worker:playbook` / `worker:analysis` /
 headless browser, so it has to be installed at build time
 (`npx playwright install --with-deps chromium`).
 
-**`railway.json`'s `buildCommand` was observed NOT to apply on this service.**
-The first deploy of the Hudl worker planned `build | true` — the value
-`railway.json` carried *before* the Chromium change — on a commit that already
-contained the change. A Custom Build Command left in the service's dashboard
-settings wins here, so setting it in `railway.json` alone is not enough: set it
-in **Railway → playscout-worker → Settings → Build → Custom Build Command** too,
-and check the Nixpacks plan table in the build log actually shows it. Also set
-`PLAYWRIGHT_BROWSERS_PATH=/app/.cache/ms-playwright` so the download lands
-inside the app directory rather than relying on `~/.cache` surviving between
-Nixpacks phases.
+**Deploy this service from GitHub `main`, never with `railway up`.** A CLI
+deploy uploads a snapshot of the laptop it ran on and keeps serving it until
+that deployment is removed — including its copy of `railway.json`. On
+2026-09-07 the worker was running such a snapshot from before the Chromium
+change, so every build planned `build | true` and no browser was installed. The
+tell is in the deployment list: each entry is labelled *via GitHub* or *via
+CLI*. A `build | true` plan table means Railway is building an old commit, not
+that it is ignoring the file — the Custom Build Command field is read-only and
+says "The value is set in /railway.json" when config-as-code is working.
 
 If Chromium is missing the other three pollers keep running — only Hudl imports
 fail, and since `classifyLaunchError` they fail saying the browser is missing

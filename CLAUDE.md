@@ -1017,12 +1017,16 @@ VERCEL_ORG_ID=team_tyYugyFj05x63r5t9jwqFWq3
 - The Railway worker service runs all four pollers via `npm run worker` (`workers/index.ts` →
   video + playbook + analysis + hudl import). Deploying a new worker file means redeploying that
   service. The Hudl poller additionally needs Chromium available to Playwright.
-- **`railway.json`'s `buildCommand` does NOT apply on the `playscout-worker` service** (observed
-  2026-09-07: a build on a commit containing the Chromium install still planned `build | true`,
-  the file's older value). A Custom Build Command in the service dashboard wins. Set the build
-  command in **Railway → Settings → Build** as well, and confirm the Nixpacks plan table in the
-  build log shows it — `build | true` means it did not take. Do not trust the committed file
-  alone.
+- **The worker service deploys from GitHub `main` — never `railway up`.** A CLI deploy uploads a
+  snapshot of whatever is on that laptop, and it wins over the GitHub connection until it is
+  removed. That happened on 2026-09-07: the worker was running a `railway up` snapshot whose
+  `railway.json` predated the Chromium build command, so builds planned `build | true` and no
+  browser was ever installed. It looked exactly like a dashboard override and was not one.
+  Diagnose it in **Settings → Source** (repo + branch) and the deployment list, where each entry
+  is labelled *via GitHub* or *via CLI* — a CLI entry on a service that should track `main` is the
+  bug. The Custom Build Command field is read-only when config-as-code supplies it and reads
+  "The value is set in /railway.json"; `build | true` in a Nixpacks plan table means Railway is
+  building an OLD commit, not that the file is being ignored.
 - Workers run on Railway (not Vercel) — they authenticate to Supabase directly via `SUPABASE_SERVICE_ROLE_KEY` (see `workers/lib/service-client.ts`), not a separate shared secret
 - Use `apply_migration` for all DB schema changes — never raw DDL in production
 
