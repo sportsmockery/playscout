@@ -8,12 +8,24 @@ own `npm run worker:video` / `worker:playbook` / `worker:analysis` /
 `worker:hudl` script, for local testing without spinning up the others.
 
 **Chromium is a deployment requirement now.** `process-hudl-import.ts` drives a
-headless browser, so `railway.json` installs it at build time
-(`npx playwright install --with-deps chromium`). If that step is removed or
-fails, the other three pollers keep running — only Hudl imports fail, and they
-fail with a message on the job rather than silently. Set
-`PLAYWRIGHT_CHROMIUM_PATH` if the binary lives somewhere Playwright will not
-find on its own.
+headless browser, so it has to be installed at build time
+(`npx playwright install --with-deps chromium`).
+
+**`railway.json`'s `buildCommand` was observed NOT to apply on this service.**
+The first deploy of the Hudl worker planned `build | true` — the value
+`railway.json` carried *before* the Chromium change — on a commit that already
+contained the change. A Custom Build Command left in the service's dashboard
+settings wins here, so setting it in `railway.json` alone is not enough: set it
+in **Railway → playscout-worker → Settings → Build → Custom Build Command** too,
+and check the Nixpacks plan table in the build log actually shows it. Also set
+`PLAYWRIGHT_BROWSERS_PATH=/app/.cache/ms-playwright` so the download lands
+inside the app directory rather than relying on `~/.cache` surviving between
+Nixpacks phases.
+
+If Chromium is missing the other three pollers keep running — only Hudl imports
+fail, and since `classifyLaunchError` they fail saying the browser is missing
+rather than claiming a Hudl sign-in problem. Set `PLAYWRIGHT_CHROMIUM_PATH` if
+the binary lives somewhere Playwright will not find on its own.
 
 ## `process-video.ts`
 

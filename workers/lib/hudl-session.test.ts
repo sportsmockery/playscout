@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   classifyLoginPage,
+  classifyLaunchError,
   isLoginUrl,
   coachMessageFor,
   earliestCookieExpiry,
@@ -65,6 +66,7 @@ describe('coachMessageFor', () => {
       'encryption_unavailable',
       'invalid_credentials',
       'challenge_required',
+      'browser_unavailable',
       'login_failed',
     ] as const
 
@@ -82,6 +84,33 @@ describe('coachMessageFor', () => {
     const error = new HudlSessionError('invalid_credentials', coachMessageFor('invalid_credentials'))
     expect(error.message).not.toContain('password:')
     expect(error.coachMessage).toContain('Re-enter them')
+  })
+})
+
+describe('classifyLaunchError', () => {
+  it('calls a missing Chromium a browser problem, not a sign-in problem', () => {
+    // Observed for real: the Railway build skipped the Playwright install, and
+    // the coach was told PlayScout "could not sign in to Hudl" — sending them
+    // to re-check a password that was fine.
+    const error = new Error(
+      "browserType.launch: Executable doesn't exist at /root/.cache/ms-playwright/chromium-1200/chrome-linux/chrome"
+    )
+    expect(classifyLaunchError(error)).toBe('browser_unavailable')
+  })
+
+  it('treats any other launch failure the same way', () => {
+    // A missing shared library or a dead /dev/shm is equally a deployment
+    // problem, and equally not something a coach can fix in team settings.
+    expect(classifyLaunchError(new Error('error while loading shared libraries: libnss3.so'))).toBe(
+      'browser_unavailable'
+    )
+    expect(classifyLaunchError('something else entirely')).toBe('browser_unavailable')
+  })
+
+  it('produces a message that blames the deployment, not the account', () => {
+    const message = coachMessageFor(classifyLaunchError(new Error("Executable doesn't exist")))
+    expect(message).toMatch(/deployment/i)
+    expect(message).not.toMatch(/password|credential|verify/i)
   })
 })
 

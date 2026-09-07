@@ -31,6 +31,7 @@ export type HudlFailure =
   | 'encryption_unavailable'
   | 'invalid_credentials'
   | 'challenge_required'
+  | 'browser_unavailable'
   | 'login_failed'
 
 /**
@@ -119,6 +120,26 @@ export function classifyLoginPage(url: string, visibleText: string): LoginOutcom
   return 'unknown'
 }
 
+/**
+ * Tells a missing browser apart from a real sign-in problem.
+ *
+ * This distinction is the whole point: Chromium not being installed on the
+ * worker produced the message "PlayScout could not sign in to Hudl. Their
+ * sign-in page may have changed", which sends a coach to re-check a password
+ * that was fine over a deployment problem someone else has to fix. Nothing
+ * that fails before a page loads is a sign-in failure.
+ */
+export function classifyLaunchError(error: unknown): HudlFailure {
+  const message = error instanceof Error ? error.message : String(error)
+  if (/executable doesn'?t exist|please run the following command to download/i.test(message)) {
+    return 'browser_unavailable'
+  }
+  // Every other launch failure — a missing shared library, no /dev/shm, the
+  // sandbox refusing to start — is equally a deployment problem, and equally
+  // not something a coach can act on by touching their Hudl account.
+  return 'browser_unavailable'
+}
+
 /** The coach-facing sentence for each way this can fail. */
 export function coachMessageFor(failure: HudlFailure): string {
   switch (failure) {
@@ -130,6 +151,8 @@ export function coachMessageFor(failure: HudlFailure): string {
       return 'Hudl rejected that email and password. Re-enter them in team settings.'
     case 'challenge_required':
       return 'Hudl is asking you to verify this sign-in. Sign in to Hudl once in your own browser, then try again.'
+    case 'browser_unavailable':
+      return 'The film import service has no browser installed, so it never reached Hudl. This is a PlayScout deployment problem, not a problem with your Hudl account — nothing needs changing in team settings.'
     case 'login_failed':
       return 'PlayScout could not sign in to Hudl. Their sign-in page may have changed — the breakdown paste still works in the meantime.'
   }
@@ -391,14 +414,27 @@ export async function openHudlSession(
   }
 
   try {
-    browser = await chromium.launch({
-      headless: true,
-      executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH || undefined,
-      // Containers give a small /dev/shm; without this Chromium crashes part
-      // way through a long session rather than at launch, which reads as a
-      // Hudl problem when it is not one.
-      args: ['--disable-dev-shm-usage'],
-    })
+    try {
+      browser = await chromium.launch({
+        headless: true,
+        executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH || undefined,
+        // Containers give a small /dev/shm; without this Chromium crashes part
+        // way through a long session rather than at launch, which reads as a
+        // Hudl problem when it is not one.
+        args: ['--disable-dev-shm-usage'],
+      })
+    } catch (launchError) {
+      // Classified on its own rather than falling through to the catch below,
+      // which would report a missing browser as a failed Hudl sign-in. The
+      // Playwright message is logged, never surfaced — it names the path it
+      // looked in, and coach-facing strings stay hand-written.
+      const failure = classifyLaunchError(launchError)
+      console.error(
+        '[hudl] chromium failed to launch:',
+        launchError instanceof Error ? launchError.message : launchError
+      )
+      throw new HudlSessionError(failure, coachMessageFor(failure))
+    }
 
     context = await browser.newContext({
       // A default headless UA is the fastest way to look like a scraper.
