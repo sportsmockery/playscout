@@ -348,6 +348,10 @@ async function failJob(supabase: SupabaseClient, job: ImportJob, err: unknown) {
 
   if (err instanceof HudlSessionError) {
     coachMessage = err.coachMessage
+    // The sign-in trail, so a failed login says WHERE it stopped rather than
+    // only that it did. Redacted at the source — paths and outcomes, no query
+    // strings, no page text, nothing typed into a field.
+    diagnostics = err.diagnostics
     terminal = true
   } else if (err instanceof HudlPlaylistError) {
     coachMessage = err.coachMessage

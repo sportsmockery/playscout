@@ -175,3 +175,21 @@ describe('earliestCookieExpiry', () => {
     expect(earliestCookieExpiry('{}')).toBeNull()
   })
 })
+
+describe('sign-in diagnostics', () => {
+  it('carries a redacted trail so a failed login says where it stopped', () => {
+    // The first real run failed with "could not sign in to Hudl" and nothing
+    // else — no way to tell a markup change from a page that had not rendered
+    // yet. The trail is what makes the second attempt informed.
+    const error = new HudlSessionError('login_failed', coachMessageFor('login_failed'), [
+      'login page: https://identity.hudl.com/u/login',
+      'email field: none of the selectors became visible',
+    ])
+    expect(error.diagnostics).toHaveLength(2)
+    expect(error.diagnostics.join(' ')).not.toContain('?')
+  })
+
+  it('defaults to an empty trail rather than undefined', () => {
+    expect(new HudlSessionError('not_connected', 'x').diagnostics).toEqual([])
+  })
+})

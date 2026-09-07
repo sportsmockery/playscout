@@ -242,6 +242,22 @@ export default function ImportFromHudl({ teamId, folders, defaultFolderId, oppon
   );
 }
 
+/**
+ * What to show on the right of the row.
+ *
+ * This used to read `current_step ?? 'Queued'` and ignore `status` entirely,
+ * so a job that had FAILED with no step set rendered the word "Queued" beside
+ * its own error message. Status wins; the step is only a live detail.
+ */
+function statusLabel(job: ImportJob): string {
+  if (job.status === 'failed') return 'Failed';
+  if (job.status === 'cancelled') return 'Cancelled';
+  if (job.clips_found > 0) return `${job.clips_imported}/${job.clips_found} clips`;
+  if (job.status === 'partial') return 'Finished with problems';
+  if (job.status === 'retrying') return 'Retrying';
+  return job.current_step ?? 'Queued';
+}
+
 function HudlJobRow({ job, teamId }: { job: ImportJob; teamId: string }) {
   const live = LIVE_STATUSES.includes(job.status);
   const progress =
@@ -271,11 +287,7 @@ function HudlJobRow({ job, teamId }: { job: ImportJob; teamId: string }) {
           </span>
         </div>
         <div className="flex items-center gap-3 shrink-0">
-          <span className="text-xs text-[var(--brand-muted)]">
-            {job.clips_found > 0
-              ? `${job.clips_imported}/${job.clips_found} clips`
-              : (job.current_step ?? 'Queued')}
-          </span>
+          <span className="text-xs text-[var(--brand-muted)]">{statusLabel(job)}</span>
           {job.status === 'queued' && (
             <button onClick={cancel} className="text-xs text-[var(--brand-muted)] hover:underline">
               Cancel

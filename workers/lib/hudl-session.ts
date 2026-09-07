@@ -22,7 +22,7 @@
  * classifiers at the top. Everything below `openHudlSession` depends on their
  * live markup, and the first real run is where it gets proven.
  */
-import { chromium, type Browser, type BrowserContext, type Page } from 'playwright'
+import { chromium, type Browser, type BrowserContext, type Locator, type Page } from 'playwright'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { open, seal, secretBoxReady } from '../../lib/crypto/secret-box'
 
@@ -46,12 +46,21 @@ export type HudlFailure =
 export class HudlSessionError extends Error {
   readonly failure: HudlFailure
   readonly coachMessage: string
+  /**
+   * Where the sign-in got to, in redacted breadcrumbs.
+   *
+   * Without this a `login_failed` says nothing about WHICH step broke, and
+   * iterating on selectors against a site you cannot see is blind guessing.
+   * Paths only — never a query string, never page text.
+   */
+  readonly diagnostics: string[]
 
-  constructor(failure: HudlFailure, coachMessage: string) {
+  constructor(failure: HudlFailure, coachMessage: string, diagnostics: string[] = []) {
     super(`hudl session failed: ${failure}`)
     this.name = 'HudlSessionError'
     this.failure = failure
     this.coachMessage = coachMessage
+    this.diagnostics = diagnostics
   }
 }
 
@@ -340,26 +349,64 @@ export interface HudlSession {
   dispose(): Promise<void>
 }
 
-async function fillFirst(page: Page, selectors: string[], value: string): Promise<boolean> {
-  for (const selector of selectors) {
-    const field = page.locator(selector).first()
-    if ((await field.count()) === 0) continue
-    // `fill` is used rather than `type` so the value never appears in a
-    // keystroke-level trace if tracing is ever turned on for debugging.
-    await field.fill(value)
-    return true
+/** How long a login field gets to appear before we call it missing. */
+const FIELD_TIMEOUT_MS = Number(process.env.HUDL_FIELD_TIMEOUT_MS ?? 15_000)
+
+/**
+ * Waits for any of these selectors to become visible, then returns the match
+ * highest in the priority list.
+ *
+ * The first version checked `count()` the instant the page fired
+ * domcontentloaded. Hudl's sign-in is client-rendered, so the form did not
+ * exist yet, every selector matched nothing, and a perfectly healthy login
+ * page was reported as "PlayScout could not sign in to Hudl". Waiting is the
+ * whole fix.
+ *
+ * The wait is on the selectors COMBINED (so any one of them ends it) but the
+ * pick is in list order, because `locator('a, b').first()` resolves in DOM
+ * order — which would happily choose the wrong button.
+ */
+async function firstVisible(
+  page: Page,
+  selectors: string[],
+  timeout = FIELD_TIMEOUT_MS
+): Promise<Locator | null> {
+  try {
+    await page.locator(selectors.join(', ')).first().waitFor({ state: 'visible', timeout })
+  } catch {
+    return null
   }
-  return false
+  for (const selector of selectors) {
+    const candidate = page.locator(selector).first()
+    if (await candidate.isVisible().catch(() => false)) return candidate
+  }
+  return null
+}
+
+async function fillFirst(page: Page, selectors: string[], value: string): Promise<boolean> {
+  const field = await firstVisible(page, selectors)
+  if (!field) return false
+  // `fill` is used rather than `type` so the value never appears in a
+  // keystroke-level trace if tracing is ever turned on for debugging.
+  await field.fill(value)
+  return true
 }
 
 async function clickFirst(page: Page, selectors: string[]): Promise<boolean> {
-  for (const selector of selectors) {
-    const button = page.locator(selector).first()
-    if ((await button.count()) === 0) continue
-    await button.click()
-    return true
+  const button = await firstVisible(page, selectors)
+  if (!button) return false
+  await button.click()
+  return true
+}
+
+/** The page we are on, safe to store: origin and path, never the query. */
+function whereWeAre(page: Page): string {
+  try {
+    const url = new URL(page.url())
+    return `${url.origin}${url.pathname}`
+  } catch {
+    return '(unparseable url)'
   }
-  return false
 }
 
 async function visibleText(page: Page): Promise<string> {
@@ -381,33 +428,51 @@ async function sessionIsLive(page: Page): Promise<boolean> {
 }
 
 async function signIn(page: Page, email: string, password: string): Promise<void> {
+  // Breadcrumbs, kept whether or not we fail. Paths and outcomes only — no
+  // page text, no query strings, nothing typed into a field.
+  const trail: string[] = []
+  const fail = (failure: HudlFailure): never => {
+    throw new HudlSessionError(failure, coachMessageFor(failure), trail)
+  }
+
   await page.goto(HUDL_LOGIN, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT_MS })
+  // The sign-in form is client-rendered; without settling first there is
+  // nothing in the DOM to fill.
+  await page.waitForLoadState('networkidle', { timeout: NAV_TIMEOUT_MS }).catch(() => {})
+  trail.push(`login page: ${whereWeAre(page)}`)
 
   if (!(await fillFirst(page, EMAIL_SELECTORS, email))) {
-    throw new HudlSessionError('login_failed', coachMessageFor('login_failed'))
+    trail.push('email field: none of the selectors became visible')
+    fail('login_failed')
   }
+  trail.push('email field: filled')
 
   // Hudl has used both a single form and an email-then-password two-step. If
   // no password field is present yet, advancing the form is what reveals it.
   if (!(await fillFirst(page, PASSWORD_SELECTORS, password))) {
-    await clickFirst(page, SUBMIT_SELECTORS)
-    await page.waitForLoadState('domcontentloaded', { timeout: NAV_TIMEOUT_MS }).catch(() => {})
+    trail.push('password field: not on the first screen, advancing')
+    if (!(await clickFirst(page, SUBMIT_SELECTORS))) {
+      trail.push('submit button: none of the selectors became visible')
+      fail('login_failed')
+    }
+    await page.waitForLoadState('networkidle', { timeout: NAV_TIMEOUT_MS }).catch(() => {})
+    trail.push(`after advancing: ${whereWeAre(page)}`)
+
     if (!(await fillFirst(page, PASSWORD_SELECTORS, password))) {
-      // Could be a challenge sitting between the two steps rather than a
-      // markup change, so classify before blaming the selectors.
+      // Could be a challenge or an SSO hand-off sitting between the two steps
+      // rather than a markup change, so classify before blaming the selectors.
       const outcome = classifyLoginPage(page.url(), await visibleText(page))
-      if (outcome === 'challenge') {
-        throw new HudlSessionError('challenge_required', coachMessageFor('challenge_required'))
-      }
-      if (outcome === 'sso') {
-        throw new HudlSessionError('sso_required', coachMessageFor('sso_required'))
-      }
-      throw new HudlSessionError('login_failed', coachMessageFor('login_failed'))
+      trail.push(`password field: still absent, page reads as "${outcome}"`)
+      if (outcome === 'challenge') fail('challenge_required')
+      if (outcome === 'sso') fail('sso_required')
+      fail('login_failed')
     }
   }
+  trail.push('password field: filled')
 
   if (!(await clickFirst(page, SUBMIT_SELECTORS))) {
-    throw new HudlSessionError('login_failed', coachMessageFor('login_failed'))
+    trail.push('submit button: none of the selectors became visible')
+    fail('login_failed')
   }
 
   // The redirect after a successful login is several hops; waiting for the
@@ -415,19 +480,15 @@ async function signIn(page: Page, email: string, password: string): Promise<void
   await page.waitForLoadState('networkidle', { timeout: NAV_TIMEOUT_MS }).catch(() => {})
 
   const outcome = classifyLoginPage(page.url(), await visibleText(page))
+  trail.push(`after submit: ${whereWeAre(page)} reads as "${outcome}"`)
+
   if (outcome === 'signed_in') return
-  if (outcome === 'challenge') {
-    throw new HudlSessionError('challenge_required', coachMessageFor('challenge_required'))
-  }
-  if (outcome === 'sso') {
-    throw new HudlSessionError('sso_required', coachMessageFor('sso_required'))
-  }
-  if (outcome === 'rejected') {
-    throw new HudlSessionError('invalid_credentials', coachMessageFor('invalid_credentials'))
-  }
+  if (outcome === 'challenge') fail('challenge_required')
+  if (outcome === 'sso') fail('sso_required')
+  if (outcome === 'rejected') fail('invalid_credentials')
   // 'unknown' — still on a login URL with nothing recognisable said about why.
   // Failing here is deliberate: continuing would scrape the login page.
-  throw new HudlSessionError('login_failed', coachMessageFor('login_failed'))
+  fail('login_failed')
 }
 
 /**
@@ -504,6 +565,9 @@ export async function openHudlSession(
     await dispose()
     if (error instanceof HudlSessionError) {
       await recordHudlError(supabase, teamId, error.coachMessage)
+      if (error.diagnostics.length) {
+        console.error('[hudl] sign-in trail:', error.diagnostics.join(' | '))
+      }
       throw error
     }
     // Anything else — a Playwright timeout, a launch failure — is reduced to a
