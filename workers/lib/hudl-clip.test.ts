@@ -3,6 +3,7 @@ import {
   cookieHeaderFor,
   assertFetchableMediaUrl,
   mediaUrlForLog,
+  isHlsUrl,
   redactUrls,
   HudlClipError,
   type BrowserCookie,
@@ -97,5 +98,27 @@ describe('redactUrls', () => {
     const error = new HudlClipError('Try the import again.', 'open https://m.hudl.com/x?tok=SECRET')
     expect(error.message).not.toContain('SECRET')
     expect(error.coachMessage).toBe('Try the import again.')
+  })
+})
+
+describe('transport choice', () => {
+  it('sends a progressive mp4 down the direct-stream path', () => {
+    // ffmpeg SEGFAULTED on every https input — exit 139, no file, no stderr —
+    // which is what made 106 clips fail with a message that said nothing.
+    // Fetching an mp4 was never ffmpeg's job.
+    expect(isHlsUrl('https://vd.hudl.com/04393921/963775/97209746/abc_720_3000.mp4')).toBe(false)
+  })
+
+  it('sends a manifest to ffmpeg, which is the one case that needs it', () => {
+    expect(isHlsUrl('https://media.hudl.com/a/index.m3u8')).toBe(true)
+  })
+
+  it('ignores a query string when deciding', () => {
+    expect(isHlsUrl('https://media.hudl.com/a/index.m3u8?Signature=x')).toBe(true)
+    expect(isHlsUrl('https://media.hudl.com/a/clip.mp4?Signature=x')).toBe(false)
+  })
+
+  it('does not treat junk as a manifest', () => {
+    expect(isHlsUrl('not a url')).toBe(false)
   })
 })

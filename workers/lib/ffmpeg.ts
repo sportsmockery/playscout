@@ -23,7 +23,7 @@ function resolveFfmpegPath(): string {
 
 const ffmpegPath = resolveFfmpegPath()
 
-type RunResult = { code: number | null; stderr: string }
+type RunResult = { code: number | null; stderr: string; signal: NodeJS.Signals | null }
 
 /** Exported so other worker modules (e.g. the Hudl clip pull) share one binary. */
 export function runFfmpeg(args: string[], timeoutMs: number = FFMPEG_TIMEOUT_MS): Promise<RunResult> {
@@ -32,7 +32,7 @@ export function runFfmpeg(args: string[], timeoutMs: number = FFMPEG_TIMEOUT_MS)
     let stderr = ''
     const timeout = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('FFmpeg timeout')) }, timeoutMs)
     child.stderr.on('data', (d: Buffer) => { stderr += d.toString() })
-    child.on('close', (code) => { clearTimeout(timeout); resolve({ code, stderr }) })
+    child.on('close', (code, signal) => { clearTimeout(timeout); resolve({ code, stderr, signal }) })
     child.on('error', (err) => { clearTimeout(timeout); reject(err) })
   })
 }
