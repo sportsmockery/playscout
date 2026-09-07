@@ -36,6 +36,7 @@ import {
   type HudlClipCandidate,
 } from './lib/hudl-playlist'
 import { cookieHeaderFor, downloadHudlClip, HudlClipError, mediaUrlForLog } from './lib/hudl-clip'
+import { clipSourceUrl, importedClipIds, planResume } from './lib/hudl-resume'
 import { mapHudlRow, toPlaySequenceFields } from '../lib/import/hudl-breakdown'
 import { parseHudlUrl } from '../lib/import/hudl-url'
 
@@ -45,7 +46,13 @@ const POLL_INTERVAL_MS = Number(process.env.HUDL_POLL_INTERVAL_MS ?? 15_000)
 const CLIP_DELAY_MS = Number(process.env.HUDL_CLIP_DELAY_MS ?? 2_500)
 /** A cut-up is tens of clips; a link that yields hundreds is not what we think. */
 const MAX_CLIPS = Number(process.env.HUDL_MAX_CLIPS ?? 250)
-const STUCK_JOB_TIMEOUT_MS = Number(process.env.HUDL_STUCK_TIMEOUT_MS ?? 60 * 60 * 1000)
+/**
+ * An import writes progress after EVERY clip, so ten minutes of silence
+ * already means the worker is gone. The video pipeline's hour is right for one
+ * long ffmpeg pass and far too long here — it left a dead import unclaimable
+ * and showing "Downloading Clip 19" with nothing behind it.
+ */
+const STUCK_JOB_TIMEOUT_MS = Number(process.env.HUDL_STUCK_TIMEOUT_MS ?? 10 * 60 * 1000)
 const REAP_EVERY_N_POLLS = 20
 const CLAIMABLE_STATUSES = ['queued', 'retrying']
 
@@ -142,7 +149,7 @@ async function reapStuckJobs(supabase: SupabaseClient) {
       .update({
         status: job.clips_imported > 0 ? 'partial' : 'failed',
         error_message:
-          'The import stopped partway through. Any clips already imported are in your film library — run it again for the rest.',
+          'The import stopped partway through. The clips it got are in your film library — run it again and it will pick up from there rather than re-downloading them.',
         locked_by: null,
         locked_at: null,
         completed_at: new Date().toISOString(),
@@ -181,7 +188,7 @@ async function importClip(
       source_type: 'hudl_link',
       // Provenance only — playback comes from our own copy. Hudl's media URLs
       // are signed and expire, so this is a breadcrumb, not a fallback.
-      source_url: `hudl:clip:${clip.clipId}`,
+      source_url: clipSourceUrl(clip.clipId),
       status: 'uploaded',
       film_type: job.film_type,
       opponent_id: job.opponent_id,
@@ -262,19 +269,43 @@ async function runImport(supabase: SupabaseClient, job: ImportJob) {
       )
     }
 
+    // Skip anything already on file, so an interrupted import resumes instead
+    // of re-downloading everything and creating duplicate videos rows.
+    const { data: existing } = await supabase
+      .from('videos')
+      .select('source_url')
+      .eq('team_id', job.team_id)
+      .eq('source_type', 'hudl_link')
+    const already = importedClipIds((existing ?? []).map((row) => row.source_url as string | null))
+    const { remaining, alreadyImported } = planResume(clips, already)
+    imported = alreadyImported
+
     await supabase
       .from('hudl_import_jobs')
-      .update({ clips_found: clips.length, updated_at: new Date().toISOString() })
+      .update({
+        clips_found: clips.length,
+        clips_imported: imported,
+        updated_at: new Date().toISOString(),
+      })
       .eq('id', job.id)
-    log(`job ${job.id}: found ${clips.length} clips`)
+    log(
+      `job ${job.id}: found ${clips.length} clips` +
+        (alreadyImported ? `, ${alreadyImported} already imported — resuming` : '')
+    )
 
     const cookies = await session.context.cookies()
     const userAgent =
       (await session.page.evaluate(() => navigator.userAgent).catch(() => null)) ?? 'PlayScout'
 
-    for (const [index, clip] of clips.entries()) {
+    for (const [index, clip] of remaining.entries()) {
       if (shuttingDown) break
-      await setStep(supabase, job.id, `Downloading Clip ${index + 1} of ${clips.length}`)
+      // Numbered against the whole playlist, not the remainder — a resumed
+      // import that says "Clip 1 of 32" reads as though it lost the first 18.
+      await setStep(
+        supabase,
+        job.id,
+        `Downloading Clip ${alreadyImported + index + 1} of ${clips.length}`
+      )
 
       const mediaUrl = clip.mediaUrls[0]
       const outPath = path.join(workDir, `clip-${clip.order}.mp4`)
@@ -304,17 +335,23 @@ async function runImport(supabase: SupabaseClient, job: ImportJob) {
         })
         .eq('id', job.id)
 
-      if (index < clips.length - 1) await sleep(CLIP_DELAY_MS)
+      if (index < remaining.length - 1) await sleep(CLIP_DELAY_MS)
     }
 
-    const status = failed === 0 ? 'completed' : imported > 0 ? 'partial' : 'failed'
+    // A shutdown part-way through is `partial`, not `completed` — the clips
+    // that landed are real, and the coach should be told there are more. Left
+    // as `running` it would sit unclaimable until the reaper noticed.
+    const finishedAll = imported + failed >= clips.length
+    const status = !finishedAll ? 'partial' : failed === 0 ? 'completed' : imported > 0 ? 'partial' : 'failed'
     await supabase
       .from('hudl_import_jobs')
       .update({
         status,
-        current_step: status === 'completed' ? 'Complete' : 'Finished with problems',
-        error_message:
-          failed === 0
+        current_step:
+          status === 'completed' ? 'Complete' : !finishedAll ? 'Stopped early' : 'Finished with problems',
+        error_message: !finishedAll
+          ? `The import stopped after ${imported} of ${clips.length} clips. Run it again — it picks up where it left off rather than re-downloading.`
+          : failed === 0
             ? null
             : `${failed} of ${clips.length} clips could not be downloaded from Hudl. The rest are in your film library.`,
         clips_imported: imported,
