@@ -246,6 +246,17 @@ async function runImport(supabase: SupabaseClient, job: ImportJob) {
   let session: HudlSession | null = null
   let imported = 0
   let failed = 0
+  /**
+   * Why the first clips failed, redacted, kept for the job row.
+   *
+   * Enumeration failures have always written to `diagnostics`; download
+   * failures only ever went to a log line. Railway rotates logs per
+   * deployment, so the reason 19 clips failed was gone by the time anyone
+   * looked — which is exactly the situation `diagnostics` exists to prevent.
+   * A handful is enough: 106 identical 403s say nothing 3 do not.
+   */
+  const clipFailures: string[] = []
+  const MAX_RECORDED_FAILURES = 3
 
   try {
     // The URL is re-parsed here rather than trusting ids the route stored —
@@ -312,8 +323,23 @@ async function runImport(supabase: SupabaseClient, job: ImportJob) {
 
       try {
         if (!mediaUrl) throw new HudlClipError('Hudl did not give PlayScout a playable file.')
-        const cookieHeader = cookieHeaderFor(cookies, mediaUrl)
-        await downloadHudlClip(mediaUrl, cookieHeader, outPath, userAgent)
+        // Every candidate, not just the first. The extractor collects several
+        // per clip and preferProgressive only ORDERS them — taking [0] and
+        // giving up threw away working fallbacks whenever the preferred URL
+        // was a preview, an expired asset, or served from a host that refuses
+        // us. Stops at the first success.
+        let lastError: unknown = null
+        let downloaded = false
+        for (const candidate of clip.mediaUrls) {
+          try {
+            await downloadHudlClip(candidate, cookieHeaderFor(cookies, candidate), outPath, userAgent)
+            downloaded = true
+            break
+          } catch (err) {
+            lastError = err
+          }
+        }
+        if (!downloaded) throw lastError ?? new HudlClipError('Every clip address Hudl gave failed.')
         await importClip(supabase, job, clip, outPath)
         imported++
       } catch (err) {
@@ -322,6 +348,11 @@ async function runImport(supabase: SupabaseClient, job: ImportJob) {
         // with the URL redacted; the coach sees the count.
         const detail = err instanceof Error ? err.message : String(err)
         log(`job ${job.id}: clip ${clip.clipId} failed (${mediaUrlForLog(mediaUrl ?? '')})`, detail)
+        if (clipFailures.length < MAX_RECORDED_FAILURES) {
+          // Already redacted at the source: HudlClipError strips query strings
+          // out of ffmpeg's stderr, and mediaUrlForLog drops the signed token.
+          clipFailures.push(`${mediaUrlForLog(mediaUrl ?? '')} — ${detail}`)
+        }
       } finally {
         await fs.unlink(outPath).catch(() => {})
       }
@@ -356,6 +387,7 @@ async function runImport(supabase: SupabaseClient, job: ImportJob) {
             : `${failed} of ${clips.length} clips could not be downloaded from Hudl. The rest are in your film library.`,
         clips_imported: imported,
         clips_failed: failed,
+        diagnostics: clipFailures.length ? { clipFailures } : null,
         completed_at: new Date().toISOString(),
         locked_by: null,
         locked_at: null,
