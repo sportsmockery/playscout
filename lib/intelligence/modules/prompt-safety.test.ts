@@ -68,3 +68,36 @@ describe('level calibration reaches every module', () => {
     expect(youth).toContain('COMPETITION LEVEL: youth (9U–10U)')
   })
 })
+
+describe('SCOUTIQ subject identification', () => {
+  const base = { moduleKey: 'SCOUTIQ' as const, teamId: 't', frames: [], evidenceMode: 'video' as const }
+
+  it('names the opponent colour as the subject when one is given', () => {
+    const prompt = buildSCOUTIQSystemPrompt({
+      ...base,
+      team: { name: 'TP White', jersey_color: 'white' },
+      opponent: { name: 'TP Blue', jersey_color: 'blue' },
+    })
+    expect(prompt).toContain('they wear blue')
+    expect(prompt).toContain('ARE the opponent being scouted')
+  })
+
+  it('never defines the opponent by ruling out the coach’s colour', () => {
+    // Scouting a future opponent off their game against a THIRD team is
+    // normal. On TP Blue vs HW film scouted by TP White, "everyone who is not
+    // white is the opponent" folds HW's defense into TP Blue's report.
+    const prompt = buildSCOUTIQSystemPrompt({
+      ...base,
+      team: { name: 'TP White', jersey_color: 'white' },
+      opponent: { name: 'TP Blue' },
+    })
+    expect(prompt).not.toMatch(/everyone else in the frame is the opponent/i)
+    expect(prompt).toContain('may not contain the coach')
+    expect(prompt).toMatch(/lower your confidence/i)
+  })
+
+  it('still refuses to guess when neither side has a colour', () => {
+    const prompt = buildSCOUTIQSystemPrompt({ ...base, opponent: { name: 'TP Blue' } })
+    expect(prompt).toMatch(/Do not guess/i)
+  })
+})

@@ -1,4 +1,4 @@
-import { getTeamById, getVideosByTeam, getFilmFolders } from '@/lib/db/queries';
+import { getTeamById, getVideosByTeam, getFilmFolders, getOpponentsByTeam } from '@/lib/db/queries';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
@@ -16,10 +16,11 @@ export default async function FilmPage({
   params: Promise<{ teamId: string }>;
 }) {
   const { teamId } = await params;
-  const [team, videos, folders] = await Promise.all([
+  const [team, videos, folders, opponents] = await Promise.all([
     getTeamById(teamId),
     getVideosByTeam(teamId),
     getFilmFolders(teamId),
+    getOpponentsByTeam(teamId),
   ]);
 
   if (!team) notFound();
@@ -49,6 +50,7 @@ export default async function FilmPage({
         teamName={team.name}
         videos={videos}
         folders={folders}
+        opponents={opponents.map((o) => ({ id: o.id, name: o.name }))}
       />
     </div>
   );

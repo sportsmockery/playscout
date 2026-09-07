@@ -20,7 +20,12 @@ export function buildSCOUTIQSystemPrompt(input: ModulePromptInput): string {
   const jerseyContext = opponent?.jersey_color
     ? `IDENTIFYING ${opponentLabel}: they wear ${opponent.jersey_color}. The ${opponent.jersey_color} players ARE the opponent being scouted.`
     : team?.jersey_color
-      ? `IDENTIFYING ${opponentLabel}: no opponent jersey color was given, but the coach's own team (${team.name ?? 'this team'}) wears ${team.jersey_color} — everyone else in the frame is the opponent.`
+      ? // Deliberately does NOT say "everyone else is the opponent". Scouting a
+        // future opponent off their game against a THIRD team is normal, and
+        // there the coach's team is not in the film at all — defining the
+        // opponent by elimination then folds two unrelated teams into one
+        // report. Observed on real film: TP Blue vs HW, scouted by TP White.
+        `IDENTIFYING ${opponentLabel}: no jersey color was given for them. The coach's team wears ${team.jersey_color}, but this film may not contain the coach's team at all — do NOT identify the opponent by ruling that color out. Work out which side is ${opponentLabel} from the film itself, say in your notes which side you graded and how you told them apart, and lower your confidence because the subject was not confirmed.`
       : `IDENTIFYING ${opponentLabel}: no jersey/helmet color was provided for either side. Do not guess. If you cannot tell the two sides apart, say so and describe only what is generically visible rather than attributing anything to "the opponent."`
 
   const gameTypeContext = buildGameTypeContext(team?.game_type)

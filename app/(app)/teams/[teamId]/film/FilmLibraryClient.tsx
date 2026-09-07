@@ -28,11 +28,13 @@ interface Props {
   teamName: string;
   videos: Video[];
   folders: FolderWithCount[];
+  /** For tagging film as an opponent's, which is what SCOUTIQ filters on. */
+  opponents?: { id: string; name: string }[];
 }
 
 const UNFILED = '__unfiled__';
 
-export default function FilmLibraryClient({ teamId, teamName, videos, folders }: Props) {
+export default function FilmLibraryClient({ teamId, teamName, videos, folders, opponents = [] }: Props) {
   const router = useRouter();
   // null = "All film". A folder id, or UNFILED for clips in no folder.
   const [activeFolder, setActiveFolder] = useState<string | null>(null);
@@ -118,6 +120,23 @@ export default function FilmLibraryClient({ teamId, teamName, videos, folders }:
       teamId,
       videoIds: [...selected],
       folderId,
+    });
+    if (data) exitSelectMode();
+  }
+
+  /**
+   * Tag a selection as an opponent's film.
+   *
+   * SCOUTIQ only shows film carrying an `opponent_id`, so film imported or
+   * uploaded without picking an opponent was invisible to scouting with no way
+   * to fix it. This is that way.
+   */
+  async function assignOpponent(opponentId: string | null) {
+    if (selected.size === 0) return;
+    const data = await post('/api/videos/assign-opponent', {
+      teamId,
+      videoIds: [...selected],
+      opponentId,
     });
     if (data) exitSelectMode();
   }
@@ -258,6 +277,29 @@ export default function FilmLibraryClient({ teamId, teamName, videos, folders }:
               {selected.size === visible.length && visible.length > 0 ? <CheckSquare size={14} /> : <Square size={14} />}
               {selected.size === visible.length && visible.length > 0 ? 'Clear' : 'Select all'}
             </button>
+
+            {opponents.length > 0 && (
+              <>
+                <span className="text-xs text-[var(--brand-muted)]">Film of</span>
+                <select
+                  value=""
+                  disabled={busy || selected.size === 0}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (!v) return;
+                    assignOpponent(v === '__self__' ? null : v);
+                    e.target.value = '';
+                  }}
+                  className="px-2 py-1.5 rounded-lg border border-[var(--brand-border)] bg-white text-xs disabled:opacity-50"
+                >
+                  <option value="">Choose opponent…</option>
+                  {opponents.map((o) => (
+                    <option key={o.id} value={o.id}>{o.name}</option>
+                  ))}
+                  <option value="__self__">Our own team</option>
+                </select>
+              </>
+            )}
 
             <span className="text-xs text-[var(--brand-muted)]">Move to</span>
             <select
