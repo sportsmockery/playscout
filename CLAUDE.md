@@ -1003,8 +1003,10 @@ VERCEL_ORG_ID=team_tyYugyFj05x63r5t9jwqFWq3
 
 ## Deployment Rules
 
-- **No GitHub → Vercel git integration is connected.** Pushing to `main` does **not** trigger a Vercel deploy by itself. Production deploys must be triggered explicitly — either `vercel --prod` from the repo root, or by connecting the Git integration in the Vercel dashboard (Project → Settings → Git). Confirm which is true before assuming a push went live.
-- `npm run build-deploy` (`git add -A && git commit -m 'deploy' && git push origin main`) only commits/pushes — it does **not** deploy on its own until Git integration exists. Until then, follow it with `vercel --prod`.
+- **The GitHub → Vercel git integration IS connected** (verified 2026-09-07: the push of `2c61296` to `main` produced a production deployment on its own). Pushing to `main` deploys to production; every other branch and PR gets a preview URL. Earlier versions of this file said the opposite and were wrong — do not reintroduce a manual `vercel --prod` step on the assumption a push did nothing. To check which kind of deploy ran, look at Project → Deployments: a git-triggered one shows the commit SHA and author, a CLI one does not.
+- `npm run build-deploy` (`git add -A && git commit -m 'deploy' && git push origin main`) is therefore a real deploy — the push is the trigger. Nothing needs to follow it.
+- **Preview deployments read and write the PRODUCTION Supabase project.** There is only one, so a preview built from any branch touches real teams, film and analyses. Treat a preview as production for anything destructive.
+- **Every env var must be ticked for Preview as well as Production**, or previews 500 on every route rather than failing on one page — `proxy.ts` runs `createServerClient` on nearly every request via its matcher, so a missing `NEXT_PUBLIC_SUPABASE_ANON_KEY` takes the whole deployment down.
 - Feature branches → PR → merge to `main`
 - **Never** run `vercel --prod` directly without confirming project is `playscout` (scope `chris-burhans-projects`, project ID `prj_6z7NumR6q2aUsjZkqooMHdYCBwB4`)
 - The repo must be linked locally before CLI deploys work: `vercel link --yes --project playscout --scope chris-burhans-projects` (creates gitignored `.vercel/project.json`)
