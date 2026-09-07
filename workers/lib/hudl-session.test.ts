@@ -66,6 +66,7 @@ describe('coachMessageFor', () => {
       'encryption_unavailable',
       'invalid_credentials',
       'challenge_required',
+      'sso_required',
       'browser_unavailable',
       'login_failed',
     ] as const
@@ -84,6 +85,42 @@ describe('coachMessageFor', () => {
     const error = new HudlSessionError('invalid_credentials', coachMessageFor('invalid_credentials'))
     expect(error.message).not.toContain('password:')
     expect(error.coachMessage).toContain('Re-enter them')
+  })
+})
+
+describe('Google / SSO sign-in', () => {
+  it('recognises being handed off to Google', () => {
+    // The account signs in with Google. PlayScout cannot drive that, and
+    // saying "Hudl rejected that email and password" would send the coach to
+    // reset a password that may not even exist on the account.
+    expect(
+      classifyLoginPage('https://accounts.google.com/o/oauth2/v2/auth?client_id=hudl', 'Choose an account')
+    ).toBe('sso')
+  })
+
+  it('recognises an SSO-only login page by its text', () => {
+    expect(classifyLoginPage(LOGIN, 'Continue with Google to access your team')).toBe('sso')
+  })
+
+  it('does NOT call it SSO just because a Google button sits beside the form', () => {
+    // Hudl shows "Continue with Google" next to a perfectly usable password
+    // form. Treating that as SSO-only would break every password account.
+    expect(classifyLoginPage(SIGNED_IN, 'Continue with Google')).toBe('signed_in')
+    expect(
+      classifyLoginPage(LOGIN, 'Incorrect password. Or continue with Google.')
+    ).toBe('rejected')
+  })
+
+  it('still prefers a challenge over SSO when both appear', () => {
+    expect(
+      classifyLoginPage(LOGIN, 'Enter the code we sent you. Or continue with Google.')
+    ).toBe('challenge')
+  })
+
+  it('tells the coach to set a Hudl password rather than blaming their account', () => {
+    const message = coachMessageFor('sso_required')
+    expect(message).toMatch(/set a hudl password/i)
+    expect(message).not.toMatch(/rejected|incorrect/i)
   })
 })
 

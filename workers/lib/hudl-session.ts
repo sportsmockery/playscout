@@ -31,6 +31,7 @@ export type HudlFailure =
   | 'encryption_unavailable'
   | 'invalid_credentials'
   | 'challenge_required'
+  | 'sso_required'
   | 'browser_unavailable'
   | 'login_failed'
 
@@ -66,7 +67,7 @@ export function isLoginUrl(url: string): boolean {
   return LOGIN_URL_MARKERS.some((marker) => lower.includes(marker))
 }
 
-export type LoginOutcome = 'signed_in' | 'challenge' | 'rejected' | 'unknown'
+export type LoginOutcome = 'signed_in' | 'challenge' | 'rejected' | 'sso' | 'unknown'
 
 /**
  * A challenge is checked BEFORE a rejection. Verification screens routinely
@@ -91,6 +92,24 @@ const CHALLENGE_MARKERS = [
   'are you a robot',
 ]
 
+/**
+ * The page is asking us to sign in through an identity provider we cannot
+ * drive. Google blocks automated browsers outright, and attempting it would
+ * risk the coach's Google account rather than just failing — so this is
+ * detected and reported, never worked around.
+ */
+const SSO_MARKERS = [
+  'continue with google',
+  'sign in with google',
+  'log in with google',
+  'accounts.google.com',
+  'choose an account',
+  'use your google account',
+  'continue with apple',
+  'single sign-on',
+  'sign in with sso',
+]
+
 const REJECTION_MARKERS = [
   'incorrect password',
   'password is incorrect',
@@ -113,10 +132,21 @@ const REJECTION_MARKERS = [
  */
 export function classifyLoginPage(url: string, visibleText: string): LoginOutcome {
   const text = visibleText.toLowerCase()
+  const lowerUrl = url.toLowerCase()
 
+  // Checked first, and against the URL as well as the text: landing on
+  // Google's own domain is unambiguous, and a coach who signs in with Google
+  // needs a different instruction from every other failure here.
+  if (lowerUrl.includes('accounts.google.com') || lowerUrl.includes('appleid.apple.com')) {
+    return 'sso'
+  }
   if (CHALLENGE_MARKERS.some((marker) => text.includes(marker))) return 'challenge'
   if (REJECTION_MARKERS.some((marker) => text.includes(marker))) return 'rejected'
   if (!isLoginUrl(url)) return 'signed_in'
+  // Only once we know we are still stuck on a login page does an SSO button on
+  // it mean anything — Hudl shows "Continue with Google" beside a perfectly
+  // usable password form, so its mere presence is not a diagnosis.
+  if (SSO_MARKERS.some((marker) => text.includes(marker))) return 'sso'
   return 'unknown'
 }
 
@@ -151,6 +181,8 @@ export function coachMessageFor(failure: HudlFailure): string {
       return 'Hudl rejected that email and password. Re-enter them in team settings.'
     case 'challenge_required':
       return 'Hudl is asking you to verify this sign-in. Sign in to Hudl once in your own browser, then try again.'
+    case 'sso_required':
+      return 'That Hudl account signs in through Google, which PlayScout cannot do on your behalf. Set a Hudl password on the account (Hudl → Account → Password, or use "Forgot password"), then enter that password here. Signing in with Google still works for you normally.'
     case 'browser_unavailable':
       return 'The film import service has no browser installed, so it never reached Hudl. This is a PlayScout deployment problem, not a problem with your Hudl account — nothing needs changing in team settings.'
     case 'login_failed':
@@ -367,6 +399,9 @@ async function signIn(page: Page, email: string, password: string): Promise<void
       if (outcome === 'challenge') {
         throw new HudlSessionError('challenge_required', coachMessageFor('challenge_required'))
       }
+      if (outcome === 'sso') {
+        throw new HudlSessionError('sso_required', coachMessageFor('sso_required'))
+      }
       throw new HudlSessionError('login_failed', coachMessageFor('login_failed'))
     }
   }
@@ -383,6 +418,9 @@ async function signIn(page: Page, email: string, password: string): Promise<void
   if (outcome === 'signed_in') return
   if (outcome === 'challenge') {
     throw new HudlSessionError('challenge_required', coachMessageFor('challenge_required'))
+  }
+  if (outcome === 'sso') {
+    throw new HudlSessionError('sso_required', coachMessageFor('sso_required'))
   }
   if (outcome === 'rejected') {
     throw new HudlSessionError('invalid_credentials', coachMessageFor('invalid_credentials'))

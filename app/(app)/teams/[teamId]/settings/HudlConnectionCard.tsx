@@ -112,6 +112,11 @@ export default function HudlConnectionCard({ teamId }: { teamId: string }) {
         straight into your film library. Your password is encrypted before it is stored, is used
         only to sign in to Hudl, and is never shown again — to change it, enter it again.
       </p>
+      <p className="text-xs text-[var(--brand-muted)] mb-4">
+        This needs a <strong>Hudl password</strong>. If you sign in to Hudl with Google, set a
+        password on the account first (Hudl &rarr; Account &rarr; Password, or &ldquo;Forgot
+        password&rdquo;) and enter that one here — you can keep using Google yourself.
+      </p>
 
       {!status.keyConfigured && (
         <div className="flex gap-2 rounded-lg bg-amber-50 border border-amber-200 p-3 mb-4 text-xs text-amber-800">
