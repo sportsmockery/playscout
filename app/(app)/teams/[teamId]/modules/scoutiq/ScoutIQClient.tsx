@@ -37,6 +37,7 @@ const inputClass =
 function AddOpponentForm({ teamId, onCreated }: { teamId: string; onCreated: (id: string) => void }) {
   const [name, setName] = useState('');
   const [ageGroup, setAgeGroup] = useState('');
+  const [jerseyColor, setJerseyColor] = useState('');
   const [nextGameDate, setNextGameDate] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -49,7 +50,13 @@ function AddOpponentForm({ teamId, onCreated }: { teamId: string; onCreated: (id
       const res = await fetch('/api/opponents', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ teamId, name, ageGroup: ageGroup || undefined, nextGameDate: nextGameDate || undefined }),
+        body: JSON.stringify({
+          teamId,
+          name,
+          ageGroup: ageGroup || undefined,
+          jerseyColor: jerseyColor || undefined,
+          nextGameDate: nextGameDate || undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Could not add opponent');
@@ -64,9 +71,15 @@ function AddOpponentForm({ teamId, onCreated }: { teamId: string; onCreated: (id
   return (
     <div className="glass-card p-4">
       <h3 className="text-xs font-bold text-[var(--brand-navy)] uppercase tracking-wide mb-3">Scout a New Opponent</h3>
-      <div className="grid sm:grid-cols-3 gap-2 mb-2">
+      <div className="grid sm:grid-cols-2 gap-2 mb-2">
         <input className={inputClass} placeholder="Opponent name" value={name} onChange={(e) => setName(e.target.value)} />
         <input className={inputClass} placeholder="Age group (optional)" value={ageGroup} onChange={(e) => setAgeGroup(e.target.value)} />
+        <input
+          className={inputClass}
+          placeholder="What they wear — e.g. blue jerseys"
+          value={jerseyColor}
+          onChange={(e) => setJerseyColor(e.target.value)}
+        />
         <input type="date" className={inputClass} value={nextGameDate} onChange={(e) => setNextGameDate(e.target.value)} />
       </div>
       {error && <p className="text-xs text-red-600 mb-2">{error}</p>}
@@ -85,7 +98,13 @@ function AddOpponentForm({ teamId, onCreated }: { teamId: string; onCreated: (id
 export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, selectedOpponentId, opponentVideos, scoutReports }: Props) {
   const router = useRouter();
   const [showAddOpponent, setShowAddOpponent] = useState(opponents.length === 0);
-  const [jerseyColor, setJerseyColor] = useState('');
+  // Seeded from the opponent record rather than starting blank every visit.
+  // Blank is not a neutral default here: it drops SCOUTIQ onto its
+  // unconfirmed-subject branch for every clip in a batch, silently.
+  const [jerseyColor, setJerseyColor] = useState(
+    opponents.find((o) => o.id === selectedOpponentId)?.jersey_color ?? ''
+  );
+  const [savingColor, setSavingColor] = useState(false);
   const [clipResults, setClipResults] = useState<Record<string, ScoutIQClipResult>>({});
   const [clipLoading, setClipLoading] = useState<string | null>(null);
   const [clipError, setClipError] = useState('');
@@ -100,6 +119,23 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
 
   function selectOpponent(id: string) {
     router.push(`/teams/${teamId}/modules/scoutiq?opponent=${id}`);
+  }
+
+  async function saveJerseyColor() {
+    if (!selectedOpponentId) return;
+    const stored = opponents.find((o) => o.id === selectedOpponentId)?.jersey_color ?? '';
+    if (jerseyColor.trim() === stored.trim()) return;
+    setSavingColor(true);
+    try {
+      await fetch('/api/opponents', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teamId, opponentId: selectedOpponentId, jerseyColor }),
+      });
+      router.refresh();
+    } finally {
+      setSavingColor(false);
+    }
   }
 
   async function runScoutOnClip(video: Video) {
@@ -221,13 +257,43 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
         <>
           {/* Opponent film */}
           <div className="glass-card p-5">
+            {/* Above the actions on purpose. This field decides which side of
+                the film gets graded; underneath the buttons it was read after
+                the decision it governs, and a blank one quietly sent every clip
+                of a 100-clip batch through the unconfirmed-subject branch. */}
+            <div className="mb-4">
+              <label className="block text-xs font-medium text-[var(--brand-ink)] mb-1">
+                What {selectedOpponent.name} wears in this film
+              </label>
+              <input
+                className={inputClass}
+                placeholder="e.g. blue jerseys, white helmets"
+                value={jerseyColor}
+                onChange={(e) => setJerseyColor(e.target.value)}
+                onBlur={saveJerseyColor}
+              />
+              <p className="text-[11px] text-[var(--brand-muted)] mt-1">
+                {jerseyColor.trim()
+                  ? savingColor
+                    ? 'Saving…'
+                    : `Saved to ${selectedOpponent.name} — used on every clip.`
+                  : `Required before scouting a batch. Without it PlayScout cannot confirm which side is ${selectedOpponent.name}, which matters most when your own team is not in the film.`}
+              </p>
+            </div>
+
             <div className="flex items-center justify-between mb-3">
               <h2 className="font-bold text-[var(--brand-navy)] text-sm uppercase tracking-wide">{selectedOpponent.name}&apos;s Film</h2>
               <div className="flex items-center gap-2">
                 {opponentVideos.some((v) => !isUnanalyzable(v)) && (
                   <button
                     onClick={scoutAllClips}
-                    className="flex items-center gap-1.5 text-xs font-semibold border border-[var(--brand-border)] text-[var(--brand-ink)] px-3 py-2 rounded-lg hover:bg-[var(--brand-bg)] transition-colors"
+                    disabled={!jerseyColor.trim()}
+                    title={
+                      jerseyColor.trim()
+                        ? undefined
+                        : `Enter what ${selectedOpponent.name} wears first — it is what tells PlayScout which side to scout.`
+                    }
+                    className="flex items-center gap-1.5 text-xs font-semibold border border-[var(--brand-border)] text-[var(--brand-ink)] px-3 py-2 rounded-lg hover:bg-[var(--brand-bg)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <Layers size={14} />
                     Scout all clips
@@ -244,16 +310,6 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
                 {queued}
               </p>
             )}
-
-            <div className="mb-3">
-              <label className="block text-xs font-medium text-[var(--brand-ink)] mb-1">Opponent jersey/helmet color (this film)</label>
-              <input
-                className={inputClass}
-                placeholder="e.g. red jerseys, white helmets"
-                value={jerseyColor}
-                onChange={(e) => setJerseyColor(e.target.value)}
-              />
-            </div>
 
             {opponentVideos.length === 0 ? (
               <p className="text-sm text-[var(--brand-muted)]">No film uploaded for {selectedOpponent.name} yet.</p>
@@ -341,12 +397,29 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
                     clips: number;
                   }[];
                   if (!points.length) return null;
-                  const clipCount = latestReport.based_on_video_ids.length;
+                  // The denominator is the clips where they were DEFENDING —
+                  // the only ones that can show a way to attack them. On a
+                  // whole-game cut-up that is about half the batch, and
+                  // dividing by every clip made a real tendency read as a
+                  // one-off. Falls back to the clip count for reports written
+                  // before possession was recorded.
+                  const sufficiency = latestReport.evidence_sufficiency as
+                    | { defensive_clips?: number; unconfirmed_subject_clips?: number }
+                    | null;
+                  const clipCount =
+                    sufficiency?.defensive_clips || latestReport.based_on_video_ids.length;
                   return (
                     <div>
-                      <h3 className="text-xs font-bold text-[var(--brand-navy)] uppercase tracking-wide mb-2">
+                      <h3 className="text-xs font-bold text-[var(--brand-navy)] uppercase tracking-wide mb-1">
                         What The Film Showed ({points.length} ranked by how often)
                       </h3>
+                      <p className="text-[11px] text-[var(--brand-muted)] mb-2">
+                        Counted against the {clipCount} clip{clipCount === 1 ? '' : 's'} where they
+                        were on defense.
+                        {sufficiency?.unconfirmed_subject_clips
+                          ? ` On ${sufficiency.unconfirmed_subject_clips} clip${sufficiency.unconfirmed_subject_clips === 1 ? '' : 's'} PlayScout could not confirm it was watching the right team — treat those findings more loosely.`
+                          : ''}
+                      </p>
                       <ol className="space-y-1.5">
                         {points.map((a, i) => (
                           <li key={i} className="flex items-start gap-2 text-sm text-[var(--brand-ink)]">

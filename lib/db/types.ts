@@ -23,7 +23,10 @@ export interface Team {
 
 export interface Opponent {
   id: string; team_id: string; name: string; age_group?: string | null
-  next_game_date?: string | null; notes?: string | null; created_at: string
+  next_game_date?: string | null; notes?: string | null
+  /** What they wear. Anchors which side SCOUTIQ grades. */
+  jersey_color?: string | null
+  created_at: string
 }
 
 export interface Player {
