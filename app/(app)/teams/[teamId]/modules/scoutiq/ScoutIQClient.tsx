@@ -105,6 +105,18 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
     opponents.find((o) => o.id === selectedOpponentId)?.jersey_color ?? ''
   );
   const [savingColor, setSavingColor] = useState(false);
+  // Everything selected by default, so doing nothing still scouts the lot.
+  // The point of the selection is the whole-game cut-up: ways to attack a
+  // team can only be seen while they are DEFENDING, so on a full game roughly
+  // half the clips cannot answer the question and cost a Gemini call each.
+  const selectableIds = opponentVideos.filter((v) => !isUnanalyzable(v)).map((v) => v.id);
+  const [selectedIds, setSelectedIds] = useState<string[]>(selectableIds);
+
+  function toggleClip(id: string) {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  }
   const [clipResults, setClipResults] = useState<Record<string, ScoutIQClipResult>>({});
   const [clipLoading, setClipLoading] = useState<string | null>(null);
   const [clipError, setClipError] = useState('');
@@ -173,7 +185,9 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
    */
   async function scoutAllClips() {
     if (!selectedOpponentId || !selectedOpponent) return;
-    const targets = opponentVideos.filter((v) => !isUnanalyzable(v));
+    const targets = opponentVideos.filter(
+      (v) => !isUnanalyzable(v) && selectedIds.includes(v.id)
+    );
     if (!targets.length) return;
     setClipError('');
     setQueued('');
@@ -287,7 +301,7 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
                 {opponentVideos.some((v) => !isUnanalyzable(v)) && (
                   <button
                     onClick={scoutAllClips}
-                    disabled={!jerseyColor.trim()}
+                    disabled={!jerseyColor.trim() || selectedIds.length === 0}
                     title={
                       jerseyColor.trim()
                         ? undefined
@@ -296,7 +310,8 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
                     className="flex items-center gap-1.5 text-xs font-semibold border border-[var(--brand-border)] text-[var(--brand-ink)] px-3 py-2 rounded-lg hover:bg-[var(--brand-bg)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <Layers size={14} />
-                    Scout all clips
+                    Scout {selectedIds.length === selectableIds.length ? 'all' : 'selected'} (
+                    {selectedIds.length})
                   </button>
                 )}
                 <AddFilmLinkButton teamId={teamId} opponentId={selectedOpponent.id} />
@@ -311,6 +326,22 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
               </p>
             )}
 
+            {selectableIds.length > 1 && (
+              <div className="flex items-center justify-between gap-2 mb-2 text-xs">
+                <span className="text-[var(--brand-muted)]">
+                  {selectedIds.length} of {selectableIds.length} clips selected for scouting
+                </span>
+                <button
+                  onClick={() =>
+                    setSelectedIds(selectedIds.length === selectableIds.length ? [] : selectableIds)
+                  }
+                  className="font-semibold text-[var(--brand-navy)] hover:underline"
+                >
+                  {selectedIds.length === selectableIds.length ? 'Clear all' : 'Select all'}
+                </button>
+              </div>
+            )}
+
             {opponentVideos.length === 0 ? (
               <p className="text-sm text-[var(--brand-muted)]">No film uploaded for {selectedOpponent.name} yet.</p>
             ) : (
@@ -318,9 +349,20 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
                 {opponentVideos.map((v) => (
                   <div key={v.id} className="border border-[var(--brand-border)] rounded-lg p-3">
                     <div className="flex items-center justify-between gap-3 flex-wrap">
-                      <div>
+                      <div className="flex items-start gap-2.5 min-w-0">
+                        {!isUnanalyzable(v) && (
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.includes(v.id)}
+                            onChange={() => toggleClip(v.id)}
+                            aria-label={`Scout ${v.title}`}
+                            className="mt-1 shrink-0 accent-[var(--brand-navy)]"
+                          />
+                        )}
+                        <div className="min-w-0">
                         <p className="text-sm font-semibold text-[var(--brand-ink)]">{v.title}</p>
                         <p className="text-xs text-[var(--brand-muted)] capitalize">{v.status?.replace(/_/g, ' ')}</p>
+                        </div>
                       </div>
                       {readyVideos.includes(v) && (
                         <button
