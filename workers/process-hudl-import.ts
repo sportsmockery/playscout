@@ -148,8 +148,12 @@ async function reapStuckJobs(supabase: SupabaseClient) {
       .from('hudl_import_jobs')
       .update({
         status: job.clips_imported > 0 ? 'partial' : 'failed',
+        // Said "the clips it got are in your film library" even when nothing
+        // landed, which sent a coach looking for film that does not exist.
         error_message:
-          'The import stopped partway through. The clips it got are in your film library — run it again and it will pick up from there rather than re-downloading them.',
+          job.clips_imported > 0
+            ? 'The import stopped partway through. The clips it got are in your film library — run it again and it will pick up from there rather than re-downloading them.'
+            : 'The import stopped before any clips were downloaded. Run it again — nothing was imported, so it starts from the beginning.',
         locked_by: null,
         locked_at: null,
         completed_at: new Date().toISOString(),
@@ -384,7 +388,9 @@ async function runImport(supabase: SupabaseClient, job: ImportJob) {
           ? `The import stopped after ${imported} of ${clips.length} clips. Run it again — it picks up where it left off rather than re-downloading.`
           : failed === 0
             ? null
-            : `${failed} of ${clips.length} clips could not be downloaded from Hudl. The rest are in your film library.`,
+            : imported > 0
+              ? `${failed} of ${clips.length} clips could not be downloaded from Hudl. The rest are in your film library.`
+              : `None of the ${clips.length} clips could be downloaded from Hudl. Nothing was imported.`,
         clips_imported: imported,
         clips_failed: failed,
         diagnostics: clipFailures.length ? { clipFailures } : null,

@@ -29,6 +29,15 @@ export interface BatchClipResult {
 export interface RepeatedItem {
   text: string
   clips: number
+  /**
+   * Every phrasing that landed in this cluster, canonical one included.
+   *
+   * Callers that carry per-item metadata alongside the text — scouting's
+   * attack-point categories — need the whole membership to decide the
+   * cluster's value. Looking the metadata up by the canonical phrasing alone
+   * takes one member's answer and calls it the group's.
+   */
+  members: string[]
 }
 
 export interface PlayerRollup {
@@ -120,7 +129,7 @@ const REPEAT_SIMILARITY = 0.5
  * worded differently in every clip.
  */
 export function countRepeats(lists: string[][], limit = 8): RepeatedItem[] {
-  const clusters: { text: string; words: Set<string>; clips: number }[] = []
+  const clusters: { text: string; words: Set<string>; clips: number; members: string[] }[] = []
 
   for (const list of lists) {
     // One clip saying the same thing twice still counts once.
@@ -147,9 +156,10 @@ export function countRepeats(lists: string[][], limit = 8): RepeatedItem[] {
           matchedThisClip.add(bestIndex)
         }
         // Keep the shortest phrasing — it reads best as the canonical label.
+        clusters[bestIndex].members.push(text)
         if (text.length < clusters[bestIndex].text.length) clusters[bestIndex].text = text
       } else {
-        clusters.push({ text, words, clips: 1 })
+        clusters.push({ text, words, clips: 1, members: [text] })
         matchedThisClip.add(clusters.length - 1)
       }
     }
@@ -158,7 +168,7 @@ export function countRepeats(lists: string[][], limit = 8): RepeatedItem[] {
   return clusters
     .sort((a, b) => b.clips - a.clips || a.text.localeCompare(b.text))
     .slice(0, limit)
-    .map((c) => ({ text: c.text, clips: c.clips }))
+    .map((c) => ({ text: c.text, clips: c.clips, members: c.members }))
 }
 
 /**

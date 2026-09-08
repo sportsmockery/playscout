@@ -130,6 +130,21 @@ describe('aggregateScoutReport', () => {
     expect(result.situational_tells).toHaveLength(2)
   })
 
+  it('files a cluster under the category most of its phrasings used', () => {
+    // The canonical text of a cluster is just its SHORTEST member, so reading
+    // the category off that one phrasing let a single clip decide how the
+    // whole group was filed. Here the short phrasing is the outlier.
+    const result = aggregateScoutReport([
+      { attack_points: [{ point: 'Soft edge', category: 'situational' }] },
+      { attack_points: [{ point: 'Soft edge to the field', category: 'perimeter_run' }] },
+      { attack_points: [{ point: 'The edge is soft to the field', category: 'perimeter_run' }] },
+    ])
+
+    expect(result.attack_points).toHaveLength(1)
+    expect(result.attack_points[0].point).toBe('Soft edge')
+    expect(result.attack_points[0].category).toBe('perimeter_run')
+  })
+
   it('ranks attack points against the clips they were on DEFENSE, not the whole game', () => {
     // A whole-game cut-up is roughly half their offense. Counting a weakness
     // against every clip halves its apparent rate and the game-plan prompt is

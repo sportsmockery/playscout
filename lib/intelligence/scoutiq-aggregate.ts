@@ -122,14 +122,26 @@ function rankAttackPoints(clips: ScoutClipEvidence[]): RankedAttackPoint[] {
 
   return countRepeats(lists, ATTACK_POINT_LIMIT).map((item) => ({
     point: item.text,
-    category: modalCategory(categoryVotes.get(item.text)),
+    // Voted across every phrasing in the cluster, not just the canonical one.
+    // The canonical text is simply the shortest member, so reading its
+    // category alone let one clip decide how the whole group was filed.
+    category: modalCategory(item.members, categoryVotes),
     clips: item.clips,
   }))
 }
 
-function modalCategory(votes?: Map<string, number>): AttackCategory | 'situational' {
-  if (!votes?.size) return 'situational'
-  const [best] = [...votes.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+function modalCategory(
+  members: string[],
+  categoryVotes: Map<string, Map<string, number>>
+): AttackCategory | 'situational' {
+  const tally = new Map<string, number>()
+  for (const member of members) {
+    for (const [category, count] of categoryVotes.get(member) ?? []) {
+      tally.set(category, (tally.get(category) ?? 0) + count)
+    }
+  }
+  if (!tally.size) return 'situational'
+  const [best] = [...tally.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
   return best[0] as AttackCategory
 }
 

@@ -34,11 +34,16 @@ export async function persistMistakeEvents(
 }
 
 /**
- * TEAMIQ (and, per-clip, SCOUTIQ against the coach's own tendencies) writes
- * structured tendencies to team_tendencies using a sample-size-weighted
+ * TEAMIQ writes structured tendencies to team_tendencies using a
+ * sample-size-weighted
  * rollup (see tendency-rollup.ts) so the row reflects everything analyzed so
  * far, not just the most recent clip. Before this, team_tendencies was read
  * by the Intelligence hub but never written by any caller.
+ *
+ * SCOUTIQ deliberately does NOT write here, whatever an earlier version of
+ * this comment claimed: its tendencies describe an opponent, and putting them
+ * in this table would fold another team's habits into the coach's own season
+ * aggregate. save-analysis.ts gates the call on TEAMIQ alone.
  */
 export async function persistTeamTendencies(
   supabase: SupabaseClient,
