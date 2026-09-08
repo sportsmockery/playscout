@@ -33,6 +33,22 @@ interface EvidenceShape {
   // SCOUTIQ report was the one a coach could never reach.
   attack_points?: { point: string; category?: string }[] | null;
   target_players?: { identifier: string; reason: string; confidence: number }[] | null;
+  player_grades?: {
+    identifier: string;
+    position?: string;
+    grade?: number;
+    letter?: string;
+    note: string;
+    rank?: number;
+    number_rejected_reason?: string | null;
+  }[] | null;
+}
+
+function gradeColor(score: number | null | undefined): string {
+  if (score == null) return 'text-[var(--brand-muted)]';
+  if (score >= 80) return 'text-emerald-600';
+  if (score >= 60) return 'text-amber-600';
+  return 'text-red-600';
 }
 
 function TendencyList({ title, items }: { title: string; items: TendencyEvidence }) {
@@ -225,6 +241,53 @@ export default async function SavedAnalysisPage({
             {evidence.target_players.map((p, i) => (
               <li key={i} className="text-sm"><span className="font-semibold">{p.identifier}</span>: {p.reason}</li>
             ))}
+          </ul>
+        </div>
+      )}
+
+      {/* RANKERIQ writes a grade for every player it could see, and this page —
+          the shareable, printable one — rendered none of them: a score, some
+          prose, and nothing else. The grades were only ever visible by
+          expanding a clip inside a batch. */}
+      {evidence.player_grades && evidence.player_grades.length > 0 && (
+        <div className="glass-card p-5 mb-5 print:border print:shadow-none">
+          <h3 className="font-bold text-[var(--brand-navy)] mb-1 text-sm uppercase tracking-wide">
+            Player Grades
+          </h3>
+          <p className="text-[11px] text-[var(--brand-muted)] mb-3">
+            Every player graded on this rep, strongest first. A row marked{' '}
+            <span className="font-semibold">by role</span> could not be tied to a jersey number and
+            may cover more than one player.
+          </p>
+          <ul className="space-y-2">
+            {[...evidence.player_grades]
+              .sort((a, b) => (b.grade ?? 0) - (a.grade ?? 0))
+              .map((g, i) => (
+                <li key={i} className="flex items-start gap-2 text-sm">
+                  <span className={`font-bold w-8 shrink-0 tabular-nums ${gradeColor(g.grade)}`}>
+                    {g.grade ?? '—'}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="font-semibold text-[var(--brand-ink)]">
+                      {g.identifier}
+                      {g.position ? (
+                        <span className="text-[var(--brand-muted)] font-normal"> {g.position}</span>
+                      ) : null}
+                      {g.number_rejected_reason && (
+                        <span
+                          className="ml-1.5 text-[10px] font-normal text-[var(--brand-muted)]"
+                          title={`A jersey number was reported but discarded: ${g.number_rejected_reason}`}
+                        >
+                          (by role)
+                        </span>
+                      )}
+                    </span>
+                    {g.note && (
+                      <span className="block text-xs text-[var(--brand-muted)] mt-0.5">{g.note}</span>
+                    )}
+                  </span>
+                </li>
+              ))}
           </ul>
         </div>
       )}

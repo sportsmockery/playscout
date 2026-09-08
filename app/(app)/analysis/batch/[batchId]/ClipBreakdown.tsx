@@ -31,6 +31,11 @@ interface Props {
   videoTitle: string;
   /** The batch-level one-liner on this specific clip. */
   comment: string | null;
+  /**
+   * SCOUTIQ's subject is an opponent, so "Strengths / Needs work" would be a
+   * report card on the team the coach is preparing to play.
+   */
+  scouting?: boolean;
   result: {
     id: string;
     overall_score: number | null;
@@ -59,7 +64,7 @@ function scoreColor(score: number | null): string {
  * is what this page exists to replace. The per-clip report still has its own
  * URL for sharing or printing; it just isn't the default way in.
  */
-export default function ClipBreakdown({ teamId, videoId, videoTitle, comment, result }: Props) {
+export default function ClipBreakdown({ teamId, videoId, videoTitle, comment, result, scouting = false }: Props) {
   const [open, setOpen] = useState(false);
   const evidence = (result.evidence ?? {}) as EvidenceShape;
   const grades = evidence.player_grades ?? [];
@@ -156,8 +161,8 @@ export default function ClipBreakdown({ teamId, videoId, videoTitle, comment, re
             <div className="grid sm:grid-cols-2 gap-4">
               {result.strengths.length > 0 && (
                 <div>
-                  <h4 className="text-[11px] font-bold uppercase tracking-wide text-emerald-600 mb-1.5">
-                    Strengths
+                  <h4 className={`text-[11px] font-bold uppercase tracking-wide mb-1.5 ${scouting ? 'text-[var(--brand-navy)]' : 'text-emerald-600'}`}>
+                    {scouting ? 'Plan around this' : 'Strengths'}
                   </h4>
                   <ul className="space-y-1">
                     {result.strengths.map((s, i) => (
@@ -168,8 +173,8 @@ export default function ClipBreakdown({ teamId, videoId, videoTitle, comment, re
               )}
               {result.weaknesses.length > 0 && (
                 <div>
-                  <h4 className="text-[11px] font-bold uppercase tracking-wide text-red-500 mb-1.5">
-                    Needs work
+                  <h4 className={`text-[11px] font-bold uppercase tracking-wide mb-1.5 ${scouting ? 'text-[var(--brand-navy)]' : 'text-red-500'}`}>
+                    {scouting ? 'Attack this' : 'Needs work'}
                   </h4>
                   <ul className="space-y-1">
                     {result.weaknesses.map((w, i) => (

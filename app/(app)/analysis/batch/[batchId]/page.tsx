@@ -54,6 +54,10 @@ export default async function BatchReportPage({
 
   const stillRunning = ['queued', 'running'].includes(batch.status as string);
   const completed = clips.filter((c) => c.result).length;
+  // A SCOUTIQ batch is a report on an opponent, so the shared labels have to
+  // flip. "Consistent Strengths" over a team you are preparing to play reads
+  // as praise for them rather than as the thing that will beat you.
+  const scouting = batch.module_key === 'SCOUTIQ';
 
   return (
     <div className="p-6 max-w-4xl mx-auto print:p-0">
@@ -288,12 +292,36 @@ export default async function BatchReportPage({
         </div>
       )}
 
+      {/* A SCOUTIQ batch's real destination is the game plan, which is where
+          the ranked attack points and the "How To Attack Them" section live.
+          This page is module-agnostic and renders none of that, so a coach who
+          followed the queue link would otherwise stop one screen short. */}
+      {scouting && (
+        <div className="glass-card p-5 mb-5 flex items-start justify-between gap-4 flex-wrap">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-[var(--brand-ink)]">
+              Scouting finished — build the game plan
+            </p>
+            <p className="text-sm text-[var(--brand-muted)] mt-0.5">
+              The ranked ways to attack this opponent, with the clip count behind each one, are
+              generated on the ScoutIQ screen.
+            </p>
+          </div>
+          <Link
+            href={`/teams/${teamId}/modules/scoutiq`}
+            className="shrink-0 text-sm font-semibold px-4 py-2 rounded-lg bg-[var(--brand-navy)] text-white hover:opacity-90 transition-opacity"
+          >
+            Go to ScoutIQ
+          </Link>
+        </div>
+      )}
+
       {/* Recurring items + mistakes */}
       {aggregate && (aggregate.recurringStrengths.length > 0 || aggregate.recurringWeaknesses.length > 0) && (
         <div className="grid md:grid-cols-2 gap-5 mb-5">
           <div className="glass-card p-5">
-            <h3 className="font-bold text-emerald-600 mb-3 text-sm uppercase tracking-wide">
-              Consistent Strengths
+            <h3 className={`font-bold mb-3 text-sm uppercase tracking-wide ${scouting ? 'text-[var(--brand-navy)]' : 'text-emerald-600'}`}>
+              {scouting ? 'What They Do Well — Plan Around It' : 'Consistent Strengths'}
             </h3>
             <ul className="space-y-2">
               {aggregate.recurringStrengths.map((s, i) => (
@@ -307,8 +335,8 @@ export default async function BatchReportPage({
             </ul>
           </div>
           <div className="glass-card p-5">
-            <h3 className="font-bold text-red-500 mb-3 text-sm uppercase tracking-wide">
-              Recurring Problems
+            <h3 className={`font-bold mb-3 text-sm uppercase tracking-wide ${scouting ? 'text-[var(--brand-navy)]' : 'text-red-500'}`}>
+              {scouting ? 'Recurring Flaw To Attack' : 'Recurring Problems'}
             </h3>
             <ul className="space-y-2">
               {aggregate.recurringWeaknesses.map((w, i) => (
@@ -379,6 +407,7 @@ export default async function BatchReportPage({
                   videoId={clip.videoId}
                   videoTitle={clip.videoTitle}
                   comment={clip.comment}
+                  scouting={scouting}
                   result={{
                     id: clip.result.id,
                     overall_score: clip.result.overall_score ?? null,
