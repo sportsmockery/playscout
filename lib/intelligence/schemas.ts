@@ -233,6 +233,13 @@ export const PositionAnalysisOutputSchema = z.object({
   attack_points: z
     .array(z.object({ point: z.string(), category: z.string().optional() }))
     .optional(),
+  // SCOUTIQ only. The prompt has always asked which side the model graded; it
+  // had nowhere to answer, so the one check that a scouting report is about
+  // the right team lived in prose and nothing read it. Optional so results
+  // saved before these existed still parse.
+  subject_graded: z.string().optional(),
+  subject_confirmed: z.boolean().optional(),
+  opponent_possession: z.enum(['offense', 'defense', 'both', 'unclear']).optional(),
   // MISTAKEIQ per-mistake taxonomy — written one row per item to
   // mistake_events (see lib/intelligence/persist-intelligence.ts).
   mistakes: z.array(MistakeItemSchema).optional(),
@@ -282,6 +289,9 @@ export interface PositionAnalysisResult {
   explosive_plays?: { cause: string; description: string; evidence_frames?: number[] }[]
   situational_tells?: { situation: string; tell: string; confidence?: number }[]
   attack_points?: { point: string; category?: string }[]
+  subject_graded?: string
+  subject_confirmed?: boolean
+  opponent_possession?: 'offense' | 'defense' | 'both' | 'unclear'
   mistakes?: MistakeItem[]
   player_grades?: PlayerGrade[]
   unit_graded?: string

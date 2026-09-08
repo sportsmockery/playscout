@@ -27,7 +27,11 @@ interface EvidenceShape {
   defensive_tendencies?: TendencyEvidence | null;
   formations?: { name: string; side?: string; note?: string }[] | null;
   situational_tells?: { situation: string; tell: string; confidence?: number }[] | null;
-  attack_points?: string[] | null;
+  // Objects, not strings. This was typed `string[]` and rendered directly,
+  // which throws "Objects are not valid as a React child" — on a server
+  // component that 500s the whole page, so the one adversarial section on a
+  // SCOUTIQ report was the one a coach could never reach.
+  attack_points?: { point: string; category?: string }[] | null;
   target_players?: { identifier: string; reason: string; confidence: number }[] | null;
 }
 
@@ -63,6 +67,12 @@ export default async function SavedAnalysisPage({
     teams?: { name: string } | null;
   };
   const evidence = (analysis.evidence ?? {}) as EvidenceShape;
+
+  // SCOUTIQ's subject is an opponent, so the generic result envelope has to be
+  // relabelled. "Strengths / Weaknesses / Recommended Fixes" on a scouting
+  // report reads as a development plan for the team you are trying to beat --
+  // which is exactly what a coach reported seeing.
+  const scouting = analysis.module_key === 'SCOUTIQ';
 
   // A breakdown anchor is only worth clicking if there is film behind it, so
   // resolve a playable URL the same way the film detail page does.
@@ -185,7 +195,9 @@ export default async function SavedAnalysisPage({
       <div className="grid md:grid-cols-2 gap-5 mb-5">
         {analysis.strengths && analysis.strengths.length > 0 && (
           <div className="glass-card p-5 print:border print:shadow-none">
-            <h3 className="font-bold text-emerald-600 mb-3 text-sm uppercase tracking-wide">Strengths</h3>
+            <h3 className={`font-bold mb-3 text-sm uppercase tracking-wide ${scouting ? 'text-[var(--brand-navy)]' : 'text-emerald-600'}`}>
+              {scouting ? 'What Beats Us If We Ignore It' : 'Strengths'}
+            </h3>
             <ul className="space-y-2">
               {analysis.strengths.map((s, i) => <li key={i} className="text-sm text-[var(--brand-ink)]">• {s}</li>)}
             </ul>
@@ -193,7 +205,9 @@ export default async function SavedAnalysisPage({
         )}
         {analysis.weaknesses && analysis.weaknesses.length > 0 && (
           <div className="glass-card p-5 print:border print:shadow-none">
-            <h3 className="font-bold text-red-500 mb-3 text-sm uppercase tracking-wide">Weaknesses</h3>
+            <h3 className={`font-bold mb-3 text-sm uppercase tracking-wide ${scouting ? 'text-[var(--brand-navy)]' : 'text-red-500'}`}>
+              {scouting ? 'What To Exploit' : 'Weaknesses'}
+            </h3>
             <ul className="space-y-2">
               {analysis.weaknesses.map((w, i) => <li key={i} className="text-sm text-[var(--brand-ink)]">• {w}</li>)}
             </ul>
@@ -219,14 +233,25 @@ export default async function SavedAnalysisPage({
         <div className="glass-card p-5 mb-5 print:border print:shadow-none">
           <h3 className="font-bold text-[var(--brand-navy)] mb-3 text-sm uppercase tracking-wide">What To Attack</h3>
           <ul className="space-y-2">
-            {evidence.attack_points.map((a, i) => <li key={i} className="text-sm text-[var(--brand-ink)]">• {a}</li>)}
+            {evidence.attack_points.map((a, i) => (
+              <li key={i} className="flex items-start gap-2 text-sm text-[var(--brand-ink)]">
+                {a.category && (
+                  <span className="shrink-0 mt-0.5 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border border-[var(--brand-border)] text-[var(--brand-navy)]">
+                    {a.category.replace(/_/g, ' ')}
+                  </span>
+                )}
+                <span>{a.point}</span>
+              </li>
+            ))}
           </ul>
         </div>
       )}
 
       {analysis.drills && analysis.drills.length > 0 && (
         <div className="glass-card p-5 mb-5 print:border print:shadow-none">
-          <h3 className="font-bold text-[var(--brand-navy)] mb-3 text-sm uppercase tracking-wide">Recommended Fixes</h3>
+          <h3 className="font-bold text-[var(--brand-navy)] mb-3 text-sm uppercase tracking-wide">
+              {scouting ? 'Install This Week To Attack It' : 'Recommended Fixes'}
+            </h3>
           <ul className="space-y-2">
             {analysis.drills.map((d, i) => <li key={i} className="text-sm text-[var(--brand-ink)]">{i + 1}. {d}</li>)}
           </ul>

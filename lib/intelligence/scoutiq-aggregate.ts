@@ -4,6 +4,13 @@ import type { AttackCategory } from './taxonomy'
 
 export interface ScoutClipEvidence {
   plays_observed?: number | null
+  /**
+   * Which side of the ball the opponent was on in this clip. Absent on every
+   * result saved before the field existed, and treated as 'both' there so old
+   * reports rank exactly as they did.
+   */
+  opponent_possession?: 'offense' | 'defense' | 'both' | 'unclear' | null
+  subject_confirmed?: boolean | null
   offensive_tendencies?: TendencyObservation[] | null
   defensive_tendencies?: TendencyObservation[] | null
   formations?: { name: string; side?: string; note?: string }[] | null
@@ -25,7 +32,38 @@ export interface AggregatedScoutReport {
   /** Ranked by how many clips each appeared in — the thing that makes a "top 25" mean anything. */
   attack_points: RankedAttackPoint[]
   target_players: { identifier: string; reason: string; confidence: number }[]
-  evidence_sufficiency: { plays_observed: number; clips_analyzed: number }
+  evidence_sufficiency: {
+    plays_observed: number
+    clips_analyzed: number
+    /**
+     * Clips where the opponent was defending — the only ones that can produce
+     * a way to attack them, and therefore the honest denominator for the
+     * ranked list. On a whole-game cut-up this is roughly half of
+     * `clips_analyzed`, and ranking against the larger number made every real
+     * weakness look like a one-off.
+     */
+    defensive_clips: number
+    offensive_clips: number
+    /** Clips where the model could not confirm it graded the right team. */
+    unconfirmed_subject_clips: number
+  }
+}
+
+/**
+ * Was the opponent on defense in this clip?
+ *
+ * A clip with no `opponent_possession` predates the field, so it counts — the
+ * alternative would silently drop every previously scouted clip out of the
+ * ranking.
+ */
+function isDefensiveClip(clip: ScoutClipEvidence): boolean {
+  const p = clip.opponent_possession
+  return p == null || p === 'defense' || p === 'both'
+}
+
+function isOffensiveClip(clip: ScoutClipEvidence): boolean {
+  const p = clip.opponent_possession
+  return p === 'offense' || p === 'both'
 }
 
 function rollupList(existing: TendencyObservation[], incoming: TendencyObservation[]): TendencyObservation[] {
@@ -150,13 +188,24 @@ export function aggregateScoutReport(clips: ScoutClipEvidence[]): AggregatedScou
     }
   }
 
+  const defensiveClips = clips.filter(isDefensiveClip)
+
   return {
     offensive_tendencies: offensive,
     defensive_tendencies: defensive,
     formations: [...formations.values()],
-    situational_tells: rankSituationalTells(clips),
-    attack_points: rankAttackPoints(clips),
+    // Ranked over the defensive clips only: an attack point can only be
+    // observed while they are defending, so counting it against every clip of
+    // a whole game halves every rate and makes a real tendency read as noise.
+    situational_tells: rankSituationalTells(defensiveClips),
+    attack_points: rankAttackPoints(defensiveClips),
     target_players: [...targetPlayers.values()],
-    evidence_sufficiency: { plays_observed: totalPlaysObserved, clips_analyzed: clips.length },
+    evidence_sufficiency: {
+      plays_observed: totalPlaysObserved,
+      clips_analyzed: clips.length,
+      defensive_clips: defensiveClips.length,
+      offensive_clips: clips.filter(isOffensiveClip).length,
+      unconfirmed_subject_clips: clips.filter((c) => c.subject_confirmed === false).length,
+    },
   }
 }

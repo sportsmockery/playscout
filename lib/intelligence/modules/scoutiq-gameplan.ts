@@ -18,12 +18,16 @@ export interface ScoutIQGamePlanContext {
   ownPlaybookSummary?: string
 }
 
-function formatAttackPoints(points: AggregatedScoutReport['attack_points']): string {
+function formatAttackPoints(
+  points: AggregatedScoutReport['attack_points'],
+  defensiveClips: number
+): string {
   if (!points.length) return '(none observed yet)'
   return points
     .map((a) => {
       const label = ATTACK_CATEGORY_LABELS[a.category as AttackCategory] ?? a.category
-      return `- [${label}] ${a.point} — seen in ${a.clips} clip${a.clips === 1 ? '' : 's'}`
+      const of = defensiveClips > 0 ? ` of ${defensiveClips}` : ''
+      return `- [${label}] ${a.point} — seen in ${a.clips}${of} clip${a.clips === 1 ? '' : 's'} where they were on defense`
     })
     .join('\n')
 }
@@ -71,10 +75,12 @@ Formations observed: ${aggregated.formations.map((f) => f.name).join(', ') || '(
 Situational tells:
 ${aggregated.situational_tells.map((t) => `- ${t.situation}: ${t.tell} (${t.clips} clip${t.clips === 1 ? '' : 's'})`).join('\n') || '(none observed yet)'}
 
-Ways to attack them, RANKED by how many clips each showed up in (${aggregated.evidence_sufficiency.clips_analyzed} clips analyzed).
-Order your plan by this evidence — something seen in most clips is a tendency, something seen once
-may be a one-off, and you must not present them as equally reliable:
-${formatAttackPoints(aggregated.attack_points)}
+Ways to attack them, RANKED by how many clips each showed up in. The denominator is the
+${aggregated.evidence_sufficiency.defensive_clips} clip(s) in which ${ctx.opponentName} was ON DEFENSE — the only clips that can
+show a way to attack them — out of ${aggregated.evidence_sufficiency.clips_analyzed} scouted in total.
+Order your plan by this evidence — something seen in most of those clips is a tendency, something
+seen once may be a one-off, and you must not present them as equally reliable:
+${formatAttackPoints(aggregated.attack_points, aggregated.evidence_sufficiency.defensive_clips)}
 
 Target players (weakness identified by legible jersey number or position/alignment — never a guessed number):
 ${aggregated.target_players.map((p) => `- ${p.identifier}: ${p.reason} (confidence ${p.confidence.toFixed(2)})`).join('\n') || '(none identified yet)'}
@@ -89,7 +95,7 @@ Produce a game plan a ${tierLabel(tier)} coach can actually use this week:
 2. defensive_game_plan — how to stop this opponent's offense.
 3. target_players_plan — how to specifically exploit the target players listed above (only if the evidence above lists any).
 4. practice_week_focus — 3-5 concrete practice-week install priorities.
-5. evidence_sufficiency_note — one honest sentence on how much this is built on (cite the clip/play counts above). If the sample is thin (few clips or plays), say so plainly and recommend scouting more film before fully trusting this plan.
+5. evidence_sufficiency_note — one honest sentence on how much this is built on (cite the clip/play counts above, and say how many of those clips actually had them on defense).${aggregated.evidence_sufficiency.unconfirmed_subject_clips > 0 ? ` NOTE: on ${aggregated.evidence_sufficiency.unconfirmed_subject_clips} clip(s) the film analyst could not confirm it was grading ${ctx.opponentName} rather than the other team — say so plainly here.` : ''} If the sample is thin (few clips or plays), say so plainly and recommend scouting more film before fully trusting this plan.
 6. summary — 2-3 sentence executive summary.
 
 RULES:

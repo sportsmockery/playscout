@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { saveToTeamMemory } from './memory'
 import { persistMistakeEvents, persistPlayerGrades, persistTeamTendencies } from './persist-intelligence'
+import { isMisdirectedRun, resolveFilmSubject } from './film-subject'
 import type { PositionAnalysisInput, PositionAnalysisResult } from './schemas'
 
 /**
@@ -68,6 +69,12 @@ export async function saveAnalysisResult(
         explosive_plays: result.explosive_plays ?? null,
         situational_tells: result.situational_tells ?? null,
         attack_points: result.attack_points ?? null,
+        // Which side SCOUTIQ actually graded, and whether the opponent was
+        // defending — the denominator for "ways to attack them" is the clips
+        // where they were on defense, not every clip of the game.
+        subject_graded: result.subject_graded ?? null,
+        subject_confirmed: result.subject_confirmed ?? null,
+        opponent_possession: result.opponent_possession ?? null,
         target_players: result.target_players ?? null,
         // RANKERIQ's ranked list, so a reopened saved report renders without
         // a second query against player_grades.
@@ -86,14 +93,29 @@ export async function saveAnalysisResult(
     throw new Error(`Analysis completed but could not be saved: ${error.message}`)
   }
 
-  if (input.moduleKey === 'MISTAKEIQ') {
+  // Whose film this is decides whether the three side effects below may run.
+  // They all write into the coach's OWN team history — a roster grade, a
+  // season tendency, a mistake log — so on film tagged as an opponent's they
+  // would attribute another team's play to this one's players. The analysis
+  // itself is still saved above; it is the attribution that is refused.
+  const subject = await resolveFilmSubject(supabase, input.videoId)
+  const misdirected = isMisdirectedRun(input.moduleKey, subject)
+  if (misdirected) {
+    console.warn(
+      `[save-analysis] ${input.moduleKey} ran on opponent film (video ${input.videoId}); ` +
+        'not writing player grades, tendencies or mistakes against team ' +
+        input.teamId
+    )
+  }
+
+  if (!misdirected && input.moduleKey === 'MISTAKEIQ') {
     await persistMistakeEvents(
       supabase,
       { teamId: input.teamId, playSequenceId: input.playSequenceId },
       result.mistakes
     )
   }
-  if (input.moduleKey === 'RANKERIQ') {
+  if (!misdirected && input.moduleKey === 'RANKERIQ') {
     await persistPlayerGrades(
       supabase,
       {
@@ -108,15 +130,17 @@ export async function saveAnalysisResult(
       result.player_grades
     )
   }
-  if (input.moduleKey === 'TEAMIQ') {
+  if (!misdirected && input.moduleKey === 'TEAMIQ') {
     await persistTeamTendencies(supabase, input.teamId, {
       offensive: result.offensive_tendencies,
       defensive: result.defensive_tendencies,
     })
   }
 
-  // Team memory is best-effort and must never fail the save.
-  saveToTeamMemory(
+  // Team memory is best-effort and must never fail the save. It is also team
+  // history, so a misdirected run stays out of it for the same reason.
+  if (!misdirected)
+    saveToTeamMemory(
     input.teamId,
     result,
     {

@@ -9,7 +9,13 @@ const aggregated = (over: Partial<AggregatedScoutReport> = {}): AggregatedScoutR
   situational_tells: [],
   attack_points: [],
   target_players: [],
-  evidence_sufficiency: { plays_observed: 120, clips_analyzed: 52 },
+  evidence_sufficiency: {
+    plays_observed: 120,
+    clips_analyzed: 52,
+    defensive_clips: 26,
+    offensive_clips: 26,
+    unconfirmed_subject_clips: 0,
+  },
   ...over,
 })
 
@@ -28,15 +34,15 @@ describe('attack points in the game plan prompt', () => {
       ctx({
         aggregated: aggregated({
           attack_points: [
-            { point: 'Soft edge to the field', category: 'perimeter_run', clips: 30 },
+            { point: 'Soft edge to the field', category: 'perimeter_run', clips: 20 },
             { point: 'Safety bites on play action', category: 'play_action', clips: 4 },
           ],
         }),
       })
     )
 
-    expect(prompt).toContain('[Perimeter run] Soft edge to the field — seen in 30 clips')
-    expect(prompt).toContain('[Play action] Safety bites on play action — seen in 4 clips')
+    expect(prompt).toContain('[Perimeter run] Soft edge to the field — seen in 20 of 26 clips')
+    expect(prompt).toContain('[Play action] Safety bites on play action — seen in 4 of 26 clips')
     expect(prompt).not.toContain('[object Object]')
   })
 

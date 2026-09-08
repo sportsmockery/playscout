@@ -128,6 +128,25 @@ export default async function BatchReportPage({
         </div>
       )}
 
+      {/* The gap between the last clip finishing and the write-up landing had
+          no state of its own, so the page rendered a header and a clip list
+          with the whole aggregate — narrative, player grades, what repeats —
+          silently absent. That reads as "it graded nobody" rather than "it is
+          still writing". */}
+      {!stillRunning && !summary && !['failed', 'not_applicable'].includes(batch.summary_status as string) && (
+        <div className="glass-card p-5 mb-5 flex items-start gap-3 border border-amber-200 bg-amber-50">
+          <Clock size={18} className="text-amber-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-amber-900">Writing the combined report</p>
+            <p className="text-sm text-amber-800">
+              Every clip is analyzed. The cumulative write-up — player grades across the batch,
+              what keeps happening, and what to fix first — is being generated now. Refresh in a
+              moment; each clip&apos;s own analysis below is already final.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Cumulative narrative */}
       {summary && (
         <>
@@ -206,42 +225,47 @@ export default async function BatchReportPage({
             across the batch — if jersey numbers weren&apos;t readable on this film, that row may
             cover more than one player.
           </p>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          {/* `w-full` pinned the table to the card, so the scroll container
+              had nothing to scroll and six columns simply crushed together —
+              on a phone the header read "AVGRANGETREND" and the numbers
+              collided with their letter grades. A min width gives the wrapper
+              something to scroll; the cell padding keeps the columns apart. */}
+          <div className="overflow-x-auto -mx-1 px-1">
+            <table className="w-full min-w-[34rem] text-sm border-separate border-spacing-0">
               <thead>
                 <tr className="text-[11px] uppercase tracking-wide text-[var(--brand-muted)] border-b border-[var(--brand-border)]">
-                  <th className="text-left font-semibold py-2">Player</th>
-                  <th className="text-left font-semibold py-2">Pos</th>
-                  <th className="text-right font-semibold py-2">Reps</th>
-                  <th className="text-right font-semibold py-2">Avg</th>
-                  <th className="text-right font-semibold py-2">Range</th>
-                  <th className="text-right font-semibold py-2">Trend</th>
+                  <th className="text-left font-semibold py-2 pr-3 whitespace-nowrap">Player</th>
+                  <th className="text-left font-semibold py-2 px-3 whitespace-nowrap">Pos</th>
+                  <th className="text-right font-semibold py-2 px-3 whitespace-nowrap">Reps</th>
+                  <th className="text-right font-semibold py-2 px-3 whitespace-nowrap">Avg</th>
+                  <th className="text-right font-semibold py-2 px-3 whitespace-nowrap">Range</th>
+                  <th className="text-right font-semibold py-2 pl-3 whitespace-nowrap">Trend</th>
                 </tr>
               </thead>
               <tbody>
                 {aggregate.playerRollup.map((p) => (
                   <tr key={p.key} className="border-b border-[var(--brand-border)] last:border-0">
-                    <td className="py-2 font-semibold text-[var(--brand-ink)]">
+                    <td className="py-2 pr-3 font-semibold text-[var(--brand-ink)]">
                       {p.identifier}
                       {p.identifiedBy === 'role' && (
                         <span
-                          className="ml-1.5 text-[10px] font-medium text-[var(--brand-muted)] bg-[var(--brand-bg)] border border-[var(--brand-border)] px-1.5 py-0.5 rounded-full"
+                          className="ml-1.5 align-middle inline-block whitespace-nowrap text-[10px] font-medium text-[var(--brand-muted)] bg-[var(--brand-bg)] border border-[var(--brand-border)] px-1.5 py-0.5 rounded-full"
                           title="Grouped by position — jersey numbers weren't readable, so this row may cover more than one player."
                         >
                           by role
                         </span>
                       )}
                     </td>
-                    <td className="py-2 text-xs text-[var(--brand-muted)]">{p.positions.join(', ')}</td>
-                    <td className="py-2 text-right text-xs text-[var(--brand-muted)]">{p.reps}</td>
-                    <td className={`py-2 text-right font-bold ${scoreColor(p.averageGrade)}`}>
+                    <td className="py-2 px-3 text-xs text-[var(--brand-muted)] whitespace-nowrap">{p.positions.join(', ')}</td>
+                    <td className="py-2 px-3 text-right text-xs text-[var(--brand-muted)] tabular-nums">{p.reps}</td>
+                    <td className={`py-2 px-3 text-right font-bold whitespace-nowrap tabular-nums ${scoreColor(p.averageGrade)}`}>
                       {p.averageGrade}
                       <span className="text-[10px] font-medium text-[var(--brand-muted)] ml-1">{p.letter}</span>
                     </td>
-                    <td className="py-2 text-right text-xs text-[var(--brand-muted)]">
+                    <td className="py-2 px-3 text-right text-xs text-[var(--brand-muted)] whitespace-nowrap tabular-nums">
                       {p.worstGrade}–{p.bestGrade}
                     </td>
-                    <td className="py-2 text-right text-xs">
+                    <td className="py-2 pl-3 text-right text-xs whitespace-nowrap">
                       {p.trend == null ? (
                         <span className="text-[var(--brand-muted)]">—</span>
                       ) : p.trend > 0 ? (

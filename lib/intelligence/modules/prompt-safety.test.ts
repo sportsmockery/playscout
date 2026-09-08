@@ -100,4 +100,48 @@ describe('SCOUTIQ subject identification', () => {
     const prompt = buildSCOUTIQSystemPrompt({ ...base, opponent: { name: 'TP Blue' } })
     expect(prompt).toMatch(/Do not guess/i)
   })
+
+  it('does not grade the other side just because the stated colour is absent', () => {
+    // A cut-up can contain a clip where that colour never takes the field.
+    // Grading whoever IS there puts a third team's play in this report.
+    const prompt = buildSCOUTIQSystemPrompt({
+      ...base,
+      opponent: { name: 'TP Blue', jersey_color: 'blue' },
+    })
+    expect(prompt).toMatch(/do NOT grade the other side/i)
+    expect(prompt).toContain('subject_confirmed')
+  })
+
+  it('requires the model to report which side it graded and who had the ball', () => {
+    // The prompt has always asked "say which side you graded"; until now there
+    // was no field to answer in, so nothing downstream could check it.
+    const prompt = buildSCOUTIQSystemPrompt({ ...base, opponent: { name: 'TP Blue' } })
+    expect(prompt).toContain('subject_graded')
+    expect(prompt).toContain('opponent_possession')
+    expect(prompt).toMatch(/on DEFENSE/i)
+  })
+})
+
+describe('SCOUTIQ writes for the coach scouting, not the team being scouted', () => {
+  const base = { moduleKey: 'SCOUTIQ' as const, teamId: 't', frames: [], evidenceMode: 'video' as const }
+
+  it('frames the three shared fields as adversarial, not as a report card', () => {
+    // strengths/weaknesses/drills are required by the shared result envelope
+    // and used to arrive with NO framing, so the model filled them the only
+    // way they make sense alone — as a development plan for the opponent.
+    // Reported from real use: "acted like it was my team, want strategy to
+    // beat them not improve."
+    const prompt = buildSCOUTIQSystemPrompt({ ...base, opponent: { name: 'TP Blue' } })
+
+    expect(prompt).toMatch(/what TP Blue does WELL that we must plan around/i)
+    expect(prompt).toMatch(/written so OUR coach can attack it/i)
+    expect(prompt).toMatch(/drills\s+for the coach reading this report/i)
+    expect(prompt).toMatch(/never drills for\s+TP Blue/i)
+  })
+
+  it('forbids recommending anything that helps the opponent', () => {
+    const prompt = buildSCOUTIQSystemPrompt({ ...base, opponent: { name: 'TP Blue' } })
+    expect(prompt).toMatch(/never recommend anything that would help TP Blue play better/i)
+    expect(prompt).toMatch(/You are not\s+their coach/i)
+  })
 })

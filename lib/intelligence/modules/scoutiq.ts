@@ -18,7 +18,10 @@ export function buildSCOUTIQSystemPrompt(input: ModulePromptInput): string {
   const opponentLabel = opponent?.name ?? 'the opponent'
 
   const jerseyContext = opponent?.jersey_color
-    ? `IDENTIFYING ${opponentLabel}: they wear ${opponent.jersey_color}. The ${opponent.jersey_color} players ARE the opponent being scouted.`
+    ? // Still an assertion, but no longer an unconditional one: a cut-up can
+      // contain a clip where that colour simply is not on the field, and
+      // grading whoever IS there puts another team's play in this report.
+      `IDENTIFYING ${opponentLabel}: they wear ${opponent.jersey_color}. The ${opponent.jersey_color} players ARE the opponent being scouted. If you cannot see ${opponent.jersey_color} in this clip, do NOT grade the other side instead — set subject_confirmed false, say so in subject_graded, and report only what you can support.`
     : team?.jersey_color
       ? // Deliberately does NOT say "everyone else is the opponent". Scouting a
         // future opponent off their game against a THIRD team is normal, and
@@ -45,6 +48,14 @@ ${coachNote ? `COACH NOTE: ${coachNote}` : ''}
 CRITICAL — SUBJECT ANCHORING:
 - Every tendency, formation, target player, and situational tell must describe ${opponentLabel} — never the coach's own team.
 - If a frame is ambiguous about which side is which, say so rather than guessing and attributing something to the wrong side.
+- ALWAYS fill subject_graded (which side you graded and how you told them apart — colour, sideline,
+  direction of play) and subject_confirmed (true only when you are sure that side is
+  ${opponentLabel}). A report on the wrong team is worse than no report, and this is the only
+  field a coach can check that on.
+- ALWAYS fill opponent_possession: 'defense' when ${opponentLabel} is defending on this play,
+  'offense' when they have the ball, 'both' if the clip shows both, 'unclear' if you cannot tell.
+  Ways to attack them can only come from plays where they are on DEFENSE, and this is what lets
+  those be counted against the right number of clips.
 
 SCOUTIQ RUBRIC — like TEAMIQ, this module reports FREQUENCY and identifiable targets, not
 quality scores. The only 0-100 score is execution_consistency, describing how consistently
@@ -75,6 +86,25 @@ target_players — weak or exploitable players on ${opponentLabel}:
   leaves the deep half open").
 - confidence: 0.0-1.0
 - evidence_frames: which frames show this
+
+THE THREE SHARED FIELDS — this module reuses the same result envelope as the modules that
+grade the coach's own team, so their names are generic. Here they are ADVERSARIAL. Fill them
+from ${opponentLabel}'s film, for a coach preparing to play them:
+
+- strengths: what ${opponentLabel} does WELL that we must plan around — written as the threat it
+  poses to us, not as praise. "Backside pursuit is disciplined, so cutback will not be there",
+  never "they pursue well, keep it up."
+- weaknesses: the exploitable flaw, written so OUR coach can attack it — not so ${opponentLabel}
+  could repair it. This is the same evidence as attack_points, stated as the flaw rather than the
+  call.
+- drills: what OUR team should rep this week to attack what you just described. These are drills
+  for the coach reading this report, aimed at their own practice — never drills for
+  ${opponentLabel}.
+- summary: a scouting verdict for a coach preparing to face ${opponentLabel} — what this clip
+  tells us about beating them. Not a report card on how they played.
+
+HARD RULE: never recommend anything that would help ${opponentLabel} play better. You are not
+their coach. Every recommendation in this report is an action for the team scouting them.
 
 SAMPLE SIZE — plays_observed = distinct snaps/plays visible in these frames. If
 plays_observed is 1, cap every tendency's confidence at roughly 0.4 and say so.
@@ -182,6 +212,12 @@ export const SCOUTIQ_RESPONSE_SCHEMA = {
     summary: { type: Type.STRING },
     confidence: { type: Type.NUMBER },
     plays_observed: { type: Type.INTEGER },
+    subject_graded: { type: Type.STRING },
+    subject_confirmed: { type: Type.BOOLEAN },
+    opponent_possession: {
+      type: Type.STRING,
+      enum: ['offense', 'defense', 'both', 'unclear'],
+    },
     evidence_frames: { type: Type.ARRAY, items: { type: Type.INTEGER } },
     evidence_timestamps: { type: Type.ARRAY, items: { type: Type.NUMBER } },
   },
@@ -190,5 +226,6 @@ export const SCOUTIQ_RESPONSE_SCHEMA = {
     'offensive_tendencies', 'defensive_tendencies', 'formations', 'explosive_plays', 'situational_tells',
     'attack_points', 'target_players',
     'strengths', 'weaknesses', 'drills', 'summary', 'confidence', 'plays_observed', 'evidence_frames',
+    'subject_graded', 'subject_confirmed', 'opponent_possession',
   ],
 }

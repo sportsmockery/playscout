@@ -30,6 +30,7 @@ import type { EvidenceMode } from './football-brain'
 import { applyDrillSafetyFilter, scrubProhibitedDrillMentions } from './safety'
 import { rankPlayerGrades } from './player-grades'
 import { resolveLevelTier } from './levels'
+import { isMisdirectedRun, resolveFilmSubject, subjectNameFor } from './film-subject'
 
 type ModuleConfig = {
   buildPrompt: (input: ModulePromptInput) => string
@@ -124,11 +125,22 @@ export async function analyzePosition(
     .maybeSingle()
   const gameType = teamRow?.game_type as 'flag' | 'tackle' | 'rookie_tackle' | null | undefined
   const tier = resolveLevelTier(teamRow as { age_group?: string | null; level?: string | null } | null)
+  // Whose film is this? Read from the video row, never from the caller: it
+  // decides how the subject is named and whether the coach's roster is a valid
+  // closed set of jersey numbers for the players on screen.
+  const filmSubject = await resolveFilmSubject(supabase, input.videoId)
+  const misdirected = isMisdirectedRun(input.moduleKey, filmSubject)
+
   // RANKERIQ verifies every jersey number against the roster, so the roster is
   // read here from the DB rather than accepted from the caller — it decides
   // which numbers are allowed to exist, which makes it a trust boundary.
+  //
+  // On opponent film that boundary inverts: the coach's roster is a list of
+  // numbers worn by players who are NOT on screen, so matching against it
+  // would hand one of their kids' identities to an opposing player. An
+  // opponent run gets no roster and therefore grades by role only.
   let roster: { id: string; jersey_number: string | null; position: string | null; name: string | null }[] = []
-  if (input.moduleKey === 'RANKERIQ') {
+  if (input.moduleKey === 'RANKERIQ' && !misdirected) {
     const { data: players } = await supabase
       .from('players')
       .select('id, jersey_number, primary_position, first_name, last_name')
@@ -141,9 +153,26 @@ export async function analyzePosition(
     }))
   }
 
+  // An own-team module on opponent film must not be handed the coach's team
+  // name as the subject — that is what produced an opponent's players being
+  // described as "The Tinley Park Bulldogs LW defense".
+  const subjectName = subjectNameFor(input.moduleKey, filmSubject, input.team?.name)
+
   const inputWithGameType: ModulePromptInput = {
     ...input,
-    team: input.team ? { ...input.team, game_type: gameType ?? undefined } : input.team,
+    team: input.team
+      ? {
+          ...input.team,
+          name: subjectName,
+          // The coach's jersey colour identifies the coach's team. On opponent
+          // film they may not be on screen at all, and TEAMIQ's prompt reads
+          // "the <colour> players ARE the subject team" — which would pick the
+          // wrong side, or nobody. Dropping it moves those prompts onto their
+          // own careful no-colour branch.
+          jersey_color: misdirected ? undefined : input.team.jersey_color,
+          game_type: gameType ?? undefined,
+        }
+      : input.team,
     roster: roster.map(({ jersey_number, position, name }) => ({ jersey_number, position, name })),
     // Decided here, never accepted from a client: it tells the model whether
     // to cite timestamps or labelled frame numbers.
@@ -369,6 +398,9 @@ export async function analyzePosition(
     explosive_plays: parsed.explosive_plays,
     situational_tells: parsed.situational_tells,
     attack_points: parsed.attack_points,
+    subject_graded: parsed.subject_graded,
+    subject_confirmed: parsed.subject_confirmed,
+    opponent_possession: parsed.opponent_possession,
     mistakes: safeMistakes,
     player_grades: rankedGrades,
     unit_graded: parsed.unit_graded,

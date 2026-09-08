@@ -7,7 +7,15 @@ describe('aggregateScoutReport', () => {
       { plays_observed: 10 },
       { plays_observed: 14 },
     ])
-    expect(result.evidence_sufficiency).toEqual({ plays_observed: 24, clips_analyzed: 2 })
+    expect(result.evidence_sufficiency).toEqual({
+      plays_observed: 24,
+      clips_analyzed: 2,
+      // No possession recorded on either clip — pre-change results have to
+      // keep counting, or every previously scouted clip drops out of the rank.
+      defensive_clips: 2,
+      offensive_clips: 0,
+      unconfirmed_subject_clips: 0,
+    })
   })
 
   it('rolls up tendencies with the same type+label across clips', () => {
@@ -122,9 +130,58 @@ describe('aggregateScoutReport', () => {
     expect(result.situational_tells).toHaveLength(2)
   })
 
+  it('ranks attack points against the clips they were on DEFENSE, not the whole game', () => {
+    // A whole-game cut-up is roughly half their offense. Counting a weakness
+    // against every clip halves its apparent rate and the game-plan prompt is
+    // told to treat a low count as a possible one-off — so the strongest real
+    // finding is the one this hurt most.
+    const onDefense = (point: string) => ({
+      opponent_possession: 'defense' as const,
+      attack_points: [{ point, category: 'perimeter_run' }],
+    })
+    const result = aggregateScoutReport([
+      onDefense('Soft edge to the field'),
+      onDefense('Soft edge to the field'),
+      { opponent_possession: 'offense' },
+      { opponent_possession: 'offense' },
+    ])
+
+    expect(result.evidence_sufficiency.clips_analyzed).toBe(4)
+    expect(result.evidence_sufficiency.defensive_clips).toBe(2)
+    expect(result.attack_points[0]).toMatchObject({ clips: 2 })
+  })
+
+  it('counts a clip showing both sides toward the defensive denominator', () => {
+    const result = aggregateScoutReport([{ opponent_possession: 'both' }])
+    expect(result.evidence_sufficiency.defensive_clips).toBe(1)
+    expect(result.evidence_sufficiency.offensive_clips).toBe(1)
+  })
+
+  it('leaves an unclear clip out of the denominator rather than guessing', () => {
+    const result = aggregateScoutReport([{ opponent_possession: 'unclear' }])
+    expect(result.evidence_sufficiency.defensive_clips).toBe(0)
+  })
+
+  it('counts the clips where the analyst could not confirm the subject', () => {
+    // On film containing neither of the coach's teams this number is the
+    // credibility of the whole report.
+    const result = aggregateScoutReport([
+      { subject_confirmed: true },
+      { subject_confirmed: false },
+      {},
+    ])
+    expect(result.evidence_sufficiency.unconfirmed_subject_clips).toBe(1)
+  })
+
   it('returns empty aggregates for no clips', () => {
     const result = aggregateScoutReport([])
-    expect(result.evidence_sufficiency).toEqual({ plays_observed: 0, clips_analyzed: 0 })
+    expect(result.evidence_sufficiency).toEqual({
+      plays_observed: 0,
+      clips_analyzed: 0,
+      defensive_clips: 0,
+      offensive_clips: 0,
+      unconfirmed_subject_clips: 0,
+    })
     expect(result.offensive_tendencies).toEqual([])
   })
 })
