@@ -2,6 +2,8 @@ import { getTeamById, getPlayersByTeam, getVideosByTeam, getRecentAnalysis } fro
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Users, Film, Brain, ArrowRight, Plus, Zap, Settings } from 'lucide-react';
+import CoachJobCards from '@/components/intelligence/CoachJobCards';
+import { MODULE_COPY } from '@/lib/coach-jobs';
 
 export async function generateMetadata({ params }: { params: Promise<{ teamId: string }> }) {
   const { teamId } = await params;
@@ -87,32 +89,45 @@ export default async function TeamDetailPage({
         ))}
       </div>
 
-      {/* Modules */}
+      {/* What a coach came here to do. This was a grid of eight acronyms with
+          a lightning bolt each and no description — you had to already know
+          the taxonomy to get anywhere. The modules are still all here, one
+          section down. */}
       <div className="mb-8">
-        <h2 className="font-bold text-[var(--brand-navy)] mb-4">Intelligence Modules</h2>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {[
-            { name: 'QBIQ', href: `/teams/${teamId}/modules/qbiq`, color: 'bg-blue-50 text-blue-600' },
-            { name: 'RBIQ', href: `/teams/${teamId}/modules/rbiq`, color: 'bg-rose-50 text-rose-600' },
-            { name: 'OLIQ', href: `/teams/${teamId}/modules/oliq`, color: 'bg-emerald-50 text-emerald-600' },
-            { name: 'TeamIQ', href: `/teams/${teamId}/modules/teamiq`, color: 'bg-purple-50 text-purple-600' },
-            { name: 'MistakeIQ', href: `/teams/${teamId}/modules/mistakeiq`, color: 'bg-orange-50 text-orange-600' },
-            { name: 'RankerIQ', href: `/teams/${teamId}/modules/rankeriq`, color: 'bg-amber-50 text-amber-600' },
-            { name: 'ScoutIQ', href: `/teams/${teamId}/modules/scoutiq`, color: 'bg-red-50 text-red-600' },
-            { name: 'PlaybookIQ', href: `/teams/${teamId}/modules/playbookiq`, color: 'bg-indigo-50 text-indigo-600' },
-          ].map((mod) => (
+        <h2 className="font-bold text-[var(--brand-navy)] mb-1">Start here</h2>
+        <p className="text-sm text-[var(--brand-muted)] mb-4">
+          The two things film is for. Pick one — PlayScout walks you through the rest.
+        </p>
+        <CoachJobCards teamId={teamId} />
+      </div>
+
+      <div className="mb-8">
+        <h2 className="font-bold text-[var(--brand-navy)] mb-1">All tools</h2>
+        <p className="text-sm text-[var(--brand-muted)] mb-4">
+          Each one answers a different question. You do not need them all.
+        </p>
+        <div className="grid sm:grid-cols-2 gap-3">
+          {MODULE_COPY.map((mod) => (
             <Link
-              key={mod.name}
-              href={mod.href}
-              className={`glass-card p-5 flex flex-col items-center gap-2 group`}
+              key={mod.key}
+              href={`/teams/${teamId}/modules/${mod.slug}`}
+              className="glass-card p-4 group flex items-start gap-3"
             >
-              <div className={`w-10 h-10 rounded-lg ${mod.color} flex items-center justify-center`}>
-                <Zap size={18} />
+              <div className="w-9 h-9 rounded-lg bg-[var(--brand-navy)]/10 flex items-center justify-center shrink-0">
+                <Zap size={16} className="text-[var(--brand-navy)]" />
               </div>
-              <span className="font-bold text-[var(--brand-ink)] text-sm">{mod.name}</span>
+              <div className="min-w-0 flex-1">
+                <p className="font-bold text-[var(--brand-ink)] text-sm">
+                  {mod.label}
+                  <span className="ml-1.5 font-medium text-[11px] text-[var(--brand-muted)]">
+                    {mod.name}
+                  </span>
+                </p>
+                <p className="text-xs text-[var(--brand-muted)] mt-0.5">{mod.answers}</p>
+              </div>
               <ArrowRight
-                size={13}
-                className="text-[var(--brand-muted)] group-hover:text-[var(--brand-navy)] transition-colors"
+                size={14}
+                className="text-[var(--brand-muted)] group-hover:text-[var(--brand-navy)] transition-colors shrink-0 mt-1"
               />
             </Link>
           ))}

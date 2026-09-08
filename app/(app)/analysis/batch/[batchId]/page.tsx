@@ -5,6 +5,7 @@ import { AlertCircle, ArrowLeft, CheckCircle2, Clock, Film, Layers, TrendingDown
 import type { BatchAggregate } from '@/lib/intelligence/aggregate-batch';
 import type { BatchSummary } from '@/lib/intelligence/batch-summary';
 import ClipBreakdown from './ClipBreakdown';
+import NextSteps from '@/components/intelligence/NextSteps';
 
 export async function generateMetadata({ params }: { params: Promise<{ batchId: string }> }) {
   const { batchId } = await params;
@@ -292,29 +293,35 @@ export default async function BatchReportPage({
         </div>
       )}
 
-      {/* A SCOUTIQ batch's real destination is the game plan, which is where
-          the ranked attack points and the "How To Attack Them" section live.
-          This page is module-agnostic and renders none of that, so a coach who
-          followed the queue link would otherwise stop one screen short. */}
-      {scouting && (
-        <div className="glass-card p-5 mb-5 flex items-start justify-between gap-4 flex-wrap">
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-[var(--brand-ink)]">
-              Scouting finished — build the game plan
-            </p>
-            <p className="text-sm text-[var(--brand-muted)] mt-0.5">
-              The ranked ways to attack this opponent, with the clip count behind each one, are
-              generated on the ScoutIQ screen.
-            </p>
-          </div>
-          <Link
-            href={`/teams/${teamId}/modules/scoutiq`}
-            className="shrink-0 text-sm font-semibold px-4 py-2 rounded-lg bg-[var(--brand-navy)] text-white hover:opacity-90 transition-opacity"
-          >
-            Go to ScoutIQ
-          </Link>
-        </div>
-      )}
+      <NextSteps
+        steps={
+          scouting
+            ? [
+                {
+                  label: 'Build the game plan',
+                  href: `/teams/${teamId}/modules/scoutiq`,
+                  why: 'Turns everything above into ranked ways to attack them, with the clip count behind each one.',
+                },
+                {
+                  label: 'Grade your own team on the same week',
+                  href: `/teams/${teamId}/modules/rankeriq`,
+                  why: 'Knowing their weakness only helps if your unit can execute the thing that beats it.',
+                },
+              ]
+            : [
+                {
+                  label: 'See what keeps going wrong',
+                  href: `/teams/${teamId}/modules/mistakeiq`,
+                  why: 'Groups the repeated breakdowns above into the handful worth practice time.',
+                },
+                {
+                  label: 'Scout who you play next',
+                  href: `/teams/${teamId}/modules/scoutiq`,
+                  why: 'Take the same film session through the opponent you face this week.',
+                },
+              ]
+        }
+      />
 
       {/* Recurring items + mistakes */}
       {aggregate && (aggregate.recurringStrengths.length > 0 || aggregate.recurringWeaknesses.length > 0) && (

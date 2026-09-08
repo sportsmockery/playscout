@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft, Brain, Zap, Gauge, Shield, TrendingUp, AlertTriangle, ArrowRight, BookOpen, Crosshair, ListOrdered } from 'lucide-react';
 import AnalysisQueue from '@/components/intelligence/AnalysisQueue';
+import CoachJobCards from '@/components/intelligence/CoachJobCards';
 
 type AnalysisWithPlayer = PositionAnalysisResult & {
   players: { first_name: string; last_name: string; primary_position: string } | null
@@ -22,7 +23,7 @@ const MODULES = [
     icon: Zap,
     color: 'text-blue-600',
     bg: 'bg-blue-50',
-    desc: 'Mechanics, decision-making, footwork, and film tendency analysis.',
+    desc: 'Is my quarterback’s throwing motion, footwork and decision-making sound?',
     href: (id: string) => `/teams/${id}/modules/qbiq`,
   },
   {
@@ -31,7 +32,7 @@ const MODULES = [
     icon: Gauge,
     color: 'text-rose-600',
     bg: 'bg-rose-50',
-    desc: 'Vision and gap reads, ball security, one-cut footwork, and finishing through contact.',
+    desc: 'Does my back see the hole, protect the ball, and finish runs?',
     href: (id: string) => `/teams/${id}/modules/rbiq`,
   },
   {
@@ -40,7 +41,7 @@ const MODULES = [
     icon: Shield,
     color: 'text-emerald-600',
     bg: 'bg-emerald-50',
-    desc: 'Unit cohesion, gap assignments, pass protection grading.',
+    desc: 'Is my line blocking the right man, with the right feet and pad level?',
     href: (id: string) => `/teams/${id}/modules/oliq`,
   },
   {
@@ -49,7 +50,7 @@ const MODULES = [
     icon: TrendingUp,
     color: 'text-purple-600',
     bg: 'bg-purple-50',
-    desc: 'Formation frequencies, scheme tendencies, and opponent scouting.',
+    desc: 'What are we actually doing on film, and what have we become predictable at?',
     href: (id: string) => `/teams/${id}/modules/teamiq`,
   },
   {
@@ -58,7 +59,7 @@ const MODULES = [
     icon: AlertTriangle,
     color: 'text-orange-600',
     bg: 'bg-orange-50',
-    desc: 'Turnovers, penalties, missed assignments, and blown coverages.',
+    desc: 'What keeps costing us — missed assignments, bad angles, penalties?',
     href: (id: string) => `/teams/${id}/modules/mistakeiq`,
   },
   {
@@ -67,7 +68,7 @@ const MODULES = [
     icon: ListOrdered,
     color: 'text-amber-600',
     bg: 'bg-amber-50',
-    desc: 'Grades and ranks every player on the unit — execution, difficulty of the assignment, and value to the play — with the reason for each grade.',
+    desc: 'Who played well and who needs work — every player graded, with the reason.',
     href: (id: string) => `/teams/${id}/modules/rankeriq`,
   },
   {
@@ -76,7 +77,7 @@ const MODULES = [
     icon: Crosshair,
     color: 'text-red-600',
     bg: 'bg-red-50',
-    desc: 'Scout opponent film for tendencies and target players, then generate a game plan.',
+    desc: 'Who are we playing, and how do we attack them?',
     href: (id: string) => `/teams/${id}/modules/scoutiq`,
   },
   {
@@ -85,7 +86,7 @@ const MODULES = [
     icon: BookOpen,
     color: 'text-indigo-600',
     bg: 'bg-indigo-50',
-    desc: 'Upload your playbook. Get strengths, weaknesses, upgrade recommendations, and an install plan.',
+    desc: 'Is my playbook right for this team, and what should I install next?',
     href: (id: string) => `/teams/${id}/modules/playbookiq`,
   },
 ];
@@ -132,9 +133,22 @@ export default async function IntelligencePage({
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-[var(--brand-navy)]">Intelligence</h1>
         <p className="text-[var(--brand-muted)] text-sm mt-0.5">
-          AI-powered analysis modules for {team.name}
+          What the film says about {team.name}, and about who you play next
         </p>
       </div>
+
+      {/* The two jobs come before the eight tools. A coach arriving here with
+          film selected already knows what they want to do with it; a coach
+          arriving cold does not, and a grid of modules does not tell them. */}
+      {selectionCount === 0 && !folderId && (
+        <div className="mb-10">
+          <h2 className="font-bold text-[var(--brand-navy)] mb-1">Start here</h2>
+          <p className="text-sm text-[var(--brand-muted)] mb-4">
+            The two things film is for. Everything below is a more specific version of one of them.
+          </p>
+          <CoachJobCards teamId={teamId} />
+        </div>
+      )}
 
       {(selectionCount > 0 || folderId) && (
         <div className="mb-5 rounded-xl border border-[var(--brand-border)] bg-white px-4 py-3 text-sm text-[var(--brand-ink)]">
@@ -148,6 +162,10 @@ export default async function IntelligencePage({
       )}
 
       {/* Module cards */}
+      <h2 className="font-bold text-[var(--brand-navy)] mb-1">Every tool</h2>
+      <p className="text-sm text-[var(--brand-muted)] mb-4">
+        Each answers a different question. You do not need them all.
+      </p>
       <div className="grid md:grid-cols-2 gap-5 mb-10">
         {MODULES.map((mod) => (
           <Link

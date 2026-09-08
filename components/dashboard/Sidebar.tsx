@@ -18,6 +18,7 @@ import {
   AlertTriangle,
   BookOpen,
   Crosshair,
+  ListOrdered,
 } from 'lucide-react';
 
 interface NavItem {
@@ -27,13 +28,17 @@ interface NavItem {
   badge?: string;
 }
 
+// Ordered by how often a coach reaches for them, not alphabetically. ScoutIQ
+// and RankerIQ are the two jobs the product is really for; the rest are the
+// specific follow-ups. RankerIQ was missing from this list entirely.
 const MODULE_ITEMS: NavItem[] = [
+  { label: 'ScoutIQ', href: 'scoutiq', icon: Crosshair },
+  { label: 'RankerIQ', href: 'rankeriq', icon: ListOrdered },
+  { label: 'MistakeIQ', href: 'mistakeiq', icon: AlertTriangle },
+  { label: 'TeamIQ', href: 'teamiq', icon: TrendingUp },
   { label: 'QBIQ', href: 'qbiq', icon: Zap },
   { label: 'RBIQ', href: 'rbiq', icon: Gauge },
   { label: 'OLIQ', href: 'oliq', icon: Shield },
-  { label: 'TeamIQ', href: 'teamiq', icon: TrendingUp },
-  { label: 'MistakeIQ', href: 'mistakeiq', icon: AlertTriangle },
-  { label: 'ScoutIQ', href: 'scoutiq', icon: Crosshair },
   { label: 'PlaybookIQ', href: 'playbookiq', icon: BookOpen },
 ];
 

@@ -6,6 +6,7 @@ import EvidenceFrames from '@/components/intelligence/EvidenceFrames';
 import RepBreakdownPanel, { type RepBreakdown } from '@/components/intelligence/RepBreakdownPanel';
 import { createClient } from '@/lib/supabase/server';
 import PrintButton from './PrintButton';
+import NextSteps from '@/components/intelligence/NextSteps';
 
 export async function generateMetadata({ params }: { params: Promise<{ analysisId: string }> }) {
   const { analysisId } = await params;
@@ -309,6 +310,31 @@ export default async function SavedAnalysisPage({
           </ul>
         </div>
       )}
+
+      <NextSteps
+        steps={
+          scouting
+            ? [
+                {
+                  label: 'Build the game plan',
+                  href: `/teams/${teamId}/modules/scoutiq`,
+                  why: 'Rolls every scouted clip of this opponent into ranked ways to attack them.',
+                },
+              ]
+            : [
+                {
+                  label: 'See what keeps going wrong',
+                  href: `/teams/${teamId}/modules/mistakeiq`,
+                  why: 'One clip is a snapshot. This finds the breakdowns that repeat across a game.',
+                },
+                {
+                  label: 'Scout who you play next',
+                  href: `/teams/${teamId}/modules/scoutiq`,
+                  why: 'Point the same process at your next opponent and get a plan to attack them.',
+                },
+              ]
+        }
+      />
 
       {analysis.drills && analysis.drills.length > 0 && (
         <div className="glass-card p-5 mb-5 print:border print:shadow-none">
