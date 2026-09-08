@@ -18,6 +18,8 @@ interface Props {
   opponents: Opponent[];
   selectedOpponentId?: string;
   opponentVideos: Video[];
+  /** Clips that already have a SCOUTIQ result, so we neither re-charge for them nor hide the progress. */
+  scoutedVideoIds: string[];
   scoutReports: ScoutReport[];
 }
 
@@ -95,7 +97,7 @@ function AddOpponentForm({ teamId, onCreated }: { teamId: string; onCreated: (id
   );
 }
 
-export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, selectedOpponentId, opponentVideos, scoutReports }: Props) {
+export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, selectedOpponentId, opponentVideos, scoutedVideoIds, scoutReports }: Props) {
   const router = useRouter();
   const [showAddOpponent, setShowAddOpponent] = useState(opponents.length === 0);
   // Seeded from the opponent record rather than starting blank every visit.
@@ -110,7 +112,13 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
   // team can only be seen while they are DEFENDING, so on a full game roughly
   // half the clips cannot answer the question and cost a Gemini call each.
   const selectableIds = opponentVideos.filter((v) => !isUnanalyzable(v)).map((v) => v.id);
-  const [selectedIds, setSelectedIds] = useState<string[]>(selectableIds);
+  const scouted = new Set(scoutedVideoIds);
+  const unscoutedIds = selectableIds.filter((id) => !scouted.has(id));
+  // Start on the clips that still need doing. Re-selecting film the coach has
+  // already paid to analyze is the default that quietly bills them twice.
+  const [selectedIds, setSelectedIds] = useState<string[]>(
+    unscoutedIds.length ? unscoutedIds : selectableIds
+  );
 
   function toggleClip(id: string) {
     setSelectedIds((prev) =>
@@ -239,7 +247,9 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
       {/* Opponent picker */}
       <div className="glass-card p-5">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="font-bold text-[var(--brand-navy)] text-sm uppercase tracking-wide">Opponent</h2>
+          <h2 className="font-bold text-[var(--brand-navy)] text-sm uppercase tracking-wide">
+            <span className="text-[var(--brand-muted)]">Step 1 — </span>Who are you scouting?
+          </h2>
           <button
             onClick={() => setShowAddOpponent((v) => !v)}
             className="text-xs font-semibold text-[var(--brand-navy)] hover:underline flex items-center gap-1"
@@ -296,7 +306,17 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
             </div>
 
             <div className="flex items-center justify-between mb-3">
-              <h2 className="font-bold text-[var(--brand-navy)] text-sm uppercase tracking-wide">{selectedOpponent.name}&apos;s Film</h2>
+              <div className="min-w-0">
+                <h2 className="font-bold text-[var(--brand-navy)] text-sm uppercase tracking-wide">
+                  <span className="text-[var(--brand-muted)]">Step 2 — </span>
+                  {selectedOpponent.name}&apos;s film
+                </h2>
+                <p className="text-xs text-[var(--brand-muted)] mt-0.5">
+                  {selectableIds.length === 0
+                    ? 'Add their film — upload it, paste a link, or pull it from Hudl.'
+                    : `${scoutedVideoIds.length} of ${selectableIds.length} clips scouted so far.`}
+                </p>
+              </div>
               <div className="flex items-center gap-2">
                 {opponentVideos.some((v) => !isUnanalyzable(v)) && (
                   <button
@@ -329,7 +349,10 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
             {selectableIds.length > 1 && (
               <div className="flex items-center justify-between gap-2 mb-2 text-xs">
                 <span className="text-[var(--brand-muted)]">
-                  {selectedIds.length} of {selectableIds.length} clips selected for scouting
+                  {selectedIds.length} of {selectableIds.length} clips selected
+                  {unscoutedIds.length > 0 && unscoutedIds.length < selectableIds.length
+                    ? ` — the ${unscoutedIds.length} not yet scouted`
+                    : ''}
                 </span>
                 <button
                   onClick={() =>
@@ -361,7 +384,14 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
                         )}
                         <div className="min-w-0">
                         <p className="text-sm font-semibold text-[var(--brand-ink)]">{v.title}</p>
-                        <p className="text-xs text-[var(--brand-muted)] capitalize">{v.status?.replace(/_/g, ' ')}</p>
+                        <p className="text-xs text-[var(--brand-muted)] capitalize">
+                          {v.status?.replace(/_/g, ' ')}
+                          {scouted.has(v.id) && (
+                            <span className="ml-1.5 normal-case font-semibold text-emerald-700">
+                              · Scouted
+                            </span>
+                          )}
+                        </p>
                         </div>
                       </div>
                       {readyVideos.includes(v) && (
@@ -400,7 +430,16 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
           {/* Game plan */}
           <div className="glass-card p-5">
             <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-              <h2 className="font-bold text-[var(--brand-navy)] text-sm uppercase tracking-wide">Game Plan</h2>
+              <div className="min-w-0">
+                <h2 className="font-bold text-[var(--brand-navy)] text-sm uppercase tracking-wide">
+                  <span className="text-[var(--brand-muted)]">Step 3 — </span>How do we attack them?
+                </h2>
+                <p className="text-xs text-[var(--brand-muted)] mt-0.5">
+                  {scoutedVideoIds.length === 0
+                    ? 'Scout at least one clip above first.'
+                    : `Built from all ${scoutedVideoIds.length} scouted clip${scoutedVideoIds.length === 1 ? '' : 's'}. Re-generate any time you scout more.`}
+                </p>
+              </div>
               <button
                 onClick={generateGamePlan}
                 disabled={reportLoading}

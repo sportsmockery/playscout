@@ -207,6 +207,23 @@ export async function getVideosByOpponent(teamId: string, opponentId: string): P
   return data ?? []
 }
 
+/**
+ * Which of these clips have already been scouted.
+ *
+ * Without it the module screen cannot say "4 of 106 scouted", and every
+ * re-visit re-selects clips the coach already paid to analyze.
+ */
+export async function getScoutedVideoIds(videoIds: string[]): Promise<string[]> {
+  if (!videoIds.length) return []
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('position_analysis_results')
+    .select('video_id')
+    .eq('module_key', 'SCOUTIQ')
+    .in('video_id', videoIds)
+  return [...new Set((data ?? []).map((r) => r.video_id as string).filter(Boolean))]
+}
+
 export async function getScoutReportsByOpponent(opponentId: string): Promise<ScoutReport[]> {
   const supabase = await createClient()
   const { data } = await supabase

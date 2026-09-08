@@ -1,4 +1,4 @@
-import { getTeamById, getOpponentsByTeam, getVideosByOpponent, getScoutReportsByOpponent } from '@/lib/db/queries';
+import { getTeamById, getOpponentsByTeam, getVideosByOpponent, getScoutReportsByOpponent, getScoutedVideoIds } from '@/lib/db/queries';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft, Crosshair } from 'lucide-react';
@@ -34,6 +34,10 @@ export default async function ScoutIQPage({
       ])
     : [[], []];
 
+  // Which clips are already done, so the screen can show progress and stop
+  // re-selecting film the coach has already paid to analyze.
+  const scoutedVideoIds = await getScoutedVideoIds(opponentVideos.map((v) => v.id));
+
   return (
     <div className="p-6 max-w-6xl mx-auto">
       <div className="flex items-center gap-3 mb-2">
@@ -52,7 +56,9 @@ export default async function ScoutIQPage({
         </div>
         <div>
           <h1 className="text-2xl font-bold text-[var(--brand-navy)]">ScoutIQ</h1>
-          <p className="text-[var(--brand-muted)] text-sm">Opponent scouting — tendencies, targets, and a game plan built from film</p>
+          <p className="text-[var(--brand-muted)] text-sm">
+            Who are we playing, and how do we attack them?
+          </p>
         </div>
       </div>
 
@@ -63,6 +69,7 @@ export default async function ScoutIQPage({
         opponents={opponents}
         selectedOpponentId={selectedOpponentId}
         opponentVideos={opponentVideos}
+        scoutedVideoIds={scoutedVideoIds}
         scoutReports={scoutReports}
       />
     </div>
