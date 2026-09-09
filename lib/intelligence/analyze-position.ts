@@ -10,7 +10,7 @@ import { buildQBIQSystemPrompt, QBIQ_RESPONSE_SCHEMA } from './modules/qbiq'
 import { buildOLIQSystemPrompt, OLIQ_RESPONSE_SCHEMA } from './modules/oliq'
 import { buildRBIQSystemPrompt, RBIQ_RESPONSE_SCHEMA } from './modules/rbiq'
 import { buildTEAMIQSystemPrompt, TEAMIQ_RESPONSE_SCHEMA } from './modules/teamiq'
-import { buildMISTAKEIQSystemPrompt, MISTAKEIQ_RESPONSE_SCHEMA } from './modules/mistakeiq'
+import { buildMISTAKEIQSystemPrompt, MISTAKEIQ_RESPONSE_SCHEMA, MISTAKEIQ_DRILL_CUES } from './modules/mistakeiq'
 import { buildSCOUTIQSystemPrompt, SCOUTIQ_RESPONSE_SCHEMA } from './modules/scoutiq'
 import { buildRANKERIQSystemPrompt, RANKERIQ_RESPONSE_SCHEMA } from './modules/rankeriq'
 import {
@@ -293,11 +293,21 @@ export async function analyzePosition(
     gameType,
     tier
   )
+  // A drill now comes back as an id chosen from a closed menu, so the name and
+  // the coaching cue are read out of the catalog rather than accepted from the
+  // model. An id that is not on this team's menu — hallucinated, or a contact
+  // drill on a flag team — resolves to nothing rather than reaching a coach as
+  // a confident prescription. Same rule as resolvePrescriptions.
+  const mistakeMenu = new Map(
+    drillMenuFor({ cueIds: MISTAKEIQ_DRILL_CUES, gameType, tier }).map((d) => [d.id, d])
+  )
   const safeMistakes = parsed.mistakes?.map((m) => {
     const correction = scrubProhibitedDrillMentions(m.correction)
-    const drill = m.drill
-      ? applyDrillSafetyFilter([m.drill], gameType, tier).drills[0]
-      : m.drill
+    const chosen = m.drill_id ? mistakeMenu.get(m.drill_id) : undefined
+    const rendered = chosen ? `${chosen.name} — "${chosen.cue}"` : undefined
+    const drill = rendered
+      ? applyDrillSafetyFilter([rendered], gameType, tier).drills[0]
+      : undefined
     return { ...m, correction, drill, evidence_frames: keepCited(m.evidence_frames) }
   })
 

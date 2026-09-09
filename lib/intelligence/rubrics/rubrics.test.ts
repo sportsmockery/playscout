@@ -49,12 +49,24 @@ describe('rubric integrity', () => {
 })
 
 describe('drill catalog', () => {
-  it('only claims to fix cues that actually exist', () => {
-    // A drill pointing at a cue no rubric grades can never be prescribed, and
-    // would silently shrink the menu.
+  it('only claims to fix ids that actually exist', () => {
+    // A drill pointing at nothing can never be prescribed and would silently
+    // shrink the menu. There are two legitimate vocabularies now: the position
+    // rubrics' cues, and — for the defensive drills, which have no rubric
+    // behind them — MISTAKEIQ's categories and the defensive tendency types.
+    const DEFENSIVE_IDS = new Set([
+      'missed_assignment', 'missed_block', 'missed_contain', 'wrong_gap_fit',
+      'bad_pursuit_angle', 'poor_tackling_leverage', 'turnover_risk', 'snap_mesh_issue',
+      'alignment_error', 'coverage_bust', 'penalty_risk', 'poor_effort', 'clock_situation_error',
+      'overpursuit', 'gap_loss_inside_out', 'soft_edge',
+      'motion_coverage_bust', 'tackling_leverage', 'blitz_tendency',
+    ])
     for (const drill of DRILLS) {
       for (const cue of drill.fixes) {
-        expect(EVERY_CUE.has(cue), `${drill.id} fixes unknown cue ${cue}`).toBe(true)
+        expect(
+          EVERY_CUE.has(cue) || DEFENSIVE_IDS.has(cue),
+          `${drill.id} fixes unknown id ${cue}`
+        ).toBe(true)
       }
     }
   })
@@ -205,5 +217,99 @@ describe('rendered prompt', () => {
 describe('module rubric registry', () => {
   it('registers the player modules that grade an individual', () => {
     expect(Object.keys(RUBRICS).sort()).toEqual(['OLIQ', 'QBIQ', 'RBIQ'])
+  })
+})
+
+describe('defensive drills', () => {
+  // There is no defensive rubric, so these are keyed to MISTAKEIQ's mistake
+  // categories and the defensive tendency types. Before they existed, every
+  // defensive drill a coach read was free-form model invention — the exact
+  // failure this catalog was built to end, silently in force for any team
+  // being evaluated on defense.
+  const MISTAKE_CATEGORIES = [
+    'missed_assignment', 'missed_block', 'missed_contain', 'wrong_gap_fit',
+    'bad_pursuit_angle', 'poor_tackling_leverage', 'turnover_risk', 'snap_mesh_issue',
+    'alignment_error', 'coverage_bust', 'penalty_risk', 'poor_effort', 'clock_situation_error',
+  ]
+  const DEFENSIVE_TENDENCIES = [
+    'overpursuit', 'gap_loss_inside_out', 'soft_edge',
+    'motion_coverage_bust', 'tackling_leverage', 'blitz_tendency',
+  ]
+  const DEFENSIVE_IDS = new Set([...MISTAKE_CATEGORIES, ...DEFENSIVE_TENDENCIES])
+
+  const defensive = DRILLS.filter((d) => d.id.startsWith('def_'))
+
+  it('covers the breakdowns a defense is actually graded on', () => {
+    // Not every category — turnover_risk and clock_situation_error are not
+    // drill-shaped — but every one a coach would ask "so what do we rep?" of.
+    const mustCover = [
+      'missed_contain',
+      'wrong_gap_fit',
+      'bad_pursuit_angle',
+      'poor_tackling_leverage',
+      'coverage_bust',
+      'alignment_error',
+      'poor_effort',
+      'soft_edge',
+      'overpursuit',
+      'motion_coverage_bust',
+    ]
+    for (const cue of mustCover) {
+      const menu = drillMenuFor({
+        cueIds: new Set([cue]),
+        gameType: 'tackle',
+        tier: 'youth_9_10' as LevelTier,
+      })
+      expect(menu.length, `no drill fixes "${cue}"`).toBeGreaterThan(0)
+    }
+  })
+
+  it('keys every defensive drill to an id something can actually select', () => {
+    // A drill keyed to a typo is a drill no menu will ever contain — it looks
+    // like coverage and is dead weight.
+    for (const drill of defensive) {
+      for (const cue of drill.fixes) {
+        expect(DEFENSIVE_IDS.has(cue), `${drill.id} fixes unknown id "${cue}"`).toBe(true)
+      }
+    }
+  })
+
+  it('offers a flag team defensive drills, and none of them involve contact', () => {
+    const menu = drillMenuFor({
+      cueIds: DEFENSIVE_IDS,
+      gameType: 'flag',
+      tier: 'youth_9_10' as LevelTier,
+    })
+    expect(menu.length).toBeGreaterThan(0)
+    expect(menu.every((d) => d.contact === 'none')).toBe(true)
+  })
+
+  it('keeps bag work off a flag team and on a tackle team', () => {
+    const bag = defensive.filter((d) => d.contact === 'bag').map((d) => d.id)
+    expect(bag.length).toBeGreaterThan(0)
+
+    const flagIds = drillMenuFor({
+      cueIds: DEFENSIVE_IDS,
+      gameType: 'flag',
+      tier: 'youth_9_10' as LevelTier,
+    }).map((d) => d.id)
+    for (const id of bag) expect(flagIds).not.toContain(id)
+
+    const tackleIds = drillMenuFor({
+      cueIds: DEFENSIVE_IDS,
+      gameType: 'tackle',
+      tier: 'youth_9_10' as LevelTier,
+    }).map((d) => d.id)
+    expect(tackleIds).toEqual(expect.arrayContaining(bag))
+  })
+
+  it('never names a prohibited drill', () => {
+    // football-brain rule: Oklahoma, Bull in the Ring and board collision
+    // drills are off the menu at every level, forever.
+    const banned = /oklahoma|bull in the ring|board drill/i
+    for (const drill of DRILLS) {
+      expect(banned.test(drill.name)).toBe(false)
+      expect(banned.test(drill.cue)).toBe(false)
+    }
   })
 })

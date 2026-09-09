@@ -2,6 +2,10 @@ import { z } from 'zod'
 import { buildFootballBrain } from './football-brain'
 import { resolveLevelTier, type LevelTier } from './levels'
 import type { BatchAggregate, BatchClipResult } from './aggregate-batch'
+import { buildDrillMenuPrompt, drillMenuFor } from './rubrics'
+import { MISTAKE_CATEGORIES } from './schemas'
+import { DEFENSIVE_TENDENCY_TYPES } from './taxonomy'
+import { allCueIds, RUBRICS } from './rubrics'
 
 /**
  * The narrative layer over a finished batch — PlayScout's System A reasoning
@@ -115,6 +119,21 @@ function renderAggregate(agg: BatchAggregate): string {
 export function buildBatchSummaryPrompt(args: BuildArgs): string {
   const tier: LevelTier = resolveLevelTier({ age_group: args.ageGroup, level: args.level })
 
+  // practice_focus is the section the batch report now leads with, and it is
+  // what a coach carries to practice — so it gets a closed menu for the same
+  // reason the per-clip modules do. The cue vocabulary is this module's rubric
+  // where one exists, plus the mistake/defensive ids, because a batch can be
+  // RANKERIQ or MISTAKEIQ over a defense, where no rubric exists at all.
+  const rubric = RUBRICS[args.moduleKey]
+  const cueIds = new Set<string>([
+    ...(rubric ? allCueIds(rubric) : []),
+    ...MISTAKE_CATEGORIES,
+    ...DEFENSIVE_TENDENCY_TYPES,
+  ])
+  const drillMenu = buildDrillMenuPrompt(
+    drillMenuFor({ cueIds, gameType: args.gameType, tier })
+  )
+
   return `${buildFootballBrain(tier)}
 
 You are writing the CUMULATIVE report for a batch of ${args.clips.length} clips already analyzed by PlayScout's ${args.moduleKey} module.
@@ -125,6 +144,10 @@ ${args.coachNote ? `COACH NOTE FOR THIS BATCH: ${args.coachNote}` : ''}
 You did NOT watch this film. You are reasoning over per-clip findings that were
 produced from frame evidence. Every claim you make must trace to something below.
 Never invent a play, a player, a jersey number, or a statistic that isn't here.
+
+${drillMenu}
+For practice_focus, name drills from that menu only — a drill you invent is one this
+team may not safely run, and "work on tackling" is not a practice period.
 
 === COMPUTED TOTALS (these are facts — quote them, never recalculate them) ===
 ${renderAggregate(args.aggregate)}
@@ -146,7 +169,7 @@ Produce ONE report across the whole batch, as JSON matching this shape exactly:
   "priorities": [
     { "title": "what to fix first", "why": "the evidence across clips that makes it first", "fix": "the concrete coaching correction" }
   ],
-  "practice_focus": ["drills for this week, each naming the weakness it fixes and a coaching cue"],
+  "practice_focus": ["one per line: the drill NAME exactly as written in the DRILL MENU, the weakness it fixes, and its coaching cue"],
   "evidence_note": "how much to trust this: how many clips, how clear the film was, and what could NOT be determined"
 }
 

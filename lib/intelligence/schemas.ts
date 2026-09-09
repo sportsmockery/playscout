@@ -136,6 +136,9 @@ export const MistakeItemSchema = z.object({
   description: z.string(),
   likely_impact: z.string(),
   correction: z.string(),
+  /** Chosen by the model from the closed drill menu. */
+  drill_id: z.string().optional(),
+  /** Filled from the catalog after validation — never taken from the model. */
   drill: z.string().optional(),
   evidence_frames: z.array(z.number()).optional(),
   confidence: z.number(),

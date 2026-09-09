@@ -178,6 +178,141 @@ export const DRILLS: Drill[] = [
     cue: 'Run off his hip — let him clear it for you',
     contact: 'none',
   },
+
+  // ── Defense ────────────────────────────────────────────────────────────
+  //
+  // Transcribed from FOOTBALL_KNOWLEDGE_BASE.md — the per-position drill lists
+  // (§ Defensive Line / Linebackers / Defensive Backs / Edge-Force) and the
+  // correction tree, whose fix PROGRESSIONS are what make a drill coachable
+  // ("Breakdown → near-foot → fit-and-freeze → control → thud" is a practice
+  // period; "work on tackling" is not).
+  //
+  // These `fixes` ids are MISTAKEIQ's mistake categories and the defensive
+  // tendency types, not rubric cues — there is no defensive rubric yet. That
+  // is deliberate: it grounds what a coach is TOLD TO DO on a defensive clip
+  // without pretending the system can grade an individual defender's
+  // technique. Until this existed, every defensive drill a coach read was
+  // free-form invention, which is the exact failure this catalog was built to
+  // end.
+  {
+    id: 'def_force_box',
+    name: 'Force box drill',
+    fixes: ['missed_contain', 'soft_edge'],
+    cue: 'Outside arm free — nothing crosses your face',
+    contact: 'none',
+  },
+  {
+    id: 'def_no_cross_strip',
+    name: 'No-cross strip cones',
+    fixes: ['missed_contain', 'soft_edge'],
+    cue: 'Squeeze, do not chase — the cone is the line you own',
+    contact: 'none',
+  },
+  {
+    id: 'def_crack_replace',
+    name: 'Crack-replace walk-through',
+    fixes: ['missed_contain', 'coverage_bust', 'motion_coverage_bust'],
+    cue: 'Crack call, then replace — somebody always has the edge',
+    contact: 'none',
+  },
+  {
+    id: 'def_gap_landmark',
+    name: 'Gap landmark fit',
+    fixes: ['wrong_gap_fit', 'gap_loss_inside_out', 'alignment_error'],
+    cue: 'Near knee through the line — your gap, not the ball',
+    contact: 'none',
+  },
+  {
+    id: 'def_step_and_shock',
+    name: 'Step-and-shock on shield',
+    fixes: ['wrong_gap_fit', 'missed_assignment'],
+    cue: 'Strike, extend, find the ball — hands before feet stop',
+    contact: 'bag',
+  },
+  {
+    id: 'def_read_block_mirror',
+    name: 'Read-block mirror',
+    fixes: ['wrong_gap_fit', 'missed_assignment', 'gap_loss_inside_out'],
+    cue: 'Read the block, not the backfield',
+    contact: 'none',
+  },
+  {
+    id: 'def_shuffle_read_react',
+    name: 'Shuffle-read-react',
+    fixes: ['missed_assignment', 'bad_pursuit_angle', 'alignment_error'],
+    cue: 'Shuffle downhill — no false step, eyes on the triangle',
+    contact: 'none',
+  },
+  {
+    id: 'def_cone_scrape',
+    name: 'Cone scrape to the alley',
+    fixes: ['bad_pursuit_angle', 'missed_contain', 'soft_edge'],
+    cue: 'Over the top, then downhill — beat the ball to the alley',
+    contact: 'none',
+  },
+  {
+    id: 'def_pursuit_lanes',
+    name: 'Half-speed pursuit lanes',
+    fixes: ['bad_pursuit_angle', 'overpursuit', 'poor_effort'],
+    cue: 'Inside-out — nobody runs to where the ball is now',
+    contact: 'none',
+  },
+  {
+    id: 'def_counter_recognition',
+    name: 'Counter recognition period',
+    fixes: ['overpursuit', 'bad_pursuit_angle'],
+    cue: 'Backside stays home — the second back tells you the story',
+    contact: 'none',
+  },
+  {
+    id: 'def_breakdown_fit_freeze',
+    name: 'Breakdown → near-foot → fit-and-freeze',
+    fixes: ['poor_tackling_leverage', 'tackling_leverage'],
+    cue: 'Near foot, near shoulder — fit it, do not chase it',
+    contact: 'none',
+  },
+  {
+    id: 'def_angle_tackle',
+    name: 'Angle tackle to a shield',
+    fixes: ['poor_tackling_leverage', 'tackling_leverage', 'bad_pursuit_angle'],
+    cue: 'Take the inside half away, run your feet on contact',
+    contact: 'bag',
+  },
+  {
+    id: 'def_pedal_break_drive',
+    name: 'Pedal-break-drive',
+    fixes: ['coverage_bust', 'poor_tackling_leverage'],
+    cue: 'Break on the plant, not on the throw',
+    contact: 'none',
+  },
+  {
+    id: 'def_zone_landmark_cones',
+    name: 'Zone landmark cones',
+    fixes: ['coverage_bust', 'alignment_error', 'missed_assignment'],
+    cue: 'Get to your landmark first, then find work',
+    contact: 'none',
+  },
+  {
+    id: 'def_motion_adjust_walkthrough',
+    name: 'Motion adjustment walk-through',
+    fixes: ['motion_coverage_bust', 'coverage_bust', 'alignment_error'],
+    cue: 'Motion means talk — call it before the snap or you are wrong',
+    contact: 'none',
+  },
+  {
+    id: 'def_alignment_check',
+    name: 'Line-up-and-check period',
+    fixes: ['alignment_error', 'missed_assignment'],
+    cue: 'Eyes to the call, feet to the landmark, then look inside',
+    contact: 'none',
+  },
+  {
+    id: 'def_effort_finish',
+    name: 'Finish-to-the-whistle chase',
+    fixes: ['poor_effort', 'bad_pursuit_angle'],
+    cue: 'Whistle stops you, nothing else does',
+    contact: 'none',
+  },
 ]
 
 const BY_ID = new Map(DRILLS.map((d) => [d.id, d]))

@@ -3,6 +3,22 @@ import { resolveLevelTier } from '../levels'
 import { Type } from '@google/genai'
 import type { ModulePromptInput } from '../schemas'
 import { buildPlayContext } from '../play-context'
+import { buildDrillMenuPrompt, drillMenuFor } from '../rubrics'
+import { MISTAKE_CATEGORIES } from '../schemas'
+import { DEFENSIVE_TENDENCY_TYPES } from '../taxonomy'
+
+/**
+ * The ids a MISTAKEIQ drill may be keyed to.
+ *
+ * There is no defensive rubric, so the catalog is indexed by the mistake
+ * categories themselves plus the defensive tendency vocabulary — which is
+ * enough to hand the model a CLOSED menu instead of asking it to invent a
+ * drill, which is what it did before.
+ */
+export const MISTAKEIQ_DRILL_CUES = new Set<string>([
+  ...MISTAKE_CATEGORIES,
+  ...DEFENSIVE_TENDENCY_TYPES,
+])
 
 export function buildMISTAKEIQSystemPrompt(input: ModulePromptInput): string {
   const { team, playSequence, coachNote } = input
@@ -11,6 +27,11 @@ export function buildMISTAKEIQSystemPrompt(input: ModulePromptInput): string {
     ? `IDENTIFYING ${team.name ?? 'this team'}: they wear ${team.jersey_color}. Only attribute a mistake to this team's players if you can identify them by that.`
     : `IDENTIFYING ${team?.name ?? 'this team'}: no jersey/helmet color was provided. Do not guess which players belong to them — if you can't tell the two sides apart, say so and describe only what is generically visible instead of attributing mistakes to "the team."`
   const gameTypeContext = buildGameTypeContext(team?.game_type)
+  // Filtered by contact level BEFORE the prompt is built, so a flag team is
+  // never shown a bag drill in the first place.
+  const drillMenu = buildDrillMenuPrompt(
+    drillMenuFor({ cueIds: MISTAKEIQ_DRILL_CUES, gameType: team?.game_type, tier })
+  )
   const playContext = buildPlayContext(input.playSequence)
 
   return `${buildFootballBrain(tier, input.evidenceMode)}
@@ -33,6 +54,8 @@ Categories: missed_assignment, missed_block, missed_contain, wrong_gap_fit,
 bad_pursuit_angle, poor_tackling_leverage, turnover_risk, snap_mesh_issue,
 alignment_error, coverage_bust, penalty_risk, poor_effort, clock_situation_error
 
+${drillMenu}
+
 Return each mistake you identify as an entry in the "mistakes" array with:
 - title: short name
 - severity: minor | moderate | major | game_changing
@@ -40,7 +63,8 @@ Return each mistake you identify as an entry in the "mistakes" array with:
 - description: what happened, evidence-based
 - likely_impact: what this mistake likely cost or could cost
 - correction: one coachable fix — never a live-contact or prohibited drill (see safety rules above)
-- drill: (optional) one specific practice drill to install the correction — respect the game-type contact gate
+- drill_id: (optional) the id of ONE drill from the DRILL MENU below that installs the
+  correction. Use an id from that list or omit the field — never invent a drill name.
 - evidence_frames: which frame indices show the mistake
 - confidence: 0.0-1.0
 If no mistakes are visible, return an empty mistakes array — never invent one to fill it.
@@ -103,7 +127,7 @@ export const MISTAKEIQ_RESPONSE_SCHEMA = {
           description: { type: Type.STRING },
           likely_impact: { type: Type.STRING },
           correction: { type: Type.STRING },
-          drill: { type: Type.STRING },
+          drill_id: { type: Type.STRING },
           evidence_frames: { type: Type.ARRAY, items: { type: Type.INTEGER } },
           confidence: { type: Type.NUMBER },
         },

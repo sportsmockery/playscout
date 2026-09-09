@@ -145,3 +145,34 @@ describe('SCOUTIQ writes for the coach scouting, not the team being scouted', ()
     expect(prompt).toMatch(/You are not\s+their coach/i)
   })
 })
+
+describe('MISTAKEIQ drills come from a catalog, not from the model', () => {
+  const base = { moduleKey: 'MISTAKEIQ' as const, teamId: 't', frames: [], evidenceMode: 'video' as const }
+
+  it('hands the model a closed menu of real defensive drills', () => {
+    // Until the catalog had a defensive half, this prompt asked for "one
+    // specific practice drill" with nothing behind it, so every drill a coach
+    // read on a defensive clip was invented — which is what the catalog exists
+    // to prevent everywhere else.
+    const prompt = buildMISTAKEIQSystemPrompt({
+      ...base,
+      team: { name: 'TP White', age_group: '10U', game_type: 'tackle' },
+    })
+    expect(prompt).toContain('DRILL MENU')
+    expect(prompt).toMatch(/do not invent a drill/i)
+    expect(prompt).toContain('def_force_box')
+    expect(prompt).toContain('drill_id')
+  })
+
+  it('never offers a flag team a contact drill', () => {
+    // The menu is filtered before the prompt is built, so the unsafe option is
+    // not on the page to be chosen.
+    const prompt = buildMISTAKEIQSystemPrompt({
+      ...base,
+      team: { name: 'TP White', age_group: '10U', game_type: 'flag' },
+    })
+    expect(prompt).toContain('def_force_box')
+    expect(prompt).not.toContain('def_angle_tackle')
+    expect(prompt).not.toContain('def_step_and_shock')
+  })
+})
