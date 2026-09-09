@@ -407,3 +407,111 @@ body {
   outline: 2px solid var(--brand-gold);
   outline-offset: 2px;
 }
+
+/* ─── Print ──────────────────────────────────────────────────────────
+   A coach's real deliverable is a sheet on a clipboard: one page for
+   Friday's calls, one for Tuesday's practice. Everything below exists
+   because the on-screen design actively fights that.
+
+   The whole UI is glassmorphism — translucent panels with a blur and a
+   large shadow — which a printer renders as grey mush. And with nothing
+   controlling breaks, cards and table rows split across pages mid-row.
+   ------------------------------------------------------------------ */
+@media print {
+  /* Print the light palette regardless of the viewer's theme. */
+  :root {
+    color-scheme: light;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  @page {
+    margin: 14mm;
+  }
+
+  /* Flatten the glass. Translucency and blur are the whole reason the
+     current design prints grey. */
+  .glass-card,
+  .stat-card {
+    background: #fff !important;
+    border: 1px solid #d4d4d8 !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border-radius: 6px !important;
+    padding: 12px !important;
+    margin-bottom: 10px !important;
+  }
+
+  .gold-glow {
+    box-shadow: none !important;
+  }
+
+  /* Keep a card, a finding, or a player's row from splitting across a
+     page — a grade separated from the player it belongs to is worse
+     than a page that ends early. */
+  .glass-card,
+  li,
+  tr,
+  ol,
+  ul,
+  table {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* A heading must never be the last thing on a page. */
+  h1,
+  h2,
+  h3,
+  h4 {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  /* Scroll containers have no meaning on paper, and an overflow-hidden
+     ancestor silently clips everything after the first page. */
+  .overflow-x-auto,
+  .overflow-y-auto,
+  .overflow-hidden {
+    overflow: visible !important;
+  }
+
+  /* Ink-cheap body text. Score and grade colours are deliberately NOT
+     reset — on these reports the colour carries the meaning. */
+  p,
+  li,
+  td,
+  th,
+  span {
+    color: #111827;
+  }
+
+  a {
+    text-decoration: none !important;
+    color: inherit !important;
+  }
+
+  /* Interactive affordances are noise on paper. */
+  button,
+  select,
+  input[type='checkbox'],
+  input[type='radio'] {
+    display: none !important;
+  }
+
+  /* Print-only content: hidden on screen, shown on the sheet. Used for
+     the title block that says which team, which opponent, and what the
+     numbers rest on — a sheet on a clipboard has to identify itself. */
+  .print-only {
+    display: block !important;
+  }
+}
+
+.print-only {
+  display: none;
+}

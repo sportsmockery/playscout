@@ -147,7 +147,7 @@ export default function UploadDock() {
     : `Uploading ${activeCount} video${activeCount !== 1 ? 's' : ''}`;
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 w-[340px] max-w-[calc(100vw-2rem)] rounded-xl bg-white shadow-2xl border border-[var(--brand-border)] overflow-hidden">
+    <div className="print:hidden fixed bottom-4 right-4 z-50 w-[340px] max-w-[calc(100vw-2rem)] rounded-xl bg-white shadow-2xl border border-[var(--brand-border)] overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 bg-[var(--brand-navy)] text-white">
         <div className="min-w-0">

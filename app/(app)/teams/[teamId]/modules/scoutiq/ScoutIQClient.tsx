@@ -8,6 +8,7 @@ import UploadVideoButton from '../../film/UploadVideoButton';
 import AddFilmLinkButton from '../../film/AddFilmLinkButton';
 import ImportFromHudl from '../../film/ImportFromHudl';
 import AnalysisQueue from '@/components/intelligence/AnalysisQueue';
+import PrintButton from '@/components/intelligence/PrintButton';
 import { queueAnalysisBatch, batchTitle } from '@/components/intelligence/queue-batch';
 import { isUnanalyzable } from '@/components/intelligence/FilmPicker';
 
@@ -245,7 +246,7 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
   return (
     <div className="space-y-6">
       {/* Opponent picker */}
-      <div className="glass-card p-5">
+      <div className="glass-card p-5 print:hidden">
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-bold text-[var(--brand-navy)] text-sm uppercase tracking-wide">
             <span className="text-[var(--brand-muted)]">Step 1 — </span>Who are you scouting?
@@ -280,7 +281,7 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
       {selectedOpponent && (
         <>
           {/* Opponent film */}
-          <div className="glass-card p-5">
+          <div className="glass-card p-5 print:hidden">
             {/* Above the actions on purpose. This field decides which side of
                 the film gets graded; underneath the buttons it was read after
                 the decision it governs, and a blank one quietly sent every clip
@@ -425,7 +426,9 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
             )}
           </div>
 
-          <AnalysisQueue teamId={teamId} moduleKey="SCOUTIQ" refreshKey={queueVersion} />
+          <div className="print:hidden">
+            <AnalysisQueue teamId={teamId} moduleKey="SCOUTIQ" refreshKey={queueVersion} />
+          </div>
 
           {/* Game plan */}
           <div className="glass-card p-5">
@@ -440,6 +443,7 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
                     : `Built from all ${scoutedVideoIds.length} scouted clip${scoutedVideoIds.length === 1 ? '' : 's'}. Re-generate any time you scout more.`}
                 </p>
               </div>
+              <PrintButton label="Print game plan" />
               <button
                 onClick={generateGamePlan}
                 disabled={reportLoading}
@@ -454,7 +458,21 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
             )}
 
             {latestReport ? (
-              <div className="space-y-4">
+              <div className="space-y-4 print:flex print:flex-col">
+                {/* Shown only on the printed sheet. On screen this is all
+                    obvious from the surrounding page; on paper the page is
+                    gone and a sheet with no header is a sheet nobody trusts. */}
+                <div className="print-only mb-4 pb-3 border-b border-[var(--brand-border)]">
+                  <p className="text-lg font-bold text-[var(--brand-navy)]">
+                    Game plan — {teamName} vs {selectedOpponent.name}
+                  </p>
+                  <p className="text-xs text-[var(--brand-muted)] mt-0.5">
+                    {new Date(latestReport.created_at as string).toLocaleDateString()} · built from{' '}
+                    {latestReport.based_on_video_ids.length} scouted clip
+                    {latestReport.based_on_video_ids.length === 1 ? '' : 's'}
+                    {jerseyColor.trim() ? ` · ${selectedOpponent.name} in ${jerseyColor.trim()}` : ''}
+                  </p>
+                </div>
                 <div className="rounded-lg bg-amber-50 border border-amber-200 p-3">
                   <p className="text-xs text-amber-800">
                     {(latestReport.game_plan as { evidence_sufficiency_note?: string } | null)?.evidence_sufficiency_note
@@ -490,7 +508,7 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
                   const clipCount =
                     sufficiency?.defensive_clips || latestReport.based_on_video_ids.length;
                   return (
-                    <div>
+                    <div className="print:order-1">
                       <h3 className="text-xs font-bold text-[var(--brand-navy)] uppercase tracking-wide mb-1">
                         What The Film Showed ({points.length} ranked by how often)
                       </h3>
