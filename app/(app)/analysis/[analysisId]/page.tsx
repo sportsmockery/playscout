@@ -146,6 +146,14 @@ export default async function SavedAnalysisPage({
             <p className="text-sm text-[var(--brand-muted)] mt-1">
               {new Date(analysis.created_at).toLocaleDateString()}
               {analysis.edited_at && ' · edited by coach'}
+              {/* On paper the surrounding app is gone, so the sheet has to say
+                  how much film is behind it. */}
+              <span className="print-only">
+                {evidence.plays_observed
+                  ? ` · ${evidence.plays_observed} play${evidence.plays_observed === 1 ? '' : 's'} observed`
+                  : ''}
+                {analysis.frames_analyzed ? ` · ${analysis.frames_analyzed} frames read` : ''}
+              </span>
             </p>
           </div>
           {analysis.overall_score != null && (

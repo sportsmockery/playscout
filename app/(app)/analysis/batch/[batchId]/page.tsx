@@ -6,6 +6,7 @@ import type { BatchAggregate } from '@/lib/intelligence/aggregate-batch';
 import type { BatchSummary } from '@/lib/intelligence/batch-summary';
 import ClipBreakdown from './ClipBreakdown';
 import NextSteps from '@/components/intelligence/NextSteps';
+import PrintButton from '@/components/intelligence/PrintButton';
 
 export async function generateMetadata({ params }: { params: Promise<{ batchId: string }> }) {
   const { batchId } = await params;
@@ -62,14 +63,15 @@ export default async function BatchReportPage({
 
   return (
     <div className="p-6 max-w-4xl mx-auto print:p-0">
-      <div className="flex items-center justify-between mb-6 print:hidden">
+      <div className="flex items-center justify-between mb-6">
         <Link
           href={`/teams/${teamId}/intelligence`}
-          className="flex items-center gap-2 text-sm text-[var(--brand-muted)] hover:text-[var(--brand-navy)] transition-colors"
+          className="print:hidden flex items-center gap-2 text-sm text-[var(--brand-muted)] hover:text-[var(--brand-navy)] transition-colors"
         >
           <ArrowLeft size={16} />
           Intelligence
         </Link>
+        <PrintButton label={scouting ? 'Print scouting sheet' : 'Print practice sheet'} />
       </div>
 
       {/* Header */}
@@ -152,6 +154,52 @@ export default async function BatchReportPage({
         </div>
       )}
 
+      {/* What to do, before the evidence for it.
+
+          These two were third and second-to-last on a long page: a coach had
+          to scroll past the narrative, the player table, the recurring items
+          and the mistake rollup to reach the only two sections they act on.
+          The evidence still follows — it just no longer comes first. */}
+      {!!summary?.priorities?.length && (
+        <div className="glass-card p-6 mb-5">
+          <h2 className="font-bold text-[var(--brand-navy)] mb-4 text-sm uppercase tracking-wide">
+            Fix First
+          </h2>
+          <ol className="space-y-4">
+        {summary?.priorities.map((p, i) => (
+              <li key={i} className="flex items-start gap-3">
+                <span className="w-6 h-6 rounded-full bg-[var(--brand-gold,#d2c600)] text-[var(--brand-ink)] text-xs flex items-center justify-center font-bold shrink-0">
+                  {i + 1}
+                </span>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-[var(--brand-ink)]">{p.title}</p>
+                  <p className="text-xs text-[var(--brand-muted)] mt-0.5">{p.why}</p>
+                  <p className="text-sm text-[var(--brand-ink)] mt-1">{p.fix}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+      {summary?.practice_focus && summary.practice_focus.length > 0 && (
+        <div className="glass-card p-6 mb-5">
+          <h2 className="font-bold text-[var(--brand-navy)] mb-3 text-sm uppercase tracking-wide">
+            This Week&apos;s Practice Focus
+          </h2>
+          <div className="space-y-3">
+            {summary.practice_focus.map((d, i) => (
+              <div key={i} className="flex items-start gap-3 p-3 bg-[var(--brand-bg)] rounded-lg">
+                <span className="w-6 h-6 rounded-full bg-[var(--brand-navy)] text-white text-xs flex items-center justify-center font-bold shrink-0">
+                  {i + 1}
+                </span>
+                <p className="text-sm text-[var(--brand-ink)]">{d}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+
       {/* Cumulative narrative */}
       {summary && (
         <>
@@ -194,27 +242,6 @@ export default async function BatchReportPage({
             </div>
           )}
 
-          {summary.priorities?.length > 0 && (
-            <div className="glass-card p-6 mb-5">
-              <h2 className="font-bold text-[var(--brand-navy)] mb-4 text-sm uppercase tracking-wide">
-                Fix First
-              </h2>
-              <ol className="space-y-4">
-                {summary.priorities.map((p, i) => (
-                  <li key={i} className="flex items-start gap-3">
-                    <span className="w-6 h-6 rounded-full bg-[var(--brand-gold,#d2c600)] text-[var(--brand-ink)] text-xs flex items-center justify-center font-bold shrink-0">
-                      {i + 1}
-                    </span>
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-[var(--brand-ink)]">{p.title}</p>
-                      <p className="text-xs text-[var(--brand-muted)] mt-0.5">{p.why}</p>
-                      <p className="text-sm text-[var(--brand-ink)] mt-1">{p.fix}</p>
-                    </div>
-                  </li>
-                ))}
-              </ol>
-            </div>
-          )}
         </>
       )}
 
@@ -378,26 +405,10 @@ export default async function BatchReportPage({
         </div>
       )}
 
-      {summary?.practice_focus && summary.practice_focus.length > 0 && (
-        <div className="glass-card p-6 mb-5">
-          <h2 className="font-bold text-[var(--brand-navy)] mb-3 text-sm uppercase tracking-wide">
-            This Week&apos;s Practice Focus
-          </h2>
-          <div className="space-y-3">
-            {summary.practice_focus.map((d, i) => (
-              <div key={i} className="flex items-start gap-3 p-3 bg-[var(--brand-bg)] rounded-lg">
-                <span className="w-6 h-6 rounded-full bg-[var(--brand-navy)] text-white text-xs flex items-center justify-center font-bold shrink-0">
-                  {i + 1}
-                </span>
-                <p className="text-sm text-[var(--brand-ink)]">{d}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Per-clip breakdown — every clip on this page, not a separate one */}
-      <div className="glass-card p-6">
+      {/* Per-clip breakdown — every clip on this page, not a separate one.
+          Left off the printed sheet: forty clip cards is not something a coach
+          carries to a field, and each clip still has its own page. */}
+      <div className="glass-card p-6 print:hidden">
         <h2 className="font-bold text-[var(--brand-navy)] mb-1 text-sm uppercase tracking-wide">
           Clip By Clip
         </h2>
