@@ -146,7 +146,12 @@ export default function ImportFromHudl({ teamId, folders, defaultFolderId, oppon
       {visible.length > 0 && (
         <div className="w-full mt-3 space-y-2">
           {visible.map((job) => (
-            <HudlJobRow key={job.id} job={job} teamId={teamId} />
+            <HudlJobRow
+              key={job.id}
+              job={job}
+              teamId={teamId}
+              onCleared={async () => apply(await fetchJobs())}
+            />
           ))}
         </div>
       )}
@@ -258,17 +263,34 @@ function statusLabel(job: ImportJob): string {
   return job.current_step ?? 'Queued';
 }
 
-function HudlJobRow({ job, teamId }: { job: ImportJob; teamId: string }) {
+function HudlJobRow({
+  job,
+  teamId,
+  onCleared,
+}: {
+  job: ImportJob;
+  teamId: string;
+  onCleared: () => void;
+}) {
   const live = LIVE_STATUSES.includes(job.status);
+  // Everything except a job mid-download can be cleared away. A failed import
+  // from a fortnight ago had no control at all, and this component renders on
+  // both the film library and the ScoutIQ screen — so it sat on two pages
+  // indefinitely with no way to acknowledge it.
+  const clearable = job.status !== 'running';
   const progress =
     job.clips_found > 0
       ? Math.round(((job.clips_imported + job.clips_failed) / job.clips_found) * 100)
       : 0;
 
-  async function cancel() {
+  async function clear() {
     await fetch(`/api/integrations/hudl/import?jobId=${job.id}&teamId=${teamId}`, {
       method: 'DELETE',
     });
+    // Re-read rather than hiding it locally: the server decides whether that
+    // was a cancel or a dismiss, and a row hidden only in this component comes
+    // straight back on the next poll.
+    onCleared();
   }
 
   return (
@@ -289,8 +311,18 @@ function HudlJobRow({ job, teamId }: { job: ImportJob; teamId: string }) {
         <div className="flex items-center gap-3 shrink-0">
           <span className="text-xs text-[var(--brand-muted)]">{statusLabel(job)}</span>
           {job.status === 'queued' && (
-            <button onClick={cancel} className="text-xs text-[var(--brand-muted)] hover:underline">
+            <button onClick={clear} className="text-xs text-[var(--brand-muted)] hover:underline">
               Cancel
+            </button>
+          )}
+          {clearable && job.status !== 'queued' && (
+            <button
+              onClick={clear}
+              aria-label="Dismiss this import"
+              title="Dismiss"
+              className="p-1 -m-1 text-[var(--brand-muted)] hover:text-[var(--brand-ink)] transition-colors"
+            >
+              <X size={15} />
             </button>
           )}
         </div>

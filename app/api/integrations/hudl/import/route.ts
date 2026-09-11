@@ -50,6 +50,7 @@ export async function GET(req: NextRequest) {
     .select(JOB_COLUMNS)
     .eq('team_id', teamId)
     .eq('job_kind', 'import')
+    .is('dismissed_at', null)
     .order('created_at', { ascending: false })
     .limit(20)
 
@@ -154,7 +155,19 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ job })
 }
 
-/** Cancel a queued import. A running one finishes the clip it is on. */
+/**
+ * Clear an import off the screen.
+ *
+ * What that means depends on where the job is, because the coach is pressing
+ * the same X either way:
+ *
+ *   queued / retrying — cancel it. It has not started; there is nothing to keep.
+ *   finished (failed, partial, completed, cancelled) — dismiss it. The row is
+ *     left exactly as it is, `dismissed_at` is stamped, and the listing stops
+ *     returning it. Rewriting a failed job's status to make it disappear would
+ *     also erase why it failed, and `diagnostics` is the only record of that.
+ *   running — refused. It is mid-import and the clips are still landing.
+ */
 export async function DELETE(req: NextRequest) {
   const jobId = req.nextUrl.searchParams.get('jobId')
   const teamId = req.nextUrl.searchParams.get('teamId')
@@ -165,15 +178,12 @@ export async function DELETE(req: NextRequest) {
   const access = await requireTeamMember(teamId, { writeRoles: BIND_ROLES })
   if (access.error) return access.error
 
+  const now = new Date().toISOString()
   const supabase = await createClient()
-  const { data, error } = await supabase
+
+  const { data: cancelled, error } = await supabase
     .from('hudl_import_jobs')
-    .update({
-      status: 'cancelled',
-      current_step: null,
-      completed_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
+    .update({ status: 'cancelled', current_step: null, completed_at: now, updated_at: now })
     .eq('id', jobId)
     .eq('team_id', teamId)
     .in('status', ['queued', 'retrying'])
@@ -182,11 +192,26 @@ export async function DELETE(req: NextRequest) {
   if (error) return NextResponse.json({ error: 'Could not cancel that import.' }, { status: 500 })
   // RLS refuses a write by returning zero rows, not an error — so the row
   // count is what says whether anything actually happened.
-  if (!data?.length) {
-    return NextResponse.json(
-      { error: 'That import has already started or finished.' },
-      { status: 409 }
-    )
+  if (cancelled?.length) return NextResponse.json({ cancelled: true })
+
+  // Not cancellable, so either it is finished (dismiss it) or it is running
+  // (leave it alone). The status filter here is what tells those apart, and a
+  // running job matching neither branch is what produces the 409 below.
+  const { data: dismissed, error: dismissError } = await supabase
+    .from('hudl_import_jobs')
+    .update({ dismissed_at: now, updated_at: now })
+    .eq('id', jobId)
+    .eq('team_id', teamId)
+    .in('status', ['failed', 'partial', 'completed', 'cancelled'])
+    .select('id')
+
+  if (dismissError) {
+    return NextResponse.json({ error: 'Could not clear that import.' }, { status: 500 })
   }
-  return NextResponse.json({ cancelled: true })
+  if (dismissed?.length) return NextResponse.json({ dismissed: true })
+
+  return NextResponse.json(
+    { error: 'That import is still running — it will finish the clip it is on.' },
+    { status: 409 }
+  )
 }
