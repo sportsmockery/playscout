@@ -67,6 +67,7 @@ describe('coachMessageFor', () => {
       'invalid_credentials',
       'challenge_required',
       'sso_required',
+      'session_expired',
       'browser_unavailable',
       'login_failed',
     ] as const
@@ -121,6 +122,22 @@ describe('Google / SSO sign-in', () => {
     const message = coachMessageFor('sso_required')
     expect(message).toMatch(/set a hudl password/i)
     expect(message).not.toMatch(/rejected|incorrect/i)
+  })
+
+  it('offers the pasted-session route, which needs no password at all', () => {
+    // Setting a password is a change to the coach's Hudl account. Pasting the
+    // session their browser already holds is not, so it has to be named here —
+    // it is the only route that works for a Google account untouched.
+    expect(coachMessageFor('sso_required')).toMatch(/paste your hudl session/i)
+  })
+
+  it('separates an expired pasted session from a wrong password', () => {
+    // A session-only connection has no password. Sending that coach to
+    // re-enter one is sending them to a field they cannot fill in.
+    const message = coachMessageFor('session_expired')
+    expect(message).toMatch(/expired/i)
+    expect(message).toMatch(/paste/i)
+    expect(message).not.toMatch(/rejected that email and password/i)
   })
 })
 

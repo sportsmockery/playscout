@@ -445,6 +445,35 @@ Coach pastes a playlist URL → POST /api/integrations/hudl/import (validates, r
 → one `videos` row per clip WITH a storage_path + the usual full_pipeline job
 → everything downstream (frames, native-video analysis, folders, batches, modules) unchanged
 ```
+
+**A connection is one of two shapes** (`hudl_credentials.auth_mode`), and the difference is
+not cosmetic:
+- `password` — the worker signs in itself, unattended, indefinitely. Preferred where it works.
+- `session` — the coach pastes the session their OWN browser holds and the worker restores it.
+  This is the only route for an account that signs in with **Google**: it has no Hudl password,
+  and Google blocks automated browsers, so driving that sign-in would risk the coach's *Google*
+  account rather than merely failing. `classifyLoginPage` detects the hand-off and
+  `sso_required` names both fixes. Do NOT attempt to automate a Google sign-in.
+  `lib/import/hudl-session-paste.ts` is the pure normalizer — it accepts a Playwright
+  `storageState`, a bare cookie array, or a cookie-editor export, maps `expirationDate`/
+  `no_restriction` to Playwright's spelling, and **drops every cookie that is not hudl.com**
+  (a coach exporting "all cookies" would otherwise hand over their whole browser, and the
+  worker would present a bank cookie to whatever host Hudl redirects a download to). A pasted
+  `document.cookie` string is refused BY NAME: Hudl's auth cookies are HttpOnly, so that copy
+  is guaranteed to omit exactly the ones that matter and would save cleanly then fail forever.
+- A session-only connection that goes stale fails as `session_expired`, never
+  `invalid_credentials` — there is no password to re-enter, and sending a coach to a field
+  they cannot fill in is the bug that distinction exists to prevent. Every successful job
+  re-persists the cookies, so the session's life extends as long as it is used.
+
+**Test connection** (`POST /api/integrations/hudl/verify`) queues a `job_kind: 'verify'` row on
+the SAME table and worker as an import, because signing in needs a browser and only Railway has
+one. `runVerification` reuses `openHudlSession` rather than re-implementing a second sign-in that
+could disagree with the one imports use. The answer lands on `hudl_credentials.last_verified_at` /
+`last_error`, which the settings card polls. Before this, binding an account said "saved" and the
+truth arrived hours later with a failed import — and for a Google account the answer was always no.
+`target_key: 'verify'` makes the existing active-target unique index limit a team to one live test;
+repeated sign-ins are how a coach's Hudl account gets flagged.
 - Hudl publishes no API for your own cut-ups, so this drives their web app. It reads live
   markup and can break on any redesign; the **breakdown-paste path stays as the fallback**.
   This is the one place the "do not scrape watch pages" rule above does not apply — it is the

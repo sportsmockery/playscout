@@ -60,7 +60,10 @@ interface ImportJob {
   id: string
   team_id: string
   created_by: string | null
-  source_url: string
+  /** Null on a verify job — there is no playlist to point at. */
+  source_url: string | null
+  /** 'import' pulls a playlist; 'verify' signs in and reports back, nothing else. */
+  job_kind: string
   title: string | null
   folder_id: string | null
   opponent_id: string | null
@@ -70,7 +73,7 @@ interface ImportJob {
 }
 
 const JOB_COLUMNS =
-  'id, team_id, created_by, source_url, title, folder_id, opponent_id, film_type, attempts, max_attempts'
+  'id, team_id, created_by, source_url, job_kind, title, folder_id, opponent_id, film_type, attempts, max_attempts'
 
 let shuttingDown = false
 
@@ -138,22 +141,28 @@ async function reapStuckJobs(supabase: SupabaseClient) {
   const cutoff = new Date(Date.now() - STUCK_JOB_TIMEOUT_MS).toISOString()
   const { data: stuck } = await supabase
     .from('hudl_import_jobs')
-    .select('id, clips_imported')
+    .select('id, clips_imported, job_kind')
     .eq('status', 'running')
     .lt('locked_at', cutoff)
 
-  for (const job of (stuck ?? []) as { id: string; clips_imported: number }[]) {
-    log(`reaping stuck job ${job.id}`)
+  for (const job of (stuck ?? []) as {
+    id: string
+    clips_imported: number
+    job_kind: string
+  }[]) {
+    log(`reaping stuck ${job.job_kind} job ${job.id}`)
     await supabase
       .from('hudl_import_jobs')
       .update({
-        status: job.clips_imported > 0 ? 'partial' : 'failed',
+        status: job.job_kind === 'verify' || job.clips_imported === 0 ? 'failed' : 'partial',
         // Said "the clips it got are in your film library" even when nothing
         // landed, which sent a coach looking for film that does not exist.
         error_message:
-          job.clips_imported > 0
-            ? 'The import stopped partway through. The clips it got are in your film library — run it again and it will pick up from there rather than re-downloading them.'
-            : 'The import stopped before any clips were downloaded. Run it again — nothing was imported, so it starts from the beginning.',
+          job.job_kind === 'verify'
+            ? 'The connection test did not finish. Try it again.'
+            : job.clips_imported > 0
+              ? 'The import stopped partway through. The clips it got are in your film library — run it again and it will pick up from there rather than re-downloading them.'
+              : 'The import stopped before any clips were downloaded. Run it again — nothing was imported, so it starts from the beginning.',
         locked_by: null,
         locked_at: null,
         completed_at: new Date().toISOString(),
@@ -245,6 +254,50 @@ async function importClip(
   return video.id
 }
 
+/**
+ * Signs in and reports back. That is the whole job.
+ *
+ * `openHudlSession` already does everything a verification needs: it restores
+ * a cached or pasted session and PROBES it against a real Hudl page, falls
+ * back to a password login only when one exists, writes `last_verified_at` on
+ * success (via `persist`) and a coach-readable `last_error` on failure. So
+ * this reuses it rather than re-implementing a second, subtly different
+ * sign-in that could disagree with the one imports actually use.
+ *
+ * The point is timing, not new capability: a coach learns within a minute that
+ * their account signs in with Google, instead of when an overnight import of
+ * fifty clips fails.
+ */
+async function runVerification(supabase: SupabaseClient, job: ImportJob) {
+  let session: HudlSession | null = null
+  try {
+    await setStep(supabase, job.id, 'Signing in to Hudl')
+    session = await openHudlSession(supabase, job.team_id)
+
+    // Refreshes the stored cookies and stamps last_verified_at. For a pasted
+    // session this also quietly extends its life on every test, which is the
+    // one nice side effect of doing it this way.
+    await session.persist()
+
+    await supabase
+      .from('hudl_import_jobs')
+      .update({
+        status: 'completed',
+        current_step: 'Signed in',
+        error_message: null,
+        completed_at: new Date().toISOString(),
+        locked_by: null,
+        locked_at: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', job.id)
+
+    log(`job ${job.id}: verification succeeded for team ${job.team_id}`)
+  } finally {
+    await session?.dispose()
+  }
+}
+
 async function runImport(supabase: SupabaseClient, job: ImportJob) {
   const workDir = await fs.mkdtemp(path.join(os.tmpdir(), `playscout-hudl-${job.id}-`))
   let session: HudlSession | null = null
@@ -265,7 +318,7 @@ async function runImport(supabase: SupabaseClient, job: ImportJob) {
   try {
     // The URL is re-parsed here rather than trusting ids the route stored —
     // the worker is what acts on them.
-    const parsed = parseHudlUrl(job.source_url)
+    const parsed = parseHudlUrl(job.source_url ?? '')
     if (!parsed.ok) throw new HudlPlaylistError(parsed.reason, [])
 
     await setStep(supabase, job.id, 'Signing in to Hudl')
@@ -417,7 +470,9 @@ async function runImport(supabase: SupabaseClient, job: ImportJob) {
  */
 async function failJob(supabase: SupabaseClient, job: ImportJob, err: unknown) {
   let coachMessage =
-    'The Hudl import did not finish. Try it again, or paste your breakdown export instead.'
+    job.job_kind === 'verify'
+      ? 'The connection test did not finish. Try it again.'
+      : 'The Hudl import did not finish. Try it again, or paste your breakdown export instead.'
   let diagnostics: string[] | null = null
   let terminal = false
 
@@ -455,7 +510,20 @@ async function failJob(supabase: SupabaseClient, job: ImportJob, err: unknown) {
     })
     .eq('id', job.id)
 
-  log(`job ${job.id} ${exhausted ? 'FAILED' : 'errored (will retry)'}: ${coachMessage}`)
+  // A verification's answer lives on the credential row, because that is what
+  // the settings card polls. `openHudlSession` writes it for every failure it
+  // classifies; this covers everything else — a Playwright crash after sign-in,
+  // a failed persist — so the card always stops spinning with a reason rather
+  // than waiting on an answer that is never coming.
+  if (job.job_kind === 'verify' && exhausted) {
+    await supabase
+      .from('hudl_credentials')
+      .update({ last_error: coachMessage, updated_at: new Date().toISOString() })
+      .eq('team_id', job.team_id)
+      .is('last_error', null)
+  }
+
+  log(`${job.job_kind} job ${job.id} ${exhausted ? 'FAILED' : 'errored (will retry)'}: ${coachMessage}`)
   if (diagnostics?.length) log(`job ${job.id} captured ${diagnostics.length} request URLs`)
 }
 
@@ -489,9 +557,10 @@ async function main() {
       continue
     }
 
-    log(`claimed job ${job.id} (attempt ${job.attempts}/${job.max_attempts})`)
+    log(`claimed ${job.job_kind} job ${job.id} (attempt ${job.attempts}/${job.max_attempts})`)
     try {
-      await runImport(supabase, job)
+      if (job.job_kind === 'verify') await runVerification(supabase, job)
+      else await runImport(supabase, job)
     } catch (err) {
       await failJob(supabase, job, err).catch((e) => log('failJob error', e))
     }

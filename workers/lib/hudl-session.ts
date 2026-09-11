@@ -32,6 +32,7 @@ export type HudlFailure =
   | 'invalid_credentials'
   | 'challenge_required'
   | 'sso_required'
+  | 'session_expired'
   | 'browser_unavailable'
   | 'login_failed'
 
@@ -191,7 +192,9 @@ export function coachMessageFor(failure: HudlFailure): string {
     case 'challenge_required':
       return 'Hudl is asking you to verify this sign-in. Sign in to Hudl once in your own browser, then try again.'
     case 'sso_required':
-      return 'That Hudl account signs in through Google, which PlayScout cannot do on your behalf. Set a Hudl password on the account (Hudl → Account → Password, or use "Forgot password"), then enter that password here. Signing in with Google still works for you normally.'
+      return 'That Hudl account signs in through Google, which PlayScout cannot do on your behalf. Either paste your Hudl session in team settings instead of a password, or set a Hudl password on the account (Hudl → Account → Password, or use "Forgot password"). Signing in with Google still works for you normally.'
+    case 'session_expired':
+      return 'The Hudl session you pasted has expired, and this connection has no password to sign in with. Open Hudl in your browser, export the session again, and paste the new one in team settings.'
     case 'browser_unavailable':
       return 'The film import service has no browser installed, so it never reached Hudl. This is a PlayScout deployment problem, not a problem with your Hudl account — nothing needs changing in team settings.'
     case 'login_failed':
@@ -205,15 +208,21 @@ export function coachMessageFor(failure: HudlFailure): string {
 
 export interface HudlCredentials {
   email: string
-  password: string
+  /**
+   * Null for a session-only connection — a Google/SSO account has no Hudl
+   * password to give. Everything below must treat "cannot sign in" as a
+   * distinct outcome from "sign-in was rejected".
+   */
+  password: string | null
   /** Playwright storage state from the last successful login, if any. */
   storageState: string | null
 }
 
 interface CredentialRow {
   hudl_email: string
-  sealed_password: string
+  sealed_password: string | null
   sealed_session: string | null
+  auth_mode: string | null
 }
 
 /**
@@ -230,29 +239,40 @@ export async function loadHudlCredentials(
 
   const { data } = await supabase
     .from('hudl_credentials')
-    .select('hudl_email, sealed_password, sealed_session')
+    .select('hudl_email, sealed_password, sealed_session, auth_mode')
     .eq('team_id', teamId)
     .maybeSingle<CredentialRow>()
 
   if (!data) throw new HudlSessionError('not_connected', coachMessageFor('not_connected'))
 
-  let password: string
-  try {
-    password = open(data.sealed_password)
-  } catch {
-    // Sealed with a key this deployment no longer has. Treat it as "reconnect",
-    // not as a crash: the coach's fix is the same either way.
-    throw new HudlSessionError('encryption_unavailable', coachMessageFor('encryption_unavailable'))
+  let password: string | null = null
+  if (data.sealed_password) {
+    try {
+      password = open(data.sealed_password)
+    } catch {
+      // Sealed with a key this deployment no longer has. Treat it as "reconnect",
+      // not as a crash: the coach's fix is the same either way.
+      throw new HudlSessionError('encryption_unavailable', coachMessageFor('encryption_unavailable'))
+    }
   }
 
   let storageState: string | null = null
   if (data.sealed_session) {
-    // A session that will not unseal is not fatal — we just log in again.
+    // A session that will not unseal is not fatal when there is a password to
+    // fall back on — we just log in again. On a session-only connection it is
+    // the whole credential, and the check below is what catches that.
     try {
       storageState = open(data.sealed_session)
     } catch {
       storageState = null
     }
+  }
+
+  // Neither half usable. The database constraint makes "the row has neither"
+  // impossible, so in practice this is a session-only connection whose sealed
+  // session was written under a key this deployment no longer has.
+  if (!password && !storageState) {
+    throw new HudlSessionError('encryption_unavailable', coachMessageFor('encryption_unavailable'))
   }
 
   return { email: data.hudl_email, password, storageState }
@@ -548,6 +568,14 @@ export async function openHudlSession(
     const page = await context.newPage()
 
     if (!credentials.storageState || !(await sessionIsLive(page))) {
+      // A session-only connection has nothing to fall back on. Saying so is
+      // the whole point: "sign in again in your browser and re-paste" is a
+      // different instruction from "your password is wrong", and a coach who
+      // pasted a session precisely BECAUSE they have no password must not be
+      // sent to re-enter one.
+      if (!credentials.password) {
+        throw new HudlSessionError('session_expired', coachMessageFor('session_expired'))
+      }
       await signIn(page, credentials.email, credentials.password)
     }
 

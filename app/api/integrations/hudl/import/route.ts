@@ -42,10 +42,14 @@ export async function GET(req: NextRequest) {
   // Read as the user — this table holds progress, not secrets, and RLS scopes
   // it to teams they can reach.
   const supabase = await createClient()
+  // Imports only. Connection tests share this table for the claim/lock/reap
+  // machinery, but they are not film work — listed here they would render in
+  // the film library as an import called "Hudl connection test".
   const { data, error } = await supabase
     .from('hudl_import_jobs')
     .select(JOB_COLUMNS)
     .eq('team_id', teamId)
+    .eq('job_kind', 'import')
     .order('created_at', { ascending: false })
     .limit(20)
 
@@ -137,6 +141,7 @@ export async function POST(req: NextRequest) {
         .from('hudl_import_jobs')
         .select(JOB_COLUMNS)
         .eq('team_id', teamId)
+        .eq('job_kind', 'import')
         .eq('target_key', targetKey)
         .in('status', ['queued', 'running', 'retrying'])
         .maybeSingle()
