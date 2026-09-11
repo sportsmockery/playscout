@@ -237,18 +237,34 @@ they are placeholder art, not brand art.
 
 ## Status & scope
 
-Implemented end-to-end with real data wiring: auth, team switching, Home command
-center, Film list/detail with native playback, play confirmation, the Analyze
-hub + module preflight + report renderer + coach-correction, PlayScoutIQ SSE
-chat, roster, opponents surfacing, the full TUS upload pipeline, push-token
-registration, notifications preferences, and account deletion.
+Implemented end-to-end with real data wiring: auth, team switching, Home
+command center, Film library with folders and multi-select, film detail with
+native playback, play confirmation, the Analyze hub, module preflight,
+**batch analysis with a cumulative report**, the report renderer and
+coach-correction, PlayScoutIQ SSE chat, **roster editing**, opponents
+(including creating one), **film from a link**, the full TUS upload pipeline,
+push-token registration, notifications preferences, and account deletion.
 
-Deliberately deferred / web-only for now (clearly marked in-app):
-- Complex playbook play editing (native quality bar not yet met).
-- Team/admin settings deep-link to the web in the system browser.
-- Maestro E2E flows and on-device QA (require physical devices / EAS builds).
+### Parity with the web app
 
-No mock-only screens are on the production path.
+Batch analysis, folders, opponents and film-from-link all reuse the **web API
+routes unchanged**. `lib/supabase/server.ts` attaches the Bearer token this
+client sends, and `requireTeamMember` runs the same membership check either
+way, so a batch queued from a phone is the same row — drained by the same
+Railway worker — as one queued from a browser.
+
+Still web-only, and deliberately so for now:
+
+| Area | Why |
+|---|---|
+| PlaybookIQ upload + play editing | Not a film module (absent from `analyze-position`'s `MODULE_MAP`); the app says so rather than offering a run that fails. Play editing hasn't met the native quality bar. |
+| Team creation and team settings | Setup work, done once, off the field. |
+| Admin: members, team access, usage | Org administration on a phone screen. |
+| Hudl account connect + playlist import | Driving a coach's Hudl login from a phone is a credential surface worth deciding on deliberately. |
+| Team intelligence dashboard (tendencies) | Home surfaces latest intelligence; the full dashboard is not ported. |
+
+Each of these is reachable on the web, and the app does not pretend to offer
+them.
 
 ### Known note: expo-doctor "duplicate react"
 
