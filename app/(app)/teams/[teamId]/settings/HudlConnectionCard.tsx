@@ -120,6 +120,25 @@ export default function HudlConnectionCard({ teamId }: { teamId: string }) {
     [session]
   );
 
+  /**
+   * Queues a sign-in test on the worker and switches the card into polling.
+   *
+   * `previousVerifiedAt` is passed rather than read from state because the
+   * caller may have just refreshed status — React has not committed it yet,
+   * and a stale value here makes a real success look like nothing happened.
+   */
+  async function startVerify(previousVerifiedAt: string | null) {
+    verifiedBefore.current = previousVerifiedAt;
+    const res = await fetch('/api/integrations/hudl/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ teamId }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Could not start the connection test.');
+    setTesting(true);
+  }
+
   async function connect(e: React.FormEvent) {
     e.preventDefault();
     if (busy) return;
@@ -140,16 +159,26 @@ export default function HudlConnectionCard({ teamId }: { teamId: string }) {
       if (!res.ok) throw new Error(data.error || 'Could not save the connection.');
       setPassword('');
       setSession('');
-      setSaved(
+      const stored =
         mode === 'session'
           ? `Saved ${data.cookiesStored} Hudl cookie${data.cookiesStored === 1 ? '' : 's'}` +
-              (data.cookiesDropped
-                ? `, and discarded ${data.cookiesDropped} from other sites.`
-                : '.') +
-              ' Test the connection to confirm Hudl accepts it.'
-          : 'Saved. Test the connection to confirm Hudl accepts it.'
-      );
+            (data.cookiesDropped ? `, and discarded ${data.cookiesDropped} from other sites.` : '.')
+          : 'Saved.';
+      setSaved(`${stored} Checking that Hudl accepts it…`);
       apply(await fetchStatus());
+
+      // Connecting tests itself. The standalone button only appears once an
+      // account exists, which is precisely the moment a coach most wants to
+      // know whether it worked — so they should not have to find it. A fresh
+      // connect clears last_verified_at server-side, hence the null baseline.
+      try {
+        await startVerify(null);
+      } catch {
+        // The credential IS saved; only the test could not be queued. Saying
+        // "could not save the connection" here would be a lie that sends a
+        // coach to re-enter something already stored correctly.
+        setSaved(`${stored} Could not start the connection test — press Test connection to retry.`);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save the connection.');
     } finally {
@@ -162,16 +191,8 @@ export default function HudlConnectionCard({ teamId }: { teamId: string }) {
     setBusy(true);
     setError('');
     setSaved('');
-    verifiedBefore.current = status?.lastVerifiedAt ?? null;
     try {
-      const res = await fetch('/api/integrations/hudl/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ teamId }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || 'Could not start the connection test.');
-      setTesting(true);
+      await startVerify(status?.lastVerifiedAt ?? null);
       apply(await fetchStatus());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not start the connection test.');
