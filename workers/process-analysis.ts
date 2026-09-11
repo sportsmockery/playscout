@@ -21,7 +21,11 @@ import {
   reapStuckAnalysisJobs,
   type AnalysisJobRow,
 } from '../lib/intelligence/run-analysis-job'
-import { maybeSummarizeBatch } from '../lib/intelligence/run-batch-summary'
+import {
+  maybeSummarizeBatch,
+  reapStuckSummaries,
+  sweepPendingSummaries,
+} from '../lib/intelligence/run-batch-summary'
 
 const WORKER_ID = process.env.WORKER_ID
   ? `${process.env.WORKER_ID}-analysis`
@@ -61,6 +65,22 @@ async function main() {
         if (reaped) log(`reaped ${reaped} stuck analysis job(s)`)
       } catch (err) {
         log('reap error', err instanceof Error ? err.message : err)
+      }
+
+      // Combined reports waiting on nobody.
+      //
+      // maybeSummarizeBatch below only fires off the back of a finishing job,
+      // so a batch whose clips are ALL done — a retried one, or one whose
+      // synthesis died mid-call — had nothing left to trigger it. The reap
+      // first, because a runner killed at a request deadline leaves the row
+      // claimed as 'running' and nothing else will ever touch that.
+      try {
+        const handedBack = await reapStuckSummaries(supabase)
+        if (handedBack) log(`reclaimed ${handedBack} stuck batch summary/summaries`)
+        const written = await sweepPendingSummaries(supabase)
+        if (written) log(`wrote ${written} pending batch report(s)`)
+      } catch (err) {
+        log('summary sweep error', err instanceof Error ? err.message : err)
       }
     }
 

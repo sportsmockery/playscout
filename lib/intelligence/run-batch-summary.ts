@@ -43,6 +43,69 @@ async function batchIsSettled(supabase: SupabaseClient, batchId: string): Promis
   return (count ?? 0) === 0
 }
 
+/**
+ * How long a summary may sit in 'running' before we assume its runner died.
+ *
+ * The synthesis is one model call over an aggregate; minutes, not tens of
+ * minutes. A Vercel function killed at its deadline leaves the row claimed
+ * forever, and 'running' is the one status nothing else will touch — so
+ * without this a batch becomes permanently unsummarizable, which is strictly
+ * worse than the failure it was retrying.
+ */
+const STUCK_SUMMARY_TIMEOUT_MS = Number(process.env.SUMMARY_STUCK_TIMEOUT_MS ?? 10 * 60 * 1000)
+
+/** Hand back summaries whose runner never came home. */
+export async function reapStuckSummaries(
+  supabase: SupabaseClient,
+  opts?: { timeoutMs?: number; batchId?: string }
+): Promise<number> {
+  const cutoff = new Date(Date.now() - (opts?.timeoutMs ?? STUCK_SUMMARY_TIMEOUT_MS)).toISOString()
+  let query = supabase
+    .from('analysis_batches')
+    .update({
+      summary_status: 'pending',
+      summary_error: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('summary_status', 'running')
+    .lt('updated_at', cutoff)
+  if (opts?.batchId) query = query.eq('id', opts.batchId)
+
+  const { data } = await query.select('id')
+  return data?.length ?? 0
+}
+
+/**
+ * Write any combined report that is waiting for one.
+ *
+ * maybeSummarizeBatch only ever ran off the back of a finishing job, which is
+ * fine for the normal path — the last clip triggers the report — and leaves no
+ * route at all for a batch whose jobs are ALL done. A retry that puts the row
+ * back to 'pending' would sit there indefinitely. This is what picks it up,
+ * and it belongs on the worker: no request deadline, and a 188-clip aggregate
+ * is a long enough call to exceed one.
+ */
+export async function sweepPendingSummaries(
+  supabase: SupabaseClient,
+  opts?: { limit?: number }
+): Promise<number> {
+  const { data } = await supabase
+    .from('analysis_batches')
+    .select('id')
+    .eq('summary_status', 'pending')
+    .order('updated_at', { ascending: true })
+    .limit(opts?.limit ?? 3)
+
+  let written = 0
+  for (const row of data ?? []) {
+    // maybeSummarizeBatch re-checks that the batch is settled and claims it
+    // atomically, so a sweep racing the job-completion path is harmless.
+    const outcome = await maybeSummarizeBatch(supabase, row.id as string)
+    if (outcome === 'written') written++
+  }
+  return written
+}
+
 export async function maybeSummarizeBatch(
   supabase: SupabaseClient,
   batchId: string
