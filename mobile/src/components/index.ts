@@ -12,3 +12,4 @@ export { FilmRow } from './FilmRow';
 export { ToastProvider, useToast } from './Toast';
 export { TopBar } from './TopBar';
 export { TeamSwitcher } from './TeamSwitcher';
+export { ConfigurationNotice } from './ConfigurationNotice';

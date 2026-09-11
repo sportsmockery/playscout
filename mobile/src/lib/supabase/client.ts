@@ -9,14 +9,28 @@ import { SecureStorageAdapter } from './secureStorage';
  * like the web browser client. The session persists in the OS keychain via the
  * chunked SecureStore adapter and auto-refreshes while the app is foregrounded.
  */
-export const supabase = createClient(config.supabaseUrl, config.supabaseAnonKey, {
-  auth: {
-    storage: SecureStorageAdapter,
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: false,
+/**
+ * `createClient` throws on an empty URL, and this module is imported from the
+ * root layout — so a build that shipped without its public env would die at
+ * import with a stack trace and no UI. A build like that should never leave EAS
+ * (app.config.ts fails it), but if one does, the app must be able to render the
+ * screen that explains why. Falling back to a syntactically valid placeholder
+ * keeps construction total; `isConfigured` is what gates real use.
+ */
+const PLACEHOLDER_URL = 'https://unconfigured.invalid';
+
+export const supabase = createClient(
+  config.supabaseUrl || PLACEHOLDER_URL,
+  config.supabaseAnonKey || 'unconfigured',
+  {
+    auth: {
+      storage: SecureStorageAdapter,
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: false,
+    },
   },
-});
+);
 
 // Supabase recommends pausing auto-refresh when the app is backgrounded and
 // resuming on foreground, so refresh timers don't fire while suspended.

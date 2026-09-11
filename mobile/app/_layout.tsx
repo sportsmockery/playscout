@@ -7,9 +7,10 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider } from '@/theme/ThemeProvider';
-import { ToastProvider } from '@/components';
+import { ToastProvider, ConfigurationNotice } from '@/components';
 import { AuthProvider, useAuth } from '@/lib/auth/AuthContext';
 import { queryClient } from '@/lib/query/client';
+import { isConfigured } from '@/lib/config';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -24,6 +25,25 @@ function SplashGate({ children }: { children: React.ReactNode }) {
 }
 
 export default function RootLayout() {
+  // A build with no Supabase config can never reach a signed-in state. Render
+  // the reason instead of letting every screen fail one network call at a time.
+  useEffect(() => {
+    if (!isConfigured) SplashScreen.hideAsync().catch(() => {});
+  }, []);
+
+  if (!isConfigured) {
+    return (
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider>
+          <ThemeProvider>
+            <StatusBar style="auto" />
+            <ConfigurationNotice />
+          </ThemeProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    );
+  }
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>

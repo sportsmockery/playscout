@@ -31,6 +31,33 @@ jobs:
       # file's header for the exact command.
       - run: npm test
 
+  mobile:
+    name: Mobile lint, typecheck, unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - run: npm ci
+        working-directory: mobile
+      - run: npm run lint
+        working-directory: mobile
+      - run: npm run typecheck
+        working-directory: mobile
+      - run: npm test
+        working-directory: mobile
+      # Proves the app still bundles. Catches a broken import or a bad native
+      # module resolution that lint and tsc both pass over — the class of
+      # failure that otherwise surfaces as a failed EAS build.
+      - run: npx expo export --platform ios --output-dir /tmp/expo-export
+        working-directory: mobile
+        env:
+          EXPO_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-not-a-real-key
+
   smoke:
     name: Playwright smoke (public pages)
     runs-on: ubuntu-latest
