@@ -65,6 +65,12 @@ export interface Opponent {
   age_group?: string | null;
   next_game_date?: string | null;
   notes?: string | null;
+  /**
+   * What this opponent wears. ScoutIQ uses it to decide which side of the ball
+   * it is grading — without it the model can grade the wrong team entirely, so
+   * a scouting run requires it.
+   */
+  jersey_color?: string | null;
   created_at: string;
 }
 

@@ -24,7 +24,9 @@ export async function GET(req: Request) {
 
   const { data: opponents, error } = await supabase
     .from('opponents')
-    .select('id, name, age_group, next_game_date, notes, created_at')
+    // jersey_color decides which side ScoutIQ grades, so the app needs it to
+    // run a scouting report at all.
+    .select('id, name, age_group, next_game_date, notes, jersey_color, created_at')
     .eq('team_id', teamId)
     .order('next_game_date', { ascending: true, nullsFirst: false })
 

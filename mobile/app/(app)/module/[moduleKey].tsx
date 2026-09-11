@@ -9,16 +9,18 @@ import {
   Section,
   Button,
   Row,
+  Field,
   EmptyState,
   SegmentedControl,
   useToast,
 } from '@/components';
 import { useTheme } from '@/theme/ThemeProvider';
-import { useFilm, useRoster, qk } from '@/hooks/queries';
+import { useFilm, useRoster, useOpponents, qk } from '@/hooks/queries';
 import { useTeamStore } from '@/stores/teamStore';
 import { moduleByKey } from '@/features/intelligence/modules';
+import { preflightBlock, PREFLIGHT_BLOCK_COPY, runsInline as computeRunsInline } from '@/features/intelligence/preflight';
 import { canWrite, writeDeniedReason } from '@/utils/roles';
-import { runAnalysis, queueBatch, runBatchQueue } from '@/lib/api/endpoints';
+import { runAnalysis, queueBatch, runBatchQueue, updateOpponentJersey } from '@/lib/api/endpoints';
 import { useQueryClient } from '@tanstack/react-query';
 import { isAnalyzable } from '@/utils/status';
 
@@ -45,8 +47,14 @@ export default function ModulePreflight() {
   const [running, setRunning] = useState(false);
   const [sideOfBall, setSideOfBall] = useState<'offense' | 'defense'>('offense');
   const [isScrimmage, setIsScrimmage] = useState(false);
+  const [opponentId, setOpponentId] = useState<string | null>(null);
+  const [jerseyColor, setJerseyColor] = useState('');
+  const [jerseySaved, setJerseySaved] = useState(false);
 
-  const film = useFilm(activeTeam?.id ?? null, 'self');
+  // ScoutIQ grades the OPPONENT, so it reads opponent film, not ours.
+  const scouting = mod?.subject === 'opponent';
+  const film = useFilm(activeTeam?.id ?? null, scouting ? 'opponent' : 'self');
+  const opponents = useOpponents(scouting ? activeTeam?.id ?? null : null);
   const roster = useRoster(mod?.perPlayer || mod?.key === 'RANKERIQ' ? activeTeam?.id ?? null : null);
 
   const allFilms = useMemo(() => film.data?.pages.flatMap((p) => p.videos) ?? [], [film.data]);
@@ -69,12 +77,37 @@ export default function ModulePreflight() {
     );
   }
 
+  if (mod.subject === 'document') {
+    return (
+      <>
+        <TopBar title={mod.name} />
+        <Screen>
+          <Card style={{ marginTop: 12 }}>
+            <Text role="sectionTitle">PlaybookIQ reads a playbook, not film</Text>
+            <Text role="body" color="textSecondary" style={{ marginTop: 8 }}>
+              Upload your playbook on the web and PlayScout will read it there. Its plays
+              and install order aren’t editable on a phone yet, so we don’t pretend
+              otherwise here.
+            </Text>
+          </Card>
+        </Screen>
+      </>
+    );
+  }
+
   const writable = canWrite(activeTeam.role);
   const needsPlayer = mod.perPlayer;
-  const canRun = writable && videoIds.length > 0 && (!needsPlayer || !!playerId);
-  // One already-processed clip is a report a coach can read now; everything
-  // else is a session, and queueing keeps them out of a spinner.
-  const runsInline = videoIds.length === 1 && !!videoIds[0] && readyNow.has(videoIds[0]);
+  const selectedOpponent = (opponents.data?.opponents ?? []).find((o) => o.id === opponentId) ?? null;
+  const effectiveJersey = (jerseyColor.trim() || selectedOpponent?.jersey_color || '').trim();
+  const block = preflightBlock(mod, {
+    writable,
+    videoIds,
+    playerId,
+    opponentId,
+    jerseyColor: effectiveJersey,
+  });
+  const canRun = block === null;
+  const runsInline = computeRunsInline(videoIds, readyNow);
   const isRanker = mod.key === 'RANKERIQ';
   const rosterHasNumbers = (roster.data?.players ?? []).some((p) => !!p.jersey_number);
 
@@ -90,6 +123,9 @@ export default function ModulePreflight() {
     if (activeTeam!.ageGroup) team.age_group = activeTeam!.ageGroup;
     if (activeTeam!.level) team.level = activeTeam!.level;
     const ctx: Record<string, unknown> = { team };
+    if (scouting && selectedOpponent) {
+      ctx.opponent = { name: selectedOpponent.name, jersey_color: effectiveJersey };
+    }
     if (isRanker) {
       // Pinnies and borrowed jerseys carry other players' numbers, so on
       // scrimmage film a roster "match" proves nothing about who is wearing it.
@@ -103,6 +139,15 @@ export default function ModulePreflight() {
     if (!canRun) return;
     setRunning(true);
     try {
+      // Persist a corrected jersey colour so the next run (and the web) start
+      // from it — it used to live in page state a reload threw away.
+      if (scouting && opponentId && jerseyColor.trim() && !jerseySaved) {
+        await updateOpponentJersey({
+          teamId: activeTeam!.id,
+          opponentId,
+          jerseyColor: jerseyColor.trim(),
+        }).then(() => setJerseySaved(true)).catch(() => {});
+      }
       if (runsInline) {
         const res = await runAnalysis({
           moduleKey: mod!.key,
@@ -190,11 +235,55 @@ export default function ModulePreflight() {
           </Section>
         ) : null}
 
+        {scouting ? (
+          <Section title="Who are you scouting?">
+            {(opponents.data?.opponents.length ?? 0) === 0 ? (
+              <Card>
+                <Text role="body" color="textSecondary">
+                  No opponents yet. Add one when you add their film.
+                </Text>
+              </Card>
+            ) : (
+              (opponents.data?.opponents ?? []).map((o) => (
+                <SelectableRow
+                  key={o.id}
+                  label={o.name}
+                  note={o.jersey_color ? `Wears ${o.jersey_color}` : 'No jersey colour on file'}
+                  selected={o.id === opponentId}
+                  onPress={() => {
+                    setOpponentId(o.id);
+                    setJerseyColor('');
+                    setJerseySaved(false);
+                  }}
+                />
+              ))
+            )}
+            {opponentId ? (
+              <Card style={{ marginTop: 4 }}>
+                <Field
+                  label="Jersey colour"
+                  value={jerseyColor || selectedOpponent?.jersey_color || ''}
+                  onChangeText={(v) => {
+                    setJerseyColor(v);
+                    setJerseySaved(false);
+                  }}
+                  placeholder="e.g. white with red numbers"
+                  autoCapitalize="none"
+                  hint="Which side to grade. Without it the report could describe the wrong team."
+                  containerStyle={{ marginBottom: 0 }}
+                />
+              </Card>
+            ) : null}
+          </Section>
+        ) : null}
+
         <Section title={`Film${videoIds.length ? ` · ${videoIds.length} selected` : ''}`}>
           {selectableFilms.length === 0 ? (
             <Card>
               <Text role="body" color="textSecondary">
-                No film yet. Upload film first, then come back to analyze it.
+                {scouting
+                  ? 'No opponent film yet. Add film marked as opponent film, then scout it here.'
+                  : 'No film yet. Upload film first, then come back to analyze it.'}
               </Text>
             </Card>
           ) : (
@@ -269,6 +358,12 @@ export default function ModulePreflight() {
                     : 'Queued — you can leave this screen'
               }
             />
+            {scouting ? (
+              <SummaryRow k="Opponent" v={selectedOpponent?.name ?? 'Not selected'} />
+            ) : null}
+            {scouting ? (
+              <SummaryRow k="They wear" v={effectiveJersey || 'Not set'} />
+            ) : null}
             <SummaryRow k="Permission" v={writable ? 'You can run this' : 'Read-only'} />
           </Card>
         </Section>
@@ -288,6 +383,11 @@ export default function ModulePreflight() {
             loading={running}
             disabled={!canRun}
           />
+          {block && block !== 'read_only' ? (
+            <Text role="metadata" color="textSecondary" align="center" style={{ marginTop: 8 }}>
+              {PREFLIGHT_BLOCK_COPY[block]}
+            </Text>
+          ) : null}
           {!runsInline && videoIds.length > 0 ? (
             <Text role="metadata" color="textSecondary" align="center" style={{ marginTop: 8 }}>
               Analysis keeps running if you close the app. You’ll get one combined report.

@@ -4,6 +4,8 @@
  * failure CLAUDE.md records against the players table. These tests pin that
  * every mutation treats "no error, no rows" as a denial.
  */
+import { createPlayer, updatePlayer, deletePlayer, EMPTY_DRAFT } from '@/features/roster/mutations';
+
 const result = { data: null as unknown, error: null as unknown };
 
 jest.mock('@/lib/supabase/client', () => {
@@ -16,8 +18,6 @@ jest.mock('@/lib/supabase/client', () => {
   builder.then = (resolve: (v: unknown) => unknown) => Promise.resolve(result).then(resolve);
   return { supabase: { from: jest.fn(() => builder) } };
 });
-
-import { createPlayer, updatePlayer, deletePlayer, EMPTY_DRAFT } from '@/features/roster/mutations';
 
 const DRAFT = { ...EMPTY_DRAFT, firstName: 'Sam', jerseyNumber: '07' };
 
