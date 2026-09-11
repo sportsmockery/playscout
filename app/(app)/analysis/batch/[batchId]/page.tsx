@@ -5,6 +5,7 @@ import { AlertCircle, ArrowLeft, CheckCircle2, Clock, Film, Layers, TrendingDown
 import type { BatchAggregate } from '@/lib/intelligence/aggregate-batch';
 import type { BatchSummary } from '@/lib/intelligence/batch-summary';
 import ClipBreakdown from './ClipBreakdown';
+import RetrySummaryButton from './RetrySummaryButton';
 import NextSteps from '@/components/intelligence/NextSteps';
 import PrintButton from '@/components/intelligence/PrintButton';
 
@@ -125,6 +126,14 @@ export default async function BatchReportPage({
             <p className="text-sm text-red-700">
               Every clip&apos;s own analysis below is unaffected. {batch.summary_error as string}
             </p>
+            {/* A failed synthesis used to be permanent: maybeSummarizeBatch
+                only claims a batch whose summary_status is 'pending', and a
+                failure sets it to 'failed' for good. That is right for a
+                prompt that will fail identically every time, and wrong for a
+                missing API key — which is what happened, and which someone
+                then fixes. Without this the only way back to the report was
+                re-running every clip. */}
+            <RetrySummaryButton batchId={batch.id as string} />
           </div>
         </div>
       )}
