@@ -247,24 +247,33 @@ push-token registration, notifications preferences, and account deletion.
 
 ### Parity with the web app
 
-Batch analysis, folders, opponents and film-from-link all reuse the **web API
-routes unchanged**. `lib/supabase/server.ts` attaches the Bearer token this
-client sends, and `requireTeamMember` runs the same membership check either
-way, so a batch queued from a phone is the same row — drained by the same
-Railway worker — as one queued from a browser.
+The app now covers the web's feature set. Batch analysis, folders, opponents,
+film-from-link, Hudl and admin all reuse the **web API routes unchanged**:
+`lib/supabase/server.ts` attaches the Bearer token this client sends, and
+`requireTeamMember` / `requireAdmin` run the same checks either way, so a batch
+queued from a phone is the same row — drained by the same Railway worker — as
+one queued from a browser.
 
-Still web-only, and deliberately so for now:
+Five `/api/mobile/*` endpoints exist where the web did the work inside a page
+render rather than behind a route: `teams`, `intelligence`, `usage`,
+`playbooks`, plus folder support added to `film`. They aggregate; they never
+weaken a check.
 
-| Area | Why |
-|---|---|
-| PlaybookIQ upload + play editing | Not a film module (absent from `analyze-position`'s `MODULE_MAP`); the app says so rather than offering a run that fails. Play editing hasn't met the native quality bar. |
-| Team creation and team settings | Setup work, done once, off the field. |
-| Admin: members, team access, usage | Org administration on a phone screen. |
-| Hudl account connect + playlist import | Driving a coach's Hudl login from a phone is a credential surface worth deciding on deliberately. |
-| Team intelligence dashboard (tendencies) | Home surfaces latest intelligence; the full dashboard is not ported. |
+| Area | Mobile | Note |
+|---|---|---|
+| Film library, folders, upload, from-link | Yes | Long-press to multi-select; a selection goes straight into a module |
+| Batch analysis + cumulative report | Yes | Queue and leave; the worker finishes it |
+| Modules | Yes | QBIQ, RBIQ, OLIQ, TeamIQ, MistakeIQ, RankerIQ, ScoutIQ |
+| PlaybookIQ | Upload + analysis | Per-play **editing** stays on the web — it is a diagram editor |
+| Roster | Yes | Editable; jersey numbers unlock player-level grading |
+| Opponents | Yes | Create, and set the jersey colour ScoutIQ needs |
+| Team settings + creation | Yes | Including `game_type`, which gates every contact drill |
+| Team intelligence | Yes | Tendencies, mistake rollup, recent reports |
+| Hudl | Yes | Connect the coach's own account, import a playlist |
+| Admin | Yes | Members, roles, per-team access, AI spend |
 
-Each of these is reachable on the web, and the app does not pretend to offer
-them.
+Still web-only, deliberately: playbook play editing (above) and the marketing
+and legal pages, which the app links out to.
 
 ### Known note: expo-doctor "duplicate react"
 

@@ -53,7 +53,10 @@ export interface Team {
   state?: string | null;
   offensive_style?: string | null;
   defensive_style?: string | null;
+  /** flag = no contact ever. Gates every contact-drill recommendation. */
   game_type?: GameType | null;
+  home_jersey_color?: string | null;
+  away_jersey_color?: string | null;
   notes?: string | null;
   created_at: string;
 }
@@ -335,4 +338,100 @@ export interface ActiveBatch {
   created_at: string;
   updated_at: string;
   team_name: string | null;
+}
+
+// ── Team intelligence ────────────────────────────────────────────────────────
+
+export interface TeamTendencyRow {
+  id: string;
+  tendency_type: string | null;
+  label: string | null;
+  value: Record<string, unknown> | null;
+  /**
+   * How many plays this rests on. A percentage without it is not a tendency —
+   * game-planning against four plays is how a coach gets beaten by their own
+   * scouting report — so the UI never shows one without the other.
+   */
+  sample_size: number | null;
+  confidence: number | null;
+  updated_at: string | null;
+}
+
+export interface MistakeEventRow {
+  id: string;
+  severity: MistakeSeverity | null;
+  category: string | null;
+  title: string | null;
+  description: string | null;
+  correction: string | null;
+  confidence: number | null;
+  created_at: string;
+}
+
+export interface MistakeCategoryRollup {
+  category: string;
+  count: number;
+  worstSeverity: string;
+  latestTitle: string | null;
+}
+
+// ── Hudl import ──────────────────────────────────────────────────────────────
+
+export interface HudlConnection {
+  connected: boolean;
+  /** False when HUDL_CREDENTIAL_KEY isn't set, so nothing could be sealed. */
+  keyConfigured: boolean;
+  email?: string | null;
+  lastVerifiedAt?: string | null;
+  sessionExpiresAt?: string | null;
+  lastError?: string | null;
+  connectedAt?: string | null;
+}
+
+export interface HudlImportJob {
+  id: string;
+  status: string;
+  current_step: string | null;
+  clips_found: number | null;
+  clips_imported: number | null;
+  clips_failed: number | null;
+  error_message: string | null;
+  source_url: string | null;
+  title: string | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
+// ── PlaybookIQ ───────────────────────────────────────────────────────────────
+
+export interface PlaybookAnalysis {
+  id: string;
+  playbook_id: string;
+  overall_score: number | null;
+  complexity_score: number | null;
+  /** Whether the book suits the team's age band — a safety signal, not a score. */
+  age_appropriate: boolean | null;
+  strengths: string[];
+  weaknesses: string[];
+  upgrade_recommendations: {
+    title: string;
+    reason: string;
+    priority: 'high' | 'medium' | 'low';
+    module?: string;
+  }[];
+  plays_to_keep: string[];
+  plays_to_remove: string[];
+  install_order: { week: number; play: string; reason: string }[];
+  summary: string | null;
+  created_at: string;
+}
+
+export interface Playbook {
+  id: string;
+  team_id: string;
+  title: string;
+  file_type: 'pdf' | 'pptx' | 'docx' | 'image';
+  page_count: number | null;
+  created_at: string;
+  analysis: PlaybookAnalysis | null;
 }

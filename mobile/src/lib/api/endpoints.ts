@@ -1,4 +1,5 @@
 import { apiRequest } from './client';
+import type { TeamSettingsInput } from './types';
 import type {
   Team,
   Video,
@@ -10,6 +11,12 @@ import type {
   ActiveBatch,
   VideoFolder,
   UserRole,
+  Playbook,
+  HudlConnection,
+  HudlImportJob,
+  TeamTendencyRow,
+  MistakeEventRow,
+  MistakeCategoryRollup,
 } from '@/types/domain';
 
 // ── Bootstrap & home ──────────────────────────────────────────────────────
@@ -287,3 +294,189 @@ export const moveVideosToFolder = (input: {
   videoIds: string[];
   folderId: string | null;
 }) => apiRequest<{ moved: number }>('/api/videos/move', { method: 'POST', body: input });
+
+// ── Teams ────────────────────────────────────────────────────────────────────
+
+export type { TeamSettingsInput } from './types';
+
+/** The organization is resolved server-side — a client that could name one
+ *  could move a team into somebody else's. */
+export const createTeam = (input: TeamSettingsInput) =>
+  apiRequest<{ team: Team }>('/api/mobile/teams', { method: 'POST', body: input });
+
+export const updateTeamSettings = (teamId: string, input: TeamSettingsInput) =>
+  apiRequest<{ team: Team }>('/api/mobile/teams', {
+    method: 'PATCH',
+    body: { teamId, ...input },
+  });
+
+// ── Team intelligence ────────────────────────────────────────────────────────
+
+export interface TeamIntelligenceResponse {
+  tendencies: TeamTendencyRow[];
+  mistakes: MistakeEventRow[];
+  mistakeRollup: MistakeCategoryRollup[];
+  analyses: { id: string; module_key: string | null; overall_score: number | null; summary: string | null; created_at: string }[];
+}
+
+export const getTeamIntelligence = (teamId: string) =>
+  apiRequest<TeamIntelligenceResponse>(
+    `/api/mobile/intelligence?teamId=${encodeURIComponent(teamId)}`,
+  );
+
+// ── Admin ────────────────────────────────────────────────────────────────────
+// These reuse the web admin routes unchanged: requireAdmin() builds its client
+// through lib/supabase/server.ts, which attaches the Bearer token this client
+// sends, so the same org-admin check gates both surfaces.
+
+export interface OrgMember {
+  id: string;
+  userId: string;
+  role: UserRole;
+  email: string;
+  lastSignInAt: string | null;
+  isSelf: boolean;
+  allTeams: boolean;
+  teamIds: string[];
+}
+
+export const getOrgMembers = () =>
+  apiRequest<{ members: OrgMember[]; teams: { id: string; name: string }[] }>('/api/admin/members');
+
+/** Returns a temporary password when a brand-new account was created for the
+ *  invitee — it is shown once and never stored, so it must reach the admin. */
+export const addOrgMember = (input: { email: string; role: UserRole }) =>
+  apiRequest<{ ok: true; userId: string; email: string; role: string; tempPassword?: string }>(
+    '/api/admin/members',
+    { method: 'POST', body: input },
+  );
+
+export const updateMemberRole = (input: { userId: string; role: UserRole }) =>
+  apiRequest<{ ok: true }>('/api/admin/members', { method: 'PATCH', body: input });
+
+export const removeOrgMember = (userId: string) =>
+  apiRequest<{ ok: true }>('/api/admin/members', { method: 'DELETE', body: { userId } });
+
+/** allTeams true grants every team, present and future; otherwise teamIds is
+ *  the exact set — it replaces, it does not add. */
+export const setMemberTeamAccess = (input: {
+  userId: string;
+  allTeams: boolean;
+  teamIds: string[];
+}) => apiRequest<{ ok: true }>('/api/admin/team-access', { method: 'PUT', body: input });
+
+export interface UsageResponse {
+  windowDays: number;
+  organizationName: string | null;
+  totalCost: number;
+  totalCalls: number;
+  cacheHits: number;
+  cacheHitRate: number;
+  byJobType: { jobType: string; calls: number; cost: number }[];
+  byDay: { day: string; cost: number }[];
+}
+
+export const getUsage = () => apiRequest<UsageResponse>('/api/mobile/usage');
+
+// ── Hudl ─────────────────────────────────────────────────────────────────────
+// The coach's own account, their own film, at their explicit instruction. The
+// password is sent once over TLS, sealed server-side with HUDL_CREDENTIAL_KEY,
+// and never stored on the device or returned by any of these calls.
+
+export const getHudlConnection = (teamId: string) =>
+  apiRequest<HudlConnection>(`/api/integrations/hudl?teamId=${encodeURIComponent(teamId)}`);
+
+export const connectHudl = (input: { teamId: string; email: string; password: string }) =>
+  apiRequest<{ connected: true; email: string }>('/api/integrations/hudl', {
+    method: 'POST',
+    body: input,
+    // Sign-in drives a real browser on the worker, so it is slow by nature.
+    timeoutMs: 120_000,
+  });
+
+export const disconnectHudl = (teamId: string) =>
+  apiRequest<{ ok: true }>(`/api/integrations/hudl?teamId=${encodeURIComponent(teamId)}`, {
+    method: 'DELETE',
+  });
+
+export const getHudlImports = (teamId: string) =>
+  apiRequest<{ jobs: HudlImportJob[] }>(
+    `/api/integrations/hudl/import?teamId=${encodeURIComponent(teamId)}`,
+  );
+
+export const startHudlImport = (input: {
+  teamId: string;
+  url: string;
+  title?: string;
+  folderId?: string;
+  opponentId?: string;
+}) => apiRequest<{ jobId: string }>('/api/integrations/hudl/import', { method: 'POST', body: input });
+
+export const cancelHudlImport = (input: { teamId: string; jobId: string }) =>
+  apiRequest<{ ok: true }>(
+    `/api/integrations/hudl/import?teamId=${encodeURIComponent(input.teamId)}&jobId=${encodeURIComponent(input.jobId)}`,
+    { method: 'DELETE' },
+  );
+
+// ── PlaybookIQ ───────────────────────────────────────────────────────────────
+
+export const getPlaybooks = (teamId: string) =>
+  apiRequest<{ playbooks: Playbook[] }>(
+    `/api/mobile/playbooks?teamId=${encodeURIComponent(teamId)}`,
+  );
+
+/** File types the server accepts. Checked here too so a coach learns before
+ *  pushing a 20MB file up a hotspot, not after. */
+export const PLAYBOOK_MIME_TYPES = [
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'image/jpeg',
+  'image/png',
+] as const;
+
+/**
+ * Uploads the book itself. Multipart, so it goes through apiRequest's `form`
+ * path — text extraction happens server-side on the way in.
+ */
+export const uploadPlaybook = (input: {
+  teamId: string;
+  title: string;
+  uri: string;
+  name: string;
+  mimeType: string;
+}) => {
+  const form = new FormData();
+  form.append('teamId', input.teamId);
+  form.append('title', input.title);
+  // React Native's FormData takes this shape for a file; the cast is the
+  // standard RN workaround for a DOM-typed FormData signature.
+  form.append('file', {
+    uri: input.uri,
+    name: input.name,
+    type: input.mimeType,
+  } as unknown as Blob);
+  return apiRequest<{ playbook: { id: string } }>('/api/playbookiq/upload', {
+    method: 'POST',
+    form,
+    timeoutMs: 180_000,
+  });
+};
+
+export const analyzePlaybook = (input: {
+  playbookId: string;
+  teamName?: string;
+  ageGroup?: string;
+  offensiveStyle?: string;
+  defensiveStyle?: string;
+}) =>
+  apiRequest<{ analysis: unknown }>('/api/playbookiq/analyze', {
+    method: 'POST',
+    body: input,
+    timeoutMs: 240_000,
+  });
+
+export const deletePlaybook = (playbookId: string) =>
+  apiRequest<{ ok: true }>(`/api/playbookiq/${encodeURIComponent(playbookId)}`, {
+    method: 'DELETE',
+  });

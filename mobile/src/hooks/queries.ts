@@ -14,6 +14,12 @@ export const qk = {
   opponents: (teamId: string) => ['opponents', teamId] as const,
   frames: (videoId: string) => ['frames', videoId] as const,
   folders: (teamId: string) => ['folders', teamId] as const,
+  intelligence: (teamId: string) => ['intelligence', teamId] as const,
+  playbooks: (teamId: string) => ['playbooks', teamId] as const,
+  hudlConnection: (teamId: string) => ['hudl', 'connection', teamId] as const,
+  hudlImports: (teamId: string) => ['hudl', 'imports', teamId] as const,
+  orgMembers: ['admin', 'members'] as const,
+  usage: ['admin', 'usage'] as const,
   batches: (teamId: string, moduleKey?: string) => ['batches', teamId, moduleKey ?? 'all'] as const,
   batch: (batchId: string) => ['batch', batchId] as const,
   activeBatches: ['batches', 'active'] as const,
@@ -152,5 +158,56 @@ export function useActiveBatches(enabled: boolean) {
     enabled,
     refetchInterval: (q) =>
       (q.state.data?.batches ?? []).some(batchIsLive) ? 6_000 : 30_000,
+  });
+}
+
+export function useTeamIntelligence(teamId: string | null) {
+  return useQuery({
+    queryKey: qk.intelligence(teamId ?? ''),
+    queryFn: () => api.getTeamIntelligence(teamId as string),
+    enabled: !!teamId,
+  });
+}
+
+// ── Admin ───────────────────────────────────────────────────────────────────
+
+export function useOrgMembers(enabled: boolean) {
+  return useQuery({ queryKey: qk.orgMembers, queryFn: api.getOrgMembers, enabled });
+}
+
+export function useUsage(enabled: boolean) {
+  return useQuery({ queryKey: qk.usage, queryFn: api.getUsage, enabled });
+}
+
+// ── Hudl ────────────────────────────────────────────────────────────────────
+
+export function useHudlConnection(teamId: string | null) {
+  return useQuery({
+    queryKey: qk.hudlConnection(teamId ?? ''),
+    queryFn: () => api.getHudlConnection(teamId as string),
+    enabled: !!teamId,
+  });
+}
+
+export function useHudlImports(teamId: string | null) {
+  return useQuery({
+    queryKey: qk.hudlImports(teamId ?? ''),
+    queryFn: () => api.getHudlImports(teamId as string),
+    enabled: !!teamId,
+    // An import pulls clips serially with a delay to avoid getting the coach's
+    // own Hudl account flagged, so it is slow — poll while one is live, stop
+    // the moment none is.
+    refetchInterval: (q) =>
+      (q.state.data?.jobs ?? []).some((j) => j.status === 'queued' || j.status === 'running')
+        ? 6_000
+        : false,
+  });
+}
+
+export function usePlaybooks(teamId: string | null) {
+  return useQuery({
+    queryKey: qk.playbooks(teamId ?? ''),
+    queryFn: () => api.getPlaybooks(teamId as string),
+    enabled: !!teamId,
   });
 }

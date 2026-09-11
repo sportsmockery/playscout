@@ -6,6 +6,13 @@ import type { UserRole } from '@/types/domain';
 export const WRITE_ROLES: readonly UserRole[] = ['owner', 'admin', 'coach', 'analyst'];
 export const ADMIN_ROLES: readonly UserRole[] = ['owner', 'admin'];
 
+/**
+ * Roles an admin may hand out. Mirrors lib/auth/roles.ts — 'owner' is
+ * deliberately absent: the server refuses to set or change it through the
+ * members endpoint, so offering it would only produce a rejected request.
+ */
+export const ASSIGNABLE_ROLES: readonly UserRole[] = ['admin', 'coach', 'analyst', 'viewer'];
+
 export function canWrite(role: UserRole | null | undefined): boolean {
   return role != null && WRITE_ROLES.includes(role);
 }

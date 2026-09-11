@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Pressable, FlatList, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
-import { Screen, Text } from '@/components';
+import { Screen, Text, Button } from '@/components';
 import { useTheme } from '@/theme/ThemeProvider';
 import { useBootstrap } from '@/hooks/queries';
 import { useTeamStore } from '@/stores/teamStore';
@@ -51,9 +51,21 @@ export default function TeamPicker() {
           );
         }}
         ListEmptyComponent={
-          <Text role="body" color="textSecondary">
-            You’re not on any teams yet. Ask your organization admin to add you.
-          </Text>
+          <View>
+            <Text role="body" color="textSecondary">
+              You’re not on any teams yet. Create one, or ask your organization admin to
+              add you to theirs.
+            </Text>
+          </View>
+        }
+        ListFooterComponent={
+          <View style={{ marginTop: 20 }}>
+            <Button
+              label="New team"
+              variant="secondary"
+              onPress={() => router.push('/(app)/team/new')}
+            />
+          </View>
         }
       />
     </Screen>

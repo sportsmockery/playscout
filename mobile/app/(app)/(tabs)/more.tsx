@@ -6,7 +6,7 @@ import { Screen, TopBar, Text, Section, Card, ConfirmationSheet, useToast } from
 import { useTheme } from '@/theme/ThemeProvider';
 import { useAuth } from '@/lib/auth/AuthContext';
 import { useTeamStore } from '@/stores/teamStore';
-import { ROLE_LABELS } from '@/utils/roles';
+import { ROLE_LABELS, isAdmin } from '@/utils/roles';
 import { config } from '@/lib/config';
 
 const appVersion = `v${Constants.expoConfig?.version ?? '0.1.0'}`;
@@ -21,9 +21,19 @@ export default function MoreScreen() {
 
   const items: { label: string; onPress: () => void; note?: string }[] = [
     { label: 'Roster', onPress: () => router.push('/(app)/roster') },
-    { label: 'Opponents', onPress: () => router.push('/(app)/(tabs)/analyze') },
+    { label: 'Team intelligence', onPress: () => router.push('/(app)/intelligence') },
+    { label: 'Playbook', onPress: () => router.push('/(app)/playbook') },
+    { label: 'Import from Hudl', onPress: () => router.push('/(app)/hudl') },
     { label: 'Notifications', onPress: () => router.push('/(app)/notifications') },
-    { label: 'Team settings', onPress: () => openWeb(`/teams/${activeTeam?.id ?? ''}/settings`), note: 'Opens on the web' },
+    { label: 'Team settings', onPress: () => router.push('/(app)/team/settings') },
+  ];
+
+  // Org administration, only where it can actually be used.
+  const orgItems: { label: string; onPress: () => void; note?: string }[] = [
+    { label: 'New team', onPress: () => router.push('/(app)/team/new') },
+    ...(isAdmin(activeTeam?.role)
+      ? [{ label: 'Members & usage', onPress: () => router.push('/(app)/admin') }]
+      : []),
   ];
 
   const legal: { label: string; onPress: () => void }[] = [
@@ -55,6 +65,14 @@ export default function MoreScreen() {
           <Card style={{ paddingVertical: 4 }}>
             {items.map((it, i) => (
               <MoreRow key={it.label} {...it} last={i === items.length - 1} />
+            ))}
+          </Card>
+        </Section>
+
+        <Section title="Organization">
+          <Card style={{ paddingVertical: 4 }}>
+            {orgItems.map((it, i) => (
+              <MoreRow key={it.label} {...it} last={i === orgItems.length - 1} />
             ))}
           </Card>
         </Section>

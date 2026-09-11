@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { View, Pressable, StyleSheet, Switch } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, Redirect } from 'expo-router';
 import {
   Screen,
   TopBar,
@@ -83,23 +83,9 @@ export default function ModulePreflight() {
     );
   }
 
-  if (mod.subject === 'document') {
-    return (
-      <>
-        <TopBar title={mod.name} />
-        <Screen>
-          <Card style={{ marginTop: 12 }}>
-            <Text role="sectionTitle">PlaybookIQ reads a playbook, not film</Text>
-            <Text role="body" color="textSecondary" style={{ marginTop: 8 }}>
-              Upload your playbook on the web and PlayScout will read it there. Its plays
-              and install order aren’t editable on a phone yet, so we don’t pretend
-              otherwise here.
-            </Text>
-          </Card>
-        </Screen>
-      </>
-    );
-  }
+  // PlaybookIQ reads a document, not film, so it has its own screen rather
+  // than a film preflight that could never produce a result.
+  if (mod.subject === 'document') return <Redirect href="/(app)/playbook" />;
 
   const writable = canWrite(activeTeam.role);
   const needsPlayer = mod.perPlayer;

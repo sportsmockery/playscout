@@ -14,3 +14,4 @@ export { TopBar } from './TopBar';
 export { TeamSwitcher } from './TeamSwitcher';
 export { ConfigurationNotice } from './ConfigurationNotice';
 export { Field } from './Field';
+export { ChipSelect, type ChipOption } from './ChipSelect';
