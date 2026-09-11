@@ -37,6 +37,7 @@ export const SUPPORTED_MODULES = [
   'TEAMIQ',
   'MISTAKEIQ',
   'SCOUTIQ',
+  'RANKERIQ',
   'PLAYBOOKIQ',
 ] as const;
 export type ModuleKey = (typeof SUPPORTED_MODULES)[number];
@@ -72,7 +73,12 @@ export interface Player {
   team_id: string;
   first_name?: string | null;
   last_name?: string | null;
-  jersey_number?: number | null;
+  /**
+   * TEXT in the database, not a number — it is read back as a string, and
+   * matching normalises both sides (digitsOf), so "07" and "7" tie to the same
+   * player. Keeping the coach's own formatting is what they see on the jersey.
+   */
+  jersey_number?: string | null;
   primary_position?: string | null;
   secondary_position?: string | null;
   side_of_ball?: SideOfBall | null;
@@ -188,4 +194,128 @@ export interface Membership {
   organization_id: string;
   role: UserRole;
   all_teams?: boolean;
+}
+
+// ── Batch analysis (Mode 3) ────────────────────────────────────────────────
+// A batch is the unit a coach actually works in: they queue a film session,
+// leave, and come back to ONE cumulative report rather than N verdicts.
+
+export type BatchStatus =
+  | 'queued'
+  | 'running'
+  | 'completed'
+  | 'completed_with_errors'
+  | 'failed'
+  | 'cancelled';
+
+export type BatchSummaryStatus =
+  | 'pending'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'not_applicable';
+
+export interface BatchJob {
+  id: string;
+  batch_id: string;
+  video_id: string;
+  status: JobStatus | 'waiting_for_film';
+  error_message: string | null;
+  analysis_result_id: string | null;
+  updated_at: string | null;
+  video_title: string;
+}
+
+/** One phrasing cluster — the same problem worded differently across clips. */
+export interface RepeatedItem {
+  text: string;
+  clips: number;
+  members: string[];
+}
+
+export interface PlayerRollup {
+  key: string;
+  playerId: string | null;
+  identifier: string;
+  jerseyNumber: string | null;
+  /**
+   * roster/number = one specific player. `role` may cover more than one child
+   * when numbers weren't legible, and the UI must say so — a grade shown
+   * against the wrong kid is the failure this whole field exists to prevent.
+   */
+  identifiedBy: 'roster' | 'number' | 'role';
+  positions: string[];
+  reps: number;
+  averageGrade: number;
+  letter: string;
+  bestGrade: number;
+  worstGrade: number;
+  trend: number | null;
+}
+
+export interface MistakeRollup {
+  category: string;
+  count: number;
+  worstSeverity: string;
+}
+
+export interface BatchAggregate {
+  clipsAnalyzed: number;
+  averageScore: number | null;
+  bestClip: { videoTitle: string; score: number } | null;
+  worstClip: { videoTitle: string; score: number } | null;
+  playsObserved: number;
+  recurringStrengths: RepeatedItem[];
+  recurringWeaknesses: RepeatedItem[];
+  topDrills: RepeatedItem[];
+  playerRollup: PlayerRollup[];
+  mistakeRollup: MistakeRollup[];
+}
+
+export interface BatchSummary {
+  headline: string;
+  cumulative_summary: string;
+  what_repeats: { pattern: string; clips_seen: number; why_it_matters: string }[];
+  per_video: { video_id: string; comment: string }[];
+  priorities: { title: string; why: string; fix: string }[];
+  practice_focus: string[];
+  evidence_note: string;
+  /** Computed facts the narrative was written from; stored alongside it. */
+  aggregate?: BatchAggregate;
+}
+
+export interface AnalysisBatch {
+  id: string;
+  team_id: string;
+  module_key: string;
+  player_id: string | null;
+  folder_id: string | null;
+  title: string | null;
+  status: BatchStatus;
+  total_jobs: number;
+  completed_jobs: number;
+  failed_jobs: number;
+  summary_status: BatchSummaryStatus;
+  summary: BatchSummary | null;
+  summary_error: string | null;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+  jobs?: BatchJob[];
+}
+
+/** The app-wide dock row — every running batch across all the coach's teams. */
+export interface ActiveBatch {
+  id: string;
+  team_id: string;
+  module_key: string;
+  title: string | null;
+  status: BatchStatus;
+  summary_status: BatchSummaryStatus;
+  total_jobs: number;
+  completed_jobs: number;
+  failed_jobs: number;
+  created_at: string;
+  updated_at: string;
+  team_name: string | null;
 }

@@ -8,6 +8,7 @@ import { useBootstrap } from '@/hooks/queries';
 import { useTeamStore } from '@/stores/teamStore';
 import { registerForPushNotifications } from '@/lib/notifications/pushTokens';
 import { UploadRunner } from '@/features/uploads/UploadRunner';
+import { AnalysisRunner } from '@/features/analysis/AnalysisRunner';
 
 /**
  * Protected app group. Guards on auth, loads the bootstrap payload, and ensures
@@ -61,6 +62,7 @@ export default function AppLayout() {
   return (
     <>
       <UploadRunner />
+      <AnalysisRunner />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="team-picker" options={{ presentation: 'modal' }} />

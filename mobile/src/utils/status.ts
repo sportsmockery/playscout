@@ -29,6 +29,20 @@ export interface StatusView {
   isActive: boolean;
 }
 
+/** Statuses whose frames exist, so a module can read the film right now. */
+const ANALYZABLE: readonly string[] = ['ready_for_review', 'analysis_complete', 'partially_ready'];
+
+/**
+ * Whether this film can be analyzed immediately.
+ *
+ * Not the same as "selectable": a clip still processing is a legitimate batch
+ * selection — its job parks at waiting_for_film and runs when the worker
+ * finishes. This only decides whether a single-clip run can skip the queue.
+ */
+export function isAnalyzable(status: VideoStatus | null | undefined): boolean {
+  return !!status && ANALYZABLE.includes(status);
+}
+
 export function videoStatusView(
   status: VideoStatus | null | undefined,
   processingStep?: string | null,

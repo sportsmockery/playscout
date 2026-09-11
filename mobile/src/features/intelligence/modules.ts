@@ -21,6 +21,7 @@ export const MODULE_CATALOG: ModuleDef[] = [
   { key: 'OLIQ', name: 'OLIQ', blurb: 'Offensive line protection, run blocking, and leverage.', group: 'position', perPlayer: true },
   { key: 'TEAMIQ', name: 'TeamIQ', blurb: 'Formations, tendencies, and team patterns from film.', group: 'team', perPlayer: false },
   { key: 'MISTAKEIQ', name: 'MistakeIQ', blurb: 'Game-changing mistakes and recurring issues.', group: 'team', perPlayer: false },
+  { key: 'RANKERIQ', name: 'RankerIQ', blurb: 'Grade and rank every player on your unit in a clip.', group: 'team', perPlayer: false },
   { key: 'SCOUTIQ', name: 'ScoutIQ', blurb: 'Scout an opponent’s tendencies and build a game plan.', group: 'opponent', perPlayer: false },
   { key: 'PLAYBOOKIQ', name: 'PlaybookIQ', blurb: 'Analyze an uploaded playbook and its install order.', group: 'playbook', perPlayer: false },
 ];

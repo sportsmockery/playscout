@@ -6,6 +6,8 @@ import type {
   Opponent,
   PlaySequence,
   AnalysisResult,
+  AnalysisBatch,
+  ActiveBatch,
   UserRole,
 } from '@/types/domain';
 
@@ -133,6 +135,11 @@ export interface RunAnalysisInput {
   opponentId?: string;
   frames?: string[];
   coachNote?: string;
+  /** Team context the device knows. The server still loads the team row and
+   *  the roster itself — this never widens what the model is allowed to claim. */
+  team?: Record<string, unknown>;
+  /** 'scrimmage' forbids claiming any jersey number at all (pinnies). */
+  filmConditions?: 'game' | 'scrimmage';
 }
 export const runAnalysis = (input: RunAnalysisInput) =>
   apiRequest<{ result: AnalysisResult; analysisId: string }>('/api/intelligence/analyze', {
@@ -164,3 +171,95 @@ export const deletePushToken = (token: string) =>
   apiRequest<{ ok: true }>('/api/mobile/push-tokens', { method: 'DELETE', body: { token } });
 
 export const deleteAccount = () => apiRequest<{ ok: true }>('/api/mobile/account', { method: 'DELETE' });
+
+// ── Batch analysis (Mode 3) ──────────────────────────────────────────────────
+// These reuse the web routes unchanged. lib/supabase/server.ts attaches the
+// Bearer token this client already sends, and requireTeamMember runs the same
+// membership check either way — so a batch queued from a phone is the same row,
+// drained by the same Railway worker, as one queued from the browser.
+
+export interface QueueBatchInput {
+  teamId: string;
+  moduleKey: string;
+  videoIds?: string[];
+  folderIds?: string[];
+  playerId?: string;
+  title?: string;
+  context?: Record<string, unknown>;
+}
+export const queueBatch = (input: QueueBatchInput) =>
+  apiRequest<{ batchId: string; queued: number }>('/api/analysis/batches', {
+    method: 'POST',
+    body: input,
+  });
+
+export const getBatches = (teamId: string, opts?: { moduleKey?: string; limit?: number }) => {
+  const p = new URLSearchParams({ teamId });
+  if (opts?.moduleKey) p.set('moduleKey', opts.moduleKey);
+  if (opts?.limit) p.set('limit', String(opts.limit));
+  return apiRequest<{ batches: AnalysisBatch[] }>(`/api/analysis/batches?${p.toString()}`);
+};
+
+export const getBatch = (batchId: string) =>
+  apiRequest<{ batch: AnalysisBatch }>(`/api/analysis/batches/${encodeURIComponent(batchId)}`);
+
+export const cancelBatch = (batchId: string) =>
+  apiRequest<{ ok: true }>(`/api/analysis/batches/${encodeURIComponent(batchId)}`, {
+    method: 'DELETE',
+  });
+
+/** Every in-flight batch across all this coach's teams — backs the dock. */
+export const getActiveBatches = () =>
+  apiRequest<{ batches: ActiveBatch[] }>('/api/analysis/active');
+
+/**
+ * Pokes the queue so a batch starts moving while the coach is watching, rather
+ * than waiting on the Railway worker's poll. Both claim jobs the same atomic
+ * way, so poking never double-analyzes a clip. Slow by design — it drains up
+ * to three clips before responding.
+ */
+export const runBatchQueue = (teamId: string) =>
+  apiRequest<{ processed: number }>('/api/analysis/run', {
+    method: 'POST',
+    body: { teamId },
+    timeoutMs: 240_000,
+  });
+
+// ── Film from a link ─────────────────────────────────────────────────────────
+
+/**
+ * Registers film hosted somewhere else. The file is never copied into our
+ * bucket — the coach's host stays the source of truth.
+ *
+ * URL validation is deliberately left to the server rather than duplicated
+ * here: lib/video/remote-source.ts is the single validator shared by the web
+ * client, this route and the worker, and a second copy on the phone would drift
+ * out of step with it. Its refusals are already written as coach sentences
+ * ("that's a watch page, paste the file link"), so surfacing the server's
+ * message is better copy than anything a local guess would produce.
+ */
+export const createVideoFromLink = (input: {
+  teamId: string;
+  url: string;
+  title?: string;
+  opponentId?: string;
+}) => apiRequest<{ videoId: string }>('/api/videos/from-link', { method: 'POST', body: input });
+
+// ── Opponents ────────────────────────────────────────────────────────────────
+
+export const createOpponent = (input: {
+  teamId: string;
+  name: string;
+  ageGroup?: string;
+  nextGameDate?: string;
+  notes?: string;
+  jerseyColor?: string;
+}) => apiRequest<{ opponent: Opponent }>('/api/opponents', { method: 'POST', body: input });
+
+/** Jersey colour decides which side ScoutIQ grades, so it is worth correcting
+ *  from the sideline while looking at the film. */
+export const updateOpponentJersey = (input: {
+  teamId: string;
+  opponentId: string;
+  jerseyColor: string;
+}) => apiRequest<{ opponent: Opponent }>('/api/opponents', { method: 'PATCH', body: input });

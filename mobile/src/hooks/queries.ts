@@ -12,7 +12,20 @@ export const qk = {
   roster: (teamId: string) => ['roster', teamId] as const,
   opponents: (teamId: string) => ['opponents', teamId] as const,
   frames: (videoId: string) => ['frames', videoId] as const,
+  batches: (teamId: string, moduleKey?: string) => ['batches', teamId, moduleKey ?? 'all'] as const,
+  batch: (batchId: string) => ['batch', batchId] as const,
+  activeBatches: ['batches', 'active'] as const,
 };
+
+/** A batch still doing work — the only state worth re-polling for. */
+function batchIsLive(b: { status: string; summary_status?: string }): boolean {
+  return (
+    b.status === 'queued' ||
+    b.status === 'running' ||
+    b.summary_status === 'pending' ||
+    b.summary_status === 'running'
+  );
+}
 
 export function useBootstrap() {
   return useQuery({ queryKey: qk.bootstrap, queryFn: api.getBootstrap });
@@ -93,5 +106,38 @@ export function useVideoFrames(videoId: string, enabled: boolean) {
     queryFn: () => api.getVideoFrames(videoId),
     enabled,
     staleTime: 1000 * 60 * 30,
+  });
+}
+
+// ── Batch analysis ──────────────────────────────────────────────────────────
+// Polling follows the same rule as video processing: poll only while something
+// is actually running, then stop. A coach's phone is on a hotspot at a field.
+
+export function useBatches(teamId: string | null, moduleKey?: string) {
+  return useQuery({
+    queryKey: qk.batches(teamId ?? '', moduleKey),
+    queryFn: () => api.getBatches(teamId as string, { moduleKey }),
+    enabled: !!teamId,
+    refetchInterval: (q) =>
+      (q.state.data?.batches ?? []).some(batchIsLive) ? 5_000 : false,
+  });
+}
+
+export function useBatch(batchId: string) {
+  return useQuery({
+    queryKey: qk.batch(batchId),
+    queryFn: () => api.getBatch(batchId),
+    enabled: !!batchId,
+    refetchInterval: (q) => (q.state.data?.batch && batchIsLive(q.state.data.batch) ? 4_000 : false),
+  });
+}
+
+export function useActiveBatches(enabled: boolean) {
+  return useQuery({
+    queryKey: qk.activeBatches,
+    queryFn: api.getActiveBatches,
+    enabled,
+    refetchInterval: (q) =>
+      (q.state.data?.batches ?? []).some(batchIsLive) ? 6_000 : 30_000,
   });
 }

@@ -16,6 +16,7 @@ import {
   Row,
 } from '@/components';
 import { useHome } from '@/hooks/queries';
+import { AnalysisQueueBanner } from '@/features/analysis/AnalysisQueueBanner';
 import { useTeamStore } from '@/stores/teamStore';
 import { canWrite } from '@/utils/roles';
 import { videoStatusView } from '@/utils/status';
@@ -52,6 +53,12 @@ export default function HomeScreen() {
                 <SafetyAlert flag={{ flagged: true, note: home.data.safety.note }} />
               </View>
             ) : null}
+
+            {/* In-flight analysis, above the fold — work a coach can't see is
+                work they assume died. Still below safety, which outranks it. */}
+            <View style={{ marginTop: 16 }}>
+              <AnalysisQueueBanner />
+            </View>
 
             {/* Next opponent / event */}
             <Section title="Up next" style={{ marginTop: 16 }}>

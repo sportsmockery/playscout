@@ -21,6 +21,13 @@ interface RequestOptions {
   /** Multipart body (uploads) — sent as-is, Content-Type left to the platform. */
   form?: FormData;
   signal?: AbortSignal;
+  /**
+   * Abort after this long. React Native's fetch has no default timeout, so a
+   * request against a route that legitimately runs for minutes (the analysis
+   * queue poke) otherwise leaves a promise pending forever if the network drops
+   * mid-flight. Omitted means the platform default.
+   */
+  timeoutMs?: number;
 }
 
 /**
@@ -35,12 +42,32 @@ export async function apiRequest<T>(path: string, opts: RequestOptions = {}): Pr
   if (token) headers.Authorization = `Bearer ${token}`;
   if (!opts.form) headers['Content-Type'] = 'application/json';
 
-  const res = await fetch(`${config.apiUrl}${path}`, {
-    method: opts.method ?? 'GET',
-    headers,
-    body: opts.form ? opts.form : opts.body != null ? JSON.stringify(opts.body) : undefined,
-    signal: opts.signal,
-  });
+  // Combine the caller's signal with our timeout so either can abort, and so
+  // the timer is always cleared — a leaked interval keeps the JS context awake.
+  const controller = new AbortController();
+  const onAbort = () => controller.abort();
+  opts.signal?.addEventListener('abort', onAbort);
+  const timer =
+    opts.timeoutMs != null ? setTimeout(() => controller.abort(), opts.timeoutMs) : null;
+
+  let res: Response;
+  try {
+    res = await fetch(`${config.apiUrl}${path}`, {
+      method: opts.method ?? 'GET',
+      headers,
+      body: opts.form ? opts.form : opts.body != null ? JSON.stringify(opts.body) : undefined,
+      signal: controller.signal,
+    });
+  } catch (e) {
+    // An abort we caused by timing out is not the caller's abort; say which.
+    if (timer && (e as Error)?.name === 'AbortError' && !opts.signal?.aborted) {
+      throw new ApiError('That took too long. Check your connection and try again.', 408);
+    }
+    throw e;
+  } finally {
+    if (timer) clearTimeout(timer);
+    opts.signal?.removeEventListener('abort', onAbort);
+  }
 
   if (!res.ok) {
     throw new ApiError(await extractError(res), res.status);
