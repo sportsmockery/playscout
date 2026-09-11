@@ -7,7 +7,7 @@ export const runtime = 'nodejs'
 const PAGE_SIZE = 20
 
 /**
- * GET /api/mobile/film?teamId=&filmType=self|opponent&cursor=<created_at>
+ * GET /api/mobile/film?teamId=&filmType=self|opponent&folderId=<id|none>&cursor=<created_at>
  *
  * Paginated film list with the aggregates the film row needs: detected play
  * count and the most recent analysis time per video. Cursor is the created_at
@@ -21,6 +21,9 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const teamId = searchParams.get('teamId')
   const filmType = searchParams.get('filmType')
+  // 'none' is a real filter (film not in any folder), distinct from absent
+  // (no folder filter at all) — so it cannot be expressed by an id alone.
+  const folderId = searchParams.get('folderId')
   const cursor = searchParams.get('cursor')
   if (!teamId) return mobileError('teamId is required.', 400)
 
@@ -30,13 +33,15 @@ export async function GET(req: Request) {
   let query = supabase
     .from('videos')
     .select(
-      'id, title, status, processing_status, film_type, opponent_id, thumbnail_path, duration_seconds, error_message, created_at',
+      'id, title, status, processing_status, film_type, opponent_id, folder_id, thumbnail_path, duration_seconds, error_message, created_at',
     )
     .eq('team_id', teamId)
     .order('created_at', { ascending: false })
     .limit(PAGE_SIZE + 1)
 
   if (filmType === 'self' || filmType === 'opponent') query = query.eq('film_type', filmType)
+  if (folderId === 'none') query = query.is('folder_id', null)
+  else if (folderId) query = query.eq('folder_id', folderId)
   if (cursor) query = query.lt('created_at', cursor)
 
   const { data: rows, error } = await query

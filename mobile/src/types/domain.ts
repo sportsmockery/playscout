@@ -96,9 +96,20 @@ export interface Player {
   created_at: string;
 }
 
+export interface VideoFolder {
+  id: string;
+  team_id: string;
+  name: string;
+  description?: string | null;
+  video_count: number;
+  created_at: string;
+}
+
 export interface Video {
   id: string;
   team_id: string;
+  /** null means the film sits outside every folder, not that it is unknown. */
+  folder_id?: string | null;
   title: string;
   thumbnail_path?: string | null;
   thumbnail_url?: string | null;

@@ -38,11 +38,17 @@ export default function ModulePreflight() {
   const router = useRouter();
   const toast = useToast();
   const queryClient = useQueryClient();
-  const { moduleKey } = useLocalSearchParams<{ moduleKey: string }>();
+  const { moduleKey, videoIds: videoIdsParam, folderId: folderIdParam } =
+    useLocalSearchParams<{ moduleKey: string; videoIds?: string; folderId?: string }>();
   const { activeTeam } = useTeamStore();
   const mod = moduleByKey(moduleKey ?? '');
 
-  const [videoIds, setVideoIds] = useState<string[]>([]);
+  // Deep-linked selection (from the film library's multi-select, or a folder),
+  // the same ?videoIds= / ?folderId= contract the web screens use.
+  const [videoIds, setVideoIds] = useState<string[]>(() =>
+    videoIdsParam ? videoIdsParam.split(',').filter(Boolean) : [],
+  );
+  const [folderId] = useState<string | undefined>(folderIdParam || undefined);
   const [playerId, setPlayerId] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [sideOfBall, setSideOfBall] = useState<'offense' | 'defense'>('offense');
@@ -53,7 +59,7 @@ export default function ModulePreflight() {
 
   // ScoutIQ grades the OPPONENT, so it reads opponent film, not ours.
   const scouting = mod?.subject === 'opponent';
-  const film = useFilm(activeTeam?.id ?? null, scouting ? 'opponent' : 'self');
+  const film = useFilm(activeTeam?.id ?? null, scouting ? 'opponent' : 'self', folderId);
   const opponents = useOpponents(scouting ? activeTeam?.id ?? null : null);
   const roster = useRoster(mod?.perPlayer || mod?.key === 'RANKERIQ' ? activeTeam?.id ?? null : null);
 
@@ -163,6 +169,9 @@ export default function ModulePreflight() {
       const res = await queueBatch({
         teamId: activeTeam!.id,
         moduleKey: mod!.key,
+        // Deliberately NOT sending folderIds alongside these: the server
+        // UNIONS the two, so a coach who filtered to a folder and then picked
+        // three clips would be billed for the whole folder.
         videoIds,
         playerId: playerId ?? undefined,
         title: `${mod!.name} — ${videoIds.length} clips`,

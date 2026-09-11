@@ -4,7 +4,8 @@ import * as api from '@/lib/api/endpoints';
 export const qk = {
   bootstrap: ['bootstrap'] as const,
   home: (teamId: string) => ['home', teamId] as const,
-  film: (teamId: string, filmType?: string) => ['film', teamId, filmType ?? 'all'] as const,
+  film: (teamId: string, filmType?: string, folderId?: string) =>
+    ['film', teamId, filmType ?? 'all', folderId ?? 'all'] as const,
   filmDetail: (videoId: string) => ['film', 'detail', videoId] as const,
   videoStatus: (videoId: string) => ['video', 'status', videoId] as const,
   analyses: (teamId: string, moduleKey?: string) => ['analyses', teamId, moduleKey ?? 'all'] as const,
@@ -12,6 +13,7 @@ export const qk = {
   roster: (teamId: string) => ['roster', teamId] as const,
   opponents: (teamId: string) => ['opponents', teamId] as const,
   frames: (videoId: string) => ['frames', videoId] as const,
+  folders: (teamId: string) => ['folders', teamId] as const,
   batches: (teamId: string, moduleKey?: string) => ['batches', teamId, moduleKey ?? 'all'] as const,
   batch: (batchId: string) => ['batch', batchId] as const,
   activeBatches: ['batches', 'active'] as const,
@@ -39,10 +41,21 @@ export function useHome(teamId: string | null) {
   });
 }
 
-export function useFilm(teamId: string | null, filmType?: 'self' | 'opponent') {
+export function useFolders(teamId: string | null) {
+  return useQuery({
+    queryKey: qk.folders(teamId ?? ''),
+    queryFn: () => api.getFolders(teamId as string),
+    enabled: !!teamId,
+  });
+}
+
+export function useFilm(teamId: string | null, filmType?: 'self' | 'opponent', folderId?: string) {
   return useInfiniteQuery({
-    queryKey: qk.film(teamId ?? '', filmType),
-    queryFn: ({ pageParam }) => api.getFilm(teamId as string, { filmType, cursor: pageParam }),
+    // folderId is part of the key: without it, switching folders would serve
+    // the previous folder's cached pages under a new filter.
+    queryKey: qk.film(teamId ?? '', filmType, folderId),
+    queryFn: ({ pageParam }) =>
+      api.getFilm(teamId as string, { filmType, folderId, cursor: pageParam }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
     enabled: !!teamId,

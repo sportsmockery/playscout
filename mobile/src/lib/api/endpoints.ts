@@ -8,6 +8,7 @@ import type {
   AnalysisResult,
   AnalysisBatch,
   ActiveBatch,
+  VideoFolder,
   UserRole,
 } from '@/types/domain';
 
@@ -38,9 +39,14 @@ export interface FilmListResponse {
   videos: Video[];
   nextCursor: string | null;
 }
-export const getFilm = (teamId: string, opts?: { filmType?: 'self' | 'opponent'; cursor?: string }) => {
+export const getFilm = (
+  teamId: string,
+  opts?: { filmType?: 'self' | 'opponent'; folderId?: string; cursor?: string },
+) => {
   const p = new URLSearchParams({ teamId });
   if (opts?.filmType) p.set('filmType', opts.filmType);
+  // 'none' means "not in any folder" — a real filter, not an absent one.
+  if (opts?.folderId) p.set('folderId', opts.folderId);
   if (opts?.cursor) p.set('cursor', opts.cursor);
   return apiRequest<FilmListResponse>(`/api/mobile/film?${p.toString()}`);
 };
@@ -263,3 +269,21 @@ export const updateOpponentJersey = (input: {
   opponentId: string;
   jerseyColor: string;
 }) => apiRequest<{ opponent: Opponent }>('/api/opponents', { method: 'PATCH', body: input });
+
+// ── Film folders ─────────────────────────────────────────────────────────────
+// Folders are analysis targets, not just tidying: a whole folder can be queued
+// as one film session.
+
+export const getFolders = (teamId: string) =>
+  apiRequest<{ folders: VideoFolder[] }>(`/api/film-folders?teamId=${encodeURIComponent(teamId)}`);
+
+export const createFolder = (input: { teamId: string; name: string; description?: string }) =>
+  apiRequest<{ folder: VideoFolder }>('/api/film-folders', { method: 'POST', body: input });
+
+/** folderId null moves film OUT of every folder. Deleting a folder never
+ *  deletes film (ON DELETE SET NULL), and neither does this. */
+export const moveVideosToFolder = (input: {
+  teamId: string;
+  videoIds: string[];
+  folderId: string | null;
+}) => apiRequest<{ moved: number }>('/api/videos/move', { method: 'POST', body: input });
