@@ -133,6 +133,7 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
   const [reportError, setReportError] = useState('');
   const [latestReport, setLatestReport] = useState<ScoutReport | null>(scoutReports[0] ?? null);
   const [queued, setQueued] = useState('');
+  const [queueing, setQueueing] = useState(false);
   const [queueVersion, setQueueVersion] = useState(0);
 
   const selectedOpponent = opponents.find((o) => o.id === selectedOpponentId);
@@ -193,13 +194,16 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
    * including clips whose frames are still being extracted.
    */
   async function scoutAllClips() {
-    if (!selectedOpponentId || !selectedOpponent) return;
+    if (!selectedOpponentId || !selectedOpponent || queueing) return;
     const targets = opponentVideos.filter(
       (v) => !isUnanalyzable(v) && selectedIds.includes(v.id)
     );
     if (!targets.length) return;
     setClipError('');
     setQueued('');
+    // A double-tap on a phone would otherwise queue the same 188 clips twice,
+    // and every one of them is a paid vision call.
+    setQueueing(true);
     try {
       const res = await queueAnalysisBatch({
         teamId,
@@ -217,9 +221,14 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
         },
       });
       setQueued(`${res.queued} clip${res.queued === 1 ? '' : 's'} queued — scouting runs in the background.`);
+      // Emptied so the same clips can't be queued a second time by someone who
+      // isn't sure the first press landed. Re-selecting is one tap.
+      setSelectedIds([]);
       setQueueVersion((v) => v + 1);
     } catch (err) {
       setClipError(err instanceof Error ? err.message : 'Could not queue scouting.');
+    } finally {
+      setQueueing(false);
     }
   }
 
@@ -306,7 +315,11 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
               </p>
             </div>
 
-            <div className="flex items-center justify-between mb-3">
+            {/* Stacks on a phone. As one non-wrapping row this pushed the batch
+                action off the right edge of a 390px screen, so the only button
+                a coach could reach was the per-clip one — which is how you end
+                up scouting 188 clips one at a time. */}
+            <div className="flex flex-col gap-3 mb-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
                 <h2 className="font-bold text-[var(--brand-navy)] text-sm uppercase tracking-wide">
                   <span className="text-[var(--brand-muted)]">Step 2 — </span>
@@ -318,23 +331,7 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
                     : `${scoutedVideoIds.length} of ${selectableIds.length} clips scouted so far.`}
                 </p>
               </div>
-              <div className="flex items-center gap-2">
-                {opponentVideos.some((v) => !isUnanalyzable(v)) && (
-                  <button
-                    onClick={scoutAllClips}
-                    disabled={!jerseyColor.trim() || selectedIds.length === 0}
-                    title={
-                      jerseyColor.trim()
-                        ? undefined
-                        : `Enter what ${selectedOpponent.name} wears first — it is what tells PlayScout which side to scout.`
-                    }
-                    className="flex items-center gap-1.5 text-xs font-semibold border border-[var(--brand-border)] text-[var(--brand-ink)] px-3 py-2 rounded-lg hover:bg-[var(--brand-bg)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    <Layers size={14} />
-                    Scout {selectedIds.length === selectableIds.length ? 'all' : 'selected'} (
-                    {selectedIds.length})
-                  </button>
-                )}
+              <div className="flex flex-wrap items-center gap-2">
                 <AddFilmLinkButton teamId={teamId} opponentId={selectedOpponent.id} />
                 <ImportFromHudl teamId={teamId} opponentId={selectedOpponent.id} />
                 <UploadVideoButton teamId={teamId} opponentId={selectedOpponent.id} buttonLabel="Upload Opponent Film" />
@@ -347,29 +344,69 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
               </p>
             )}
 
-            {selectableIds.length > 1 && (
-              <div className="flex items-center justify-between gap-2 mb-2 text-xs">
-                <span className="text-[var(--brand-muted)]">
-                  {selectedIds.length} of {selectableIds.length} clips selected
-                  {unscoutedIds.length > 0 && unscoutedIds.length < selectableIds.length
-                    ? ` — the ${unscoutedIds.length} not yet scouted`
-                    : ''}
-                </span>
+            {/* The batch run bar. It sits directly above the clip list and the
+                list scrolls under it, so on a 191-clip cut-up the "scout the
+                lot" button is never more than a thumb away — it used to be one
+                small button at the top of a page 191 cards long. */}
+            {selectableIds.length > 0 && (
+              <div className="rounded-xl border border-[var(--brand-border)] bg-[var(--brand-bg)] p-3 mb-3">
+                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mb-2 text-xs">
+                  <span className="text-[var(--brand-muted)]">
+                    {selectedIds.length} of {selectableIds.length} clip
+                    {selectableIds.length === 1 ? '' : 's'} selected
+                    {unscoutedIds.length > 0 && unscoutedIds.length < selectableIds.length
+                      ? ` — the ${unscoutedIds.length} not yet scouted`
+                      : ''}
+                  </span>
+                  {selectableIds.length > 1 && (
+                    <button
+                      onClick={() =>
+                        setSelectedIds(
+                          selectedIds.length === selectableIds.length ? [] : selectableIds
+                        )
+                      }
+                      className="font-semibold text-[var(--brand-navy)] hover:underline"
+                    >
+                      {selectedIds.length === selectableIds.length ? 'Clear all' : 'Select all'}
+                    </button>
+                  )}
+                </div>
+
                 <button
-                  onClick={() =>
-                    setSelectedIds(selectedIds.length === selectableIds.length ? [] : selectableIds)
-                  }
-                  className="font-semibold text-[var(--brand-navy)] hover:underline"
+                  onClick={scoutAllClips}
+                  disabled={queueing || !jerseyColor.trim() || selectedIds.length === 0}
+                  className="w-full flex items-center justify-center gap-2 text-sm font-semibold bg-red-600 text-white px-4 py-3 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  {selectedIds.length === selectableIds.length ? 'Clear all' : 'Select all'}
+                  <Layers size={15} />
+                  {queueing
+                    ? 'Queueing…'
+                    : selectedIds.length === selectableIds.length
+                      ? `Scout all ${selectedIds.length} clip${selectedIds.length === 1 ? '' : 's'}`
+                      : `Scout ${selectedIds.length} selected clip${selectedIds.length === 1 ? '' : 's'}`}
                 </button>
+
+                <p className="text-[11px] text-[var(--brand-muted)] mt-1.5">
+                  {!jerseyColor.trim()
+                    ? `Enter what ${selectedOpponent.name} wears above first — it is what tells PlayScout which side to scout.`
+                    : selectedIds.length === 0
+                      ? 'Tick the clips you want, or use Select all.'
+                      : 'Runs in the background — you can leave this page or close the tab.'}
+                </p>
               </div>
             )}
 
             {opponentVideos.length === 0 ? (
               <p className="text-sm text-[var(--brand-muted)]">No film uploaded for {selectedOpponent.name} yet.</p>
             ) : (
-              <div className="space-y-3">
+              // Long cut-ups scroll inside the card rather than down the page,
+              // which is what keeps the run bar above them in view.
+              <div
+                className={`space-y-3 ${
+                  opponentVideos.length > 8
+                    ? 'max-h-[26rem] overflow-y-auto pr-1 rounded-lg border border-[var(--brand-border)] p-2'
+                    : ''
+                }`}
+              >
                 {opponentVideos.map((v) => (
                   <div key={v.id} className="border border-[var(--brand-border)] rounded-lg p-3">
                     <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -395,14 +432,19 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
                         </p>
                         </div>
                       </div>
+                      {/* Deliberately quiet. As the only filled red button on
+                          the screen this read as THE action, so a coach with a
+                          191-clip cut-up pressed it 191 times. The batch bar
+                          above is the way through the film; this is for
+                          re-checking one clip. */}
                       {readyVideos.includes(v) && (
                         <button
                           onClick={() => runScoutOnClip(v)}
                           disabled={clipLoading === v.id}
-                          className="flex items-center gap-1.5 text-xs font-semibold bg-red-600 text-white px-3 py-1.5 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
+                          className="flex items-center gap-1.5 text-xs font-semibold border border-[var(--brand-border)] text-[var(--brand-ink)] px-2.5 py-1.5 rounded-lg hover:bg-[var(--brand-bg)] transition-colors disabled:opacity-50"
                         >
                           <Crosshair size={13} />
-                          {clipLoading === v.id ? 'Scouting...' : 'Run ScoutIQ'}
+                          {clipLoading === v.id ? 'Scouting…' : 'Just this one'}
                         </button>
                       )}
                     </div>
