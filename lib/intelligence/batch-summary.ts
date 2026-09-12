@@ -42,6 +42,16 @@ export type BatchSummary = z.infer<typeof BatchSummarySchema>
 interface BuildArgs {
   moduleKey: string
   teamName?: string | null
+  /**
+   * The opponent being scouted, when there is one.
+   *
+   * SCOUTIQ is the only module whose subject is not the reader's own team, and
+   * without this the prompt named the COACH's team at the top of a page of
+   * findings about somebody else. The model drew the obvious conclusion and
+   * wrote coaching corrections for the opponent — a plan to improve the team
+   * you are about to play.
+   */
+  opponentName?: string | null
   ageGroup?: string | null
   level?: string | null
   gameType?: string | null
@@ -114,11 +124,26 @@ function renderAggregate(agg: BatchAggregate): string {
 
 export function buildBatchSummaryPrompt(args: BuildArgs): string {
   const tier: LevelTier = resolveLevelTier({ age_group: args.ageGroup, level: args.level })
+  // Scouting inverts who every finding is about and who every recommendation
+  // is for. Everything below that reads differently is gated on this.
+  const scouting = args.moduleKey === 'SCOUTIQ'
+  const them = args.opponentName?.trim() || 'the opponent'
+  const us = args.teamName?.trim() || 'your team'
 
   return `${buildFootballBrain(tier)}
 
 You are writing the CUMULATIVE report for a batch of ${args.clips.length} clips already analyzed by PlayScout's ${args.moduleKey} module.
-${args.teamName ? `TEAM: ${args.teamName}${args.ageGroup ? ` | ${args.ageGroup}` : ''}` : ''}
+${
+  scouting
+    ? `THIS IS A SCOUTING REPORT ON AN OPPONENT.
+SUBJECT OF THE FILM: ${them} — every finding below describes THEM.
+WHO IS READING: the coaching staff of ${us}, preparing to play ${them}.
+
+You are not ${them}'s coach and you are not helping them. A weakness of theirs
+is an OPPORTUNITY for ${us}; a strength of theirs is a THREAT ${us} must plan
+around. Every recommendation you make is an action for ${us} to take.`
+    : `${args.teamName ? `TEAM: ${args.teamName}${args.ageGroup ? ` | ${args.ageGroup}` : ''}` : ''}`
+}
 ${args.gameType ? `GAME TYPE: ${args.gameType}` : ''}
 ${args.coachNote ? `COACH NOTE FOR THIS BATCH: ${args.coachNote}` : ''}
 
@@ -135,22 +160,49 @@ ${renderClips(args.clips)}
 Produce ONE report across the whole batch, as JSON matching this shape exactly:
 
 {
-  "headline": "one sentence a coach reads first — the single most important thing this film session showed",
+  "headline": ${
+    scouting
+      ? `"one sentence the coach reads first — the single best way to attack ${them}, or the biggest threat they pose"`
+      : '"one sentence a coach reads first — the single most important thing this film session showed"'
+  },
   "cumulative_summary": "3-6 sentences on what the batch showed as a whole. Cite how many clips support each claim ('in 7 of 11 clips...'). Say what is consistent versus what was a one-off.",
   "what_repeats": [
-    { "pattern": "the thing that keeps happening", "clips_seen": <the exact count from COMPUTED TOTALS>, "why_it_matters": "what it costs on the field" }
+    { "pattern": "the thing that keeps happening", "clips_seen": <the exact count from COMPUTED TOTALS>, "why_it_matters": ${
+      scouting
+        ? `"what ${us} can do about it — how to attack it, or what it forces ${us} to prepare for"`
+        : '"what it costs on the field"'
+    } }
   ],
   "per_video": [
     { "video_id": "<exact video_id from the clip list>", "comment": "ONE sentence on what THIS clip specifically showed and how it fits the batch — must be specific to this clip, never interchangeable filler" }
   ],
-  "priorities": [
+  "priorities": ${
+    scouting
+      ? `[
+    { "title": "how ${us} attacks them first", "why": "the evidence across clips that makes it the best opening", "fix": "the concrete call, formation or matchup ${us} uses to get at it" }
+  ]`
+      : `[
     { "title": "what to fix first", "why": "the evidence across clips that makes it first", "fix": "the concrete coaching correction" }
-  ],
-  "practice_focus": ["drills for this week, each naming the weakness it fixes and a coaching cue"],
+  ]`
+  },
+  "practice_focus": ${
+    scouting
+      ? `["what ${us} reps this week to be ready to use this — each naming the tendency it exploits and a coaching cue"]`
+      : '["drills for this week, each naming the weakness it fixes and a coaching cue"]'
+  },
   "evidence_note": "how much to trust this: how many clips, how clear the film was, and what could NOT be determined"
 }
 
-HARD REQUIREMENTS:
+HARD REQUIREMENTS:${
+  scouting
+    ? `
+- NEVER write a coaching correction for ${them}. Do not tell them what to fix,
+  what to drill, or how to improve. You are scouting them, not coaching them.
+  Every "fix" and every practice item is something ${us} does.
+- When a finding is a STRENGTH of ${them}, say what ${us} must do to take it
+  away or avoid it — never praise it and stop there.`
+    : ''
+}
 - Refer to players EXACTLY by the labels given above and nothing else. Many players are
   identified by role ("left guard") because their jersey number was not legible on this film —
   that is normal. NEVER attach a jersey number to a player who is listed without one, never

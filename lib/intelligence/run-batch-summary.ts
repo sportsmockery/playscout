@@ -224,10 +224,17 @@ export async function maybeSummarizeBatch(
       .eq('id', batch.team_id)
       .maybeSingle()
 
-    const context = (batch.context ?? {}) as { coachNote?: string }
+    // The opponent comes from the batch's stored module context — the same
+    // context the coach configured on the ScoutIQ screen and that every clip
+    // in this batch was analyzed under.
+    const context = (batch.context ?? {}) as {
+      coachNote?: string
+      opponent?: { name?: string }
+    }
     const systemPrompt = buildBatchSummaryPrompt({
       moduleKey: batch.module_key,
       teamName: team?.name,
+      opponentName: context.opponent?.name,
       ageGroup: team?.age_group,
       level: team?.level,
       gameType: team?.game_type,
