@@ -2,8 +2,9 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { getRoute } from '@/lib/ai/model-router'
 import { callClaude } from '@/lib/ai/providers/anthropic'
 import { recordUsage } from '@/lib/ai/record-usage'
-import { aggregateBatch, type BatchClipResult } from './aggregate-batch'
-import { buildBatchSummaryPrompt, parseBatchSummary } from './batch-summary'
+import { aggregateBatch, type BatchAggregate, type BatchClipResult } from './aggregate-batch'
+import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
+import { buildBatchSummaryPrompt, parseBatchSummary, BatchSummarySchema } from './batch-summary'
 import { applyDrillSafetyFilter } from './safety'
 import { resolveLevelTier } from './levels'
 import type { PlayerGrade } from './schemas'
@@ -173,6 +174,11 @@ export async function maybeSummarizeBatch(
     .maybeSingle()
   if (!claimed) return 'skipped'
 
+  // Declared out here so a failed narrative can still save the numbers. The
+  // aggregate is computed in code — averages, how often each finding repeats,
+  // per-player rollups — and none of it depends on the model succeeding.
+  let aggregate: BatchAggregate | null = null
+
   try {
     const { data: results } = await supabase
       .from('position_analysis_results')
@@ -210,7 +216,7 @@ export async function maybeSummarizeBatch(
         }
       })
 
-    const aggregate = aggregateBatch(clips)
+    aggregate = aggregateBatch(clips)
 
     const { data: team } = await supabase
       .from('teams')
@@ -241,6 +247,12 @@ export async function maybeSummarizeBatch(
         maxTokens: summaryTokenBudget(clips.length),
         thinking: true,
         effort: 'high',
+        // The schema CONSTRAINS generation rather than describing it in prose
+        // and hoping. Asking nicely produced JSON that parsed most of the
+        // time, and "most of the time" across a 191-clip report is a coin
+        // flip the coach loses — twice, here, with a valid-looking opening
+        // and a break somewhere in the middle.
+        outputFormat: zodOutputFormat(BatchSummarySchema),
         // Above ~16k the SDK's HTTP timeout is what fails first on a
         // non-streaming call, and it fails as a dropped connection rather
         // than as anything that names the cause.
@@ -304,13 +316,21 @@ export async function maybeSummarizeBatch(
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Batch summary failed'
     // The per-clip reports are all saved and readable — a failed synthesis
-    // costs the coach the overview, not their analysis. Record why and move
-    // on rather than retrying a prompt that will fail the same way.
+    // costs the coach the overview, not their analysis.
+    //
+    // And not even all of the overview: the batch page renders average score,
+    // plays observed, per-player rollups and what repeats straight off the
+    // aggregate, which is computed here rather than written by the model. It
+    // used to be thrown away on any failure, so a coach who lost the prose
+    // lost the arithmetic too — and the arithmetic is the half that was never
+    // in doubt. Saved alongside the error, with the status left 'failed' so
+    // the banner and its retry button still show.
     await supabase
       .from('analysis_batches')
       .update({
         summary_status: 'failed',
         summary_error: message.slice(0, 1000),
+        ...(aggregate ? { summary: { aggregate } } : {}),
         updated_at: new Date().toISOString(),
       })
       .eq('id', batchId)

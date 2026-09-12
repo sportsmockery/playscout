@@ -61,6 +61,16 @@ export interface ClaudeOptions {
   /** How hard to think. Defaults to the API's own default when unset. */
   effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
   /**
+   * A structured-output format (see `zodOutputFormat`), which CONSTRAINS the
+   * model's generation to the schema rather than asking it nicely.
+   *
+   * The difference matters: a prompt that describes a JSON shape produces
+   * JSON that is usually valid, and "usually" over a 191-clip report is a
+   * coin-flip the coach loses. With a format set, malformed JSON stops being
+   * a failure mode instead of being retried until it goes away.
+   */
+  outputFormat?: unknown
+  /**
    * Stream the response instead of waiting for it whole.
    *
    * Required above roughly 16k max_tokens: the SDK's HTTP timeout is what
@@ -105,13 +115,24 @@ export async function callClaude(
       : system,
     messages,
     ...(opts.thinking ? { thinking: { type: 'adaptive' as const } } : {}),
-    ...(opts.effort ? { output_config: { effort: opts.effort } } : {}),
+    ...(opts.effort || opts.outputFormat
+      ? {
+          output_config: {
+            ...(opts.effort ? { effort: opts.effort } : {}),
+            ...(opts.outputFormat ? { format: opts.outputFormat } : {}),
+          },
+        }
+      : {}),
   }
 
   const client = getAnthropic()
+  // `format` reaches output_config through a cast because the SDK's published
+  // params type does not carry it yet; the wire shape is what the API
+  // documents, and zodOutputFormat builds it.
+  const request = params as Parameters<typeof client.messages.create>[0]
   const response = opts.stream
-    ? await client.messages.stream(params).finalMessage()
-    : await client.messages.create(params)
+    ? await client.messages.stream(request).finalMessage()
+    : ((await client.messages.create(request)) as Anthropic.Message)
 
   // Checked before the text is read, so a truncated response never reaches a
   // parser that can only report it as malformed.
