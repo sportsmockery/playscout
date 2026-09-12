@@ -6,6 +6,7 @@ import type { BatchAggregate } from '@/lib/intelligence/aggregate-batch';
 import type { BatchSummary } from '@/lib/intelligence/batch-summary';
 import ClipBreakdown from './ClipBreakdown';
 import RetrySummaryButton from './RetrySummaryButton';
+import AwaitSummary from './AwaitSummary';
 import NextSteps from '@/components/intelligence/NextSteps';
 import PrintButton from '@/components/intelligence/PrintButton';
 
@@ -156,9 +157,10 @@ export default async function BatchReportPage({
             <p className="text-sm font-semibold text-amber-900">Writing the combined report</p>
             <p className="text-sm text-amber-800">
               Every clip is analyzed. The cumulative write-up — player grades across the batch,
-              what keeps happening, and what to fix first — is being generated now. Refresh in a
-              moment; each clip&apos;s own analysis below is already final.
+              what keeps happening, and what to fix first — is being generated now. This page
+              updates itself when it lands; each clip&apos;s own analysis below is already final.
             </p>
+            <AwaitSummary batchId={batch.id as string} />
           </div>
         </div>
       )}
