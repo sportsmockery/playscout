@@ -5,8 +5,10 @@ describe('summaryTokenBudget', () => {
   // The bug this exists to prevent: a fixed 8000 truncated a 191-clip report
   // mid-word, which surfaced to the coach as "Invalid JSON from batch summary"
   // followed by 200 characters of a perfectly good report.
-  it('gives a 191-clip batch far more room than the fixed 8000 that truncated it', () => {
-    expect(summaryTokenBudget(191)).toBeGreaterThan(30_000)
+  it('gives a 191-clip batch far more room than the fixed 8000 it started with', () => {
+    // Adaptive thinking reasons over every clip and spends from this same
+    // budget, so the per-clip cost is much more than the comment it writes.
+    expect(summaryTokenBudget(191)).toBeGreaterThan(70_000)
   })
 
   it('grows with the batch, because every clip needs its own comment', () => {
@@ -21,6 +23,7 @@ describe('summaryTokenBudget', () => {
   // Opus 5 tops out at 128k output, and adaptive thinking spends from the
   // same budget — an unbounded formula would eventually just 400.
   it('caps below the model ceiling however many clips arrive', () => {
-    expect(summaryTokenBudget(10_000)).toBeLessThanOrEqual(64_000)
+    // Opus 5 tops out at 128k output tokens.
+    expect(summaryTokenBudget(10_000)).toBeLessThanOrEqual(96_000)
   })
 })

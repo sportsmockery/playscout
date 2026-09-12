@@ -66,7 +66,11 @@ const STUCK_SUMMARY_TIMEOUT_MS = Number(process.env.SUMMARY_STUCK_TIMEOUT_MS ?? 
  * that; a batch big enough to need more has a different problem.
  */
 export function summaryTokenBudget(clipCount: number): number {
-  return Math.min(12_000 + clipCount * 150, 64_000)
+  // 300/clip, not 150. A per-clip comment is only part of what each clip
+  // costs — adaptive thinking reasons over every one of them and spends from
+  // the same budget, and at 191 clips that is most of the spend. Capped below
+  // Opus 5's 128k output ceiling, with streaming carrying the long ones.
+  return Math.min(20_000 + clipCount * 300, 96_000)
 }
 
 /** Hand back summaries whose runner never came home. */
@@ -254,7 +258,27 @@ export async function maybeSummarizeBatch(
       outputTokens: response.usage.outputTokens,
     })
 
-    const summary = parseBatchSummary(response.text)
+    let summary
+    try {
+      summary = parseBatchSummary(response.text)
+    } catch (parseError) {
+      // The parser can only say "that was not valid JSON", and its message
+      // quoted the FIRST 200 characters — which for a long report is always a
+      // perfectly good opening sentence. Two failures were misread as
+      // truncation on the strength of that slice alone, when the slice was
+      // our own formatter cutting the string, not the model.
+      //
+      // What actually distinguishes the cases is here: why the model stopped,
+      // how much it produced, and what the END of the text looks like.
+      const text = response.text
+      const tail = text.slice(-300)
+      throw new Error(
+        `${parseError instanceof Error ? parseError.message : 'Batch summary failed'} ` +
+          `[stop_reason=${response.stopReason ?? 'unknown'}, ` +
+          `output_tokens=${response.usage.outputTokens}, chars=${text.length}] ` +
+          `ends with: …${tail}`
+      )
+    }
 
     // Same belt-and-suspenders gate every module output passes through.
     summary.practice_focus = applyDrillSafetyFilter(

@@ -31,6 +31,13 @@ export async function streamClaude(
 
 export interface ClaudeResult {
   text: string
+  /**
+   * Why the model stopped. Needed by callers that parse the text: a parse
+   * failure means something completely different depending on whether the
+   * model finished its thought or was cut off, and without this the two are
+   * indistinguishable at the point where they matter.
+   */
+  stopReason: string | null
   usage: {
     inputTokens: number
     outputTokens: number
@@ -122,6 +129,7 @@ export async function callClaude(
 
   return {
     text,
+    stopReason: response.stop_reason ?? null,
     usage: {
       inputTokens: response.usage.input_tokens,
       outputTokens: response.usage.output_tokens,
