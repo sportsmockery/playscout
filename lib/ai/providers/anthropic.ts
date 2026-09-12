@@ -53,6 +53,32 @@ export interface ClaudeOptions {
   thinking?: boolean
   /** How hard to think. Defaults to the API's own default when unset. */
   effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+  /**
+   * Stream the response instead of waiting for it whole.
+   *
+   * Required above roughly 16k max_tokens: the SDK's HTTP timeout is what
+   * fails first on a long non-streaming generation, and it fails as a dropped
+   * connection rather than anything that names the cause.
+   */
+  stream?: boolean
+}
+
+/**
+ * The model hit `max_tokens` and stopped mid-sentence.
+ *
+ * Its own class because the caller's next move is different from every other
+ * failure: this is a budget to raise, not a prompt to fix or a call to retry.
+ * Left as a generic error it surfaced as "Invalid JSON from batch summary:
+ * {" followed by 200 characters of a perfectly good report, which reads as a
+ * broken model rather than a truncated one.
+ */
+export class ClaudeTruncatedError extends Error {
+  constructor(public readonly outputTokens: number) {
+    super(
+      `Claude hit its output limit after ${outputTokens} tokens and the response was cut off mid-sentence.`
+    )
+    this.name = 'ClaudeTruncatedError'
+  }
 }
 
 export async function callClaude(
@@ -64,16 +90,27 @@ export async function callClaude(
   const opts: ClaudeOptions =
     typeof optsOrMaxTokens === 'number' ? { maxTokens: optsOrMaxTokens } : optsOrMaxTokens
 
-  const response = await getAnthropic().messages.create({
+  const params = {
     model,
     max_tokens: opts.maxTokens ?? 2048,
     system: opts.cacheSystem
-      ? [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }]
+      ? [{ type: 'text' as const, text: system, cache_control: { type: 'ephemeral' as const } }]
       : system,
     messages,
     ...(opts.thinking ? { thinking: { type: 'adaptive' as const } } : {}),
     ...(opts.effort ? { output_config: { effort: opts.effort } } : {}),
-  })
+  }
+
+  const client = getAnthropic()
+  const response = opts.stream
+    ? await client.messages.stream(params).finalMessage()
+    : await client.messages.create(params)
+
+  // Checked before the text is read, so a truncated response never reaches a
+  // parser that can only report it as malformed.
+  if (response.stop_reason === 'max_tokens') {
+    throw new ClaudeTruncatedError(response.usage.output_tokens)
+  }
 
   // Find the text block rather than taking content[0]: with thinking enabled
   // the first block is a thinking block, and indexing would silently return

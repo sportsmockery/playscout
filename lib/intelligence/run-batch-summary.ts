@@ -54,6 +54,21 @@ async function batchIsSettled(supabase: SupabaseClient, batchId: string): Promis
  */
 const STUCK_SUMMARY_TIMEOUT_MS = Number(process.env.SUMMARY_STUCK_TIMEOUT_MS ?? 10 * 60 * 1000)
 
+/**
+ * Output budget for the synthesis, which scales with the batch.
+ *
+ * The report must carry a comment for EVERY clip, so its length is a function
+ * of clip count — and adaptive thinking spends from the same budget. A fixed
+ * 8000 was fine for a dozen clips and truncated a 191-clip report mid-word,
+ * which then surfaced as "Invalid JSON" rather than as a limit being hit.
+ *
+ * Capped because Opus 5 tops out at 128k output and there is no report worth
+ * that; a batch big enough to need more has a different problem.
+ */
+export function summaryTokenBudget(clipCount: number): number {
+  return Math.min(12_000 + clipCount * 150, 64_000)
+}
+
 /** Hand back summaries whose runner never came home. */
 export async function reapStuckSummaries(
   supabase: SupabaseClient,
@@ -217,9 +232,16 @@ export async function maybeSummarizeBatch(
       systemPrompt,
       [{ role: 'user', content: 'Write the cumulative report now, following the JSON shape exactly.' }],
       // Synthesis across a whole game is the one call in the pipeline where
-      // reasoning depth earns its cost, and the report is long — a low
-      // max_tokens truncates it mid-clip.
-      { maxTokens: 8000, thinking: true, effort: 'high' }
+      // reasoning depth earns its cost, and the report is long.
+      {
+        maxTokens: summaryTokenBudget(clips.length),
+        thinking: true,
+        effort: 'high',
+        // Above ~16k the SDK's HTTP timeout is what fails first on a
+        // non-streaming call, and it fails as a dropped connection rather
+        // than as anything that names the cause.
+        stream: true,
+      }
     )
 
     await recordUsage(supabase, {
