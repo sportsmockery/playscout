@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { requireTeamMember, WRITE_ROLES } from '@/lib/auth/require-team-member'
 import { guardAIRequest } from '@/lib/ai/guard'
 import { drainAnalysisJobs, reapStuckAnalysisJobs } from '@/lib/intelligence/run-analysis-job'
+import { reapStuckSummaries, sweepPendingSummaries } from '@/lib/intelligence/run-batch-summary'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -43,5 +44,25 @@ export async function POST(req: NextRequest) {
     deadlineMs: DEADLINE_MS,
   })
 
-  return NextResponse.json({ processed, outcomes })
+  // A combined report waiting on nobody.
+  //
+  // The worker sweeps for these too, and that is the right home for it — no
+  // request deadline. But the worker is a separately deployed service, and a
+  // batch whose clips are ALL done has no job left to trigger its report, so
+  // "the worker is a few commits behind" became "this report can never be
+  // written". Observed exactly that way. The dock pokes this route while the
+  // coach is in the app, so it is the natural second chance.
+  //
+  // Deadline risk is real but not costly here: nobody is blocked on this
+  // response, and a synthesis cut short leaves the row claimed, which
+  // reapStuckSummaries hands back. Doing nothing leaves it stuck forever.
+  let summariesWritten = 0
+  try {
+    await reapStuckSummaries(supabase, { teamId })
+    summariesWritten = await sweepPendingSummaries(supabase, { limit: 1, teamId })
+  } catch {
+    // Never fails the drain — the clips are what this route exists for.
+  }
+
+  return NextResponse.json({ processed, outcomes, summariesWritten })
 }

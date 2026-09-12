@@ -57,7 +57,7 @@ const STUCK_SUMMARY_TIMEOUT_MS = Number(process.env.SUMMARY_STUCK_TIMEOUT_MS ?? 
 /** Hand back summaries whose runner never came home. */
 export async function reapStuckSummaries(
   supabase: SupabaseClient,
-  opts?: { timeoutMs?: number; batchId?: string }
+  opts?: { timeoutMs?: number; batchId?: string; teamId?: string }
 ): Promise<number> {
   const cutoff = new Date(Date.now() - (opts?.timeoutMs ?? STUCK_SUMMARY_TIMEOUT_MS)).toISOString()
   let query = supabase
@@ -70,6 +70,7 @@ export async function reapStuckSummaries(
     .eq('summary_status', 'running')
     .lt('updated_at', cutoff)
   if (opts?.batchId) query = query.eq('id', opts.batchId)
+  if (opts?.teamId) query = query.eq('team_id', opts.teamId)
 
   const { data } = await query.select('id')
   return data?.length ?? 0
@@ -87,14 +88,20 @@ export async function reapStuckSummaries(
  */
 export async function sweepPendingSummaries(
   supabase: SupabaseClient,
-  opts?: { limit?: number }
+  opts?: { limit?: number; teamId?: string }
 ): Promise<number> {
-  const { data } = await supabase
+  let pending = supabase
     .from('analysis_batches')
     .select('id')
     .eq('summary_status', 'pending')
     .order('updated_at', { ascending: true })
     .limit(opts?.limit ?? 3)
+  // Scoped when a caller has a team in hand, so a poke from one team's queue
+  // view does not go and do work for another. The worker passes nothing and
+  // sweeps everything, which is its job.
+  if (opts?.teamId) pending = pending.eq('team_id', opts.teamId)
+
+  const { data } = await pending
 
   let written = 0
   for (const row of data ?? []) {
