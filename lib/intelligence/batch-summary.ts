@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { buildFootballBrain } from './football-brain'
 import { resolveLevelTier, type LevelTier } from './levels'
 import type { BatchAggregate, BatchClipResult } from './aggregate-batch'
+import type { StatTally } from './stat-lines'
 
 /**
  * The narrative layer over a finished batch — PlayScout's System A reasoning
@@ -119,7 +120,53 @@ function renderAggregate(agg: BatchAggregate): string {
       `mistake counts: ${agg.mistakeRollup.map((m) => `${m.category} x${m.count} (worst ${m.worstSeverity})`).join(' | ')}`
     )
   }
+  if (agg.statTally) lines.push(renderBoxScore(agg.statTally))
   return lines.filter(Boolean).join('\n')
+}
+
+/**
+ * STATSIQ's box score, handed over as fact.
+ *
+ * Without this the summary model was given per-clip prose about a game whose
+ * statistics it could see mentioned but never totalled — the exact conditions
+ * under which a language model produces a confident, wrong number. Every
+ * figure here was added up in code.
+ */
+function renderBoxScore(tally: StatTally): string {
+  const t = tally.team
+  const o = t.offense
+  const d = t.defense
+  const unmeasured = t.unmeasured.rush + t.unmeasured.pass + t.unmeasured.receiving
+
+  const lines = [
+    'BOX SCORE (computed — every figure below is a count, quote them exactly):',
+    `  offense: ${o.carries} carries for ${o.rush_yards} rushing yards (${o.rush_td} TD); ` +
+      `${o.pass_completions}/${o.pass_attempts} for ${o.pass_yards} passing yards ` +
+      `(${o.pass_td} TD, ${o.interceptions_thrown} INT); ${o.receptions} catches for ${o.receiving_yards} receiving yards`,
+    `  defense: ${d.tackles} solo tackles, ${d.assisted_tackles} assists, ${d.interceptions} interceptions, ` +
+      `${d.forced_fumbles} forced fumbles, ${d.mistakes} charted mistakes`,
+  ]
+
+  if (unmeasured) {
+    lines.push(
+      `  ${unmeasured} play${unmeasured === 1 ? '' : 's'} had no measurable yardage on this film — the yardage figures above cover only the plays that did. Say so if you cite yardage.`
+    )
+  }
+
+  const leaders = tally.lines
+    .slice(0, 12)
+    .map((l) =>
+      l.side === 'offense'
+        ? `${l.identifier}: ${l.offense.carries} car / ${l.offense.rush_yards} yds, ${l.offense.receptions} rec / ${l.offense.receiving_yards} yds, ${l.offense.pass_completions}/${l.offense.pass_attempts} passing`
+        : `${l.identifier}: ${l.defense.total_tackles} tackles (${l.defense.assisted_tackles} assisted), ${l.defense.interceptions} INT, ${l.defense.forced_fumbles} FF, ${l.defense.mistakes} mistakes`
+    )
+  if (leaders.length) lines.push(`  by position:\n    ${leaders.join('\n    ')}`)
+
+  if (tally.warnings.length) {
+    lines.push(`  charting caveats: ${tally.warnings.join(' ')}`)
+  }
+
+  return lines.join('\n')
 }
 
 export function buildBatchSummaryPrompt(args: BuildArgs): string {
@@ -216,6 +263,10 @@ HARD REQUIREMENTS:${
   shows nothing appearing in more than one clip, return an empty what_repeats array and say in
   cumulative_summary that no pattern repeated across clips yet — that is a real, useful finding,
   not a gap to paper over.
+- Every statistic — a carry, a yard, a tackle, a touchdown — must be quoted verbatim from the
+  BOX SCORE in COMPUTED TOTALS when one is present. Do not add two figures together, do not
+  derive an average, and never state a statistic that is not listed there. A number a coach
+  reads in a report gets repeated to a player, and there is no way for either of them to check it.
 - The same rule governs the prose: any count you state in cumulative_summary ("in 7 of 11
   clips...") must come from COMPUTED TOTALS. Do not count clips yourself from the per-clip
   findings — you will get it wrong, and a coach cannot tell.

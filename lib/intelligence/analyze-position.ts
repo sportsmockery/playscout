@@ -13,6 +13,7 @@ import { buildTEAMIQSystemPrompt, TEAMIQ_RESPONSE_SCHEMA } from './modules/teami
 import { buildMISTAKEIQSystemPrompt, MISTAKEIQ_RESPONSE_SCHEMA } from './modules/mistakeiq'
 import { buildSCOUTIQSystemPrompt, SCOUTIQ_RESPONSE_SCHEMA } from './modules/scoutiq'
 import { buildRANKERIQSystemPrompt, RANKERIQ_RESPONSE_SCHEMA } from './modules/rankeriq'
+import { buildSTATSIQSystemPrompt, STATSIQ_RESPONSE_SCHEMA } from './modules/statsiq'
 import {
   PositionAnalysisOutputSchema,
   type PositionAnalysisInput,
@@ -29,6 +30,7 @@ import { deriveConfidence, type ConfidenceSignals, type SubjectIdentification, t
 import type { EvidenceMode } from './football-brain'
 import { applyDrillSafetyFilter, scrubProhibitedDrillMentions } from './safety'
 import { rankPlayerGrades } from './player-grades'
+import { tallyStatPlays } from './stat-lines'
 import { resolveLevelTier } from './levels'
 import { isMisdirectedRun, resolveFilmSubject, subjectNameFor } from './film-subject'
 
@@ -56,7 +58,18 @@ const MODULE_MAP: Record<string, ModuleConfig> = {
   MISTAKEIQ: { buildPrompt: buildMISTAKEIQSystemPrompt, schema: MISTAKEIQ_RESPONSE_SCHEMA, fps: 4, resolution: 'medium' },
   SCOUTIQ:   { buildPrompt: buildSCOUTIQSystemPrompt,   schema: SCOUTIQ_RESPONSE_SCHEMA,   fps: 2, resolution: 'low' },
   RANKERIQ:  { buildPrompt: buildRANKERIQSystemPrompt,  schema: RANKERIQ_RESPONSE_SCHEMA,  fps: 6, resolution: 'medium' },
+  // Charting needs to see the ball change hands, a catch made or dropped, and
+  // who arrived at the tackle — events that live between frames. It does not
+  // need the sub-second technique resolution QBIQ and OLIQ grade at.
+  STATSIQ:   { buildPrompt: buildSTATSIQSystemPrompt,   schema: STATSIQ_RESPONSE_SCHEMA,   fps: 6, resolution: 'medium' },
 }
+
+/**
+ * Modules that may report a jersey number, and therefore need the roster as a
+ * closed set to check one against. Both of them attribute something to a
+ * specific child — a grade, a carry — so both go through the same gates.
+ */
+const NUMBER_VERIFYING_MODULES = ['RANKERIQ', 'STATSIQ']
 
 /**
  * `frames` is the wire contract with the browser (bare base64 strings, no
@@ -131,16 +144,16 @@ export async function analyzePosition(
   const filmSubject = await resolveFilmSubject(supabase, input.videoId)
   const misdirected = isMisdirectedRun(input.moduleKey, filmSubject)
 
-  // RANKERIQ verifies every jersey number against the roster, so the roster is
-  // read here from the DB rather than accepted from the caller — it decides
-  // which numbers are allowed to exist, which makes it a trust boundary.
+  // RANKERIQ and STATSIQ verify every jersey number against the roster, so the
+  // roster is read here from the DB rather than accepted from the caller — it
+  // decides which numbers are allowed to exist, a trust boundary.
   //
   // On opponent film that boundary inverts: the coach's roster is a list of
   // numbers worn by players who are NOT on screen, so matching against it
   // would hand one of their kids' identities to an opposing player. An
   // opponent run gets no roster and therefore grades by role only.
   let roster: { id: string; jersey_number: string | null; position: string | null; name: string | null }[] = []
-  if (input.moduleKey === 'RANKERIQ' && !misdirected) {
+  if (NUMBER_VERIFYING_MODULES.includes(input.moduleKey) && !misdirected) {
     const { data: players } = await supabase
       .from('players')
       .select('id, jersey_number, primary_position, first_name, last_name')
@@ -286,6 +299,18 @@ export async function analyzePosition(
       })
     : []
 
+  // The model can only cite a frame it was actually shown. An index outside
+  // that set is the cheapest hallucination signal we have — and rendering it
+  // would seek a coach to nothing — so drop it here rather than pass it on.
+  // Frames are labelled by their real `video_frames.frame_index`, so this
+  // compares against identity, not array position.
+  //
+  // Declared before its first use: `safeMistakes` below calls it during its
+  // own initializer, so leaving it further down put it in the temporal dead
+  // zone and threw on any MISTAKEIQ run that actually found a mistake.
+  const shownIndexes = new Set(frames.map((f) => f.index))
+  const keepCited = (cited?: number[]) => (cited ?? []).filter((i) => shownIndexes.has(i))
+
   // Belt-and-suspenders: the prompt already bans these, but scrub the
   // structured output too before it can reach a coach's screen.
   const { drills: safeDrills } = applyDrillSafetyFilter(
@@ -300,14 +325,6 @@ export async function analyzePosition(
       : m.drill
     return { ...m, correction, drill, evidence_frames: keepCited(m.evidence_frames) }
   })
-
-  // The model can only cite a frame it was actually shown. An index outside
-  // that set is the cheapest hallucination signal we have — and rendering it
-  // would seek a coach to nothing — so drop it here rather than pass it on.
-  // Frames are labelled by their real `video_frames.frame_index`, so this
-  // compares against identity, not array position.
-  const shownIndexes = new Set(frames.map((f) => f.index))
-  const keepCited = (cited?: number[]) => (cited ?? []).filter((i) => shownIndexes.has(i))
 
   // The video-mode equivalent: a cited second must fall inside the clip the
   // model was actually shown. Times are measured from the start of that clip
@@ -366,6 +383,28 @@ export async function analyzePosition(
     ? rankPlayerGrades(parsed.player_grades, roster, { allowNumbers })
     : parsed.player_grades
 
+  // STATSIQ: same division of labour one more time. The model charted plays;
+  // every carry, yard and tackle a coach reads is summed here, from credits
+  // whose jersey numbers went through the identity gates above. A model asked
+  // for a stat line returns one whose own columns disagree.
+  const stats = parsed.stat_plays?.length
+    ? tallyStatPlays(parsed.stat_plays, {
+        roster,
+        allowNumbers,
+        declaredSide: input.team?.side_of_ball,
+        // The staff's tagged gain outranks any yardage read off the film.
+        breakdownGain: input.playSequence?.gain_loss ?? null,
+      })
+    : null
+  // A credit's citations are validated the same way every other citation is:
+  // a timestamp outside the clip, or a frame we never showed, is dropped
+  // rather than rendered as a seek that goes nowhere.
+  const statCredits = stats?.credits.map((c) => ({
+    ...c,
+    evidenceTimestamps: keepTimestamps(c.evidenceTimestamps),
+    evidenceFrames: keepCited(c.evidenceFrames),
+  }))
+
   return {
     overall_score: overall.value ?? 0,
     position_scores: parsed.position_scores,
@@ -403,6 +442,11 @@ export async function analyzePosition(
     opponent_possession: parsed.opponent_possession,
     mistakes: safeMistakes,
     player_grades: rankedGrades,
+    stat_plays: parsed.stat_plays,
+    stat_credits: statCredits,
+    stat_lines: stats?.lines,
+    team_stats: stats?.team,
+    stat_warnings: stats?.warnings,
     unit_graded: parsed.unit_graded,
     players_not_evaluable: parsed.players_not_evaluable,
     target_players: parsed.target_players,

@@ -19,6 +19,7 @@ import {
   BookOpen,
   Crosshair,
   ListOrdered,
+  BarChart3,
 } from 'lucide-react';
 
 interface NavItem {
@@ -34,6 +35,7 @@ interface NavItem {
 const MODULE_ITEMS: NavItem[] = [
   { label: 'ScoutIQ', href: 'scoutiq', icon: Crosshair },
   { label: 'RankerIQ', href: 'rankeriq', icon: ListOrdered },
+  { label: 'StatsIQ', href: 'statsiq', icon: BarChart3 },
   { label: 'MistakeIQ', href: 'mistakeiq', icon: AlertTriangle },
   { label: 'TeamIQ', href: 'teamiq', icon: TrendingUp },
   { label: 'QBIQ', href: 'qbiq', icon: Zap },

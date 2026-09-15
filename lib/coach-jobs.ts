@@ -98,6 +98,14 @@ export const MODULE_COPY: ModuleCopy[] = [
     slug: 'rankeriq',
   },
   {
+    key: 'STATSIQ',
+    name: 'StatsIQ',
+    label: 'The box score',
+    answers: 'What are our actual numbers — carries, yards, catches, tackles, turnovers?',
+    job: 'evaluate',
+    slug: 'statsiq',
+  },
+  {
     key: 'MISTAKEIQ',
     name: 'MistakeIQ',
     label: 'What went wrong',

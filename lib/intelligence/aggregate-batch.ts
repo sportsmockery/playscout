@@ -1,5 +1,6 @@
 import type { PlayerGrade } from './schemas'
 import { letterFor } from './player-grades'
+import { aggregateStatCredits, type StatCredit, type StatTally } from './stat-lines'
 
 /**
  * Deterministic rollup across every clip in an analysis batch.
@@ -24,6 +25,13 @@ export interface BatchClipResult {
   confidence?: number | null
   playerGrades?: PlayerGrade[] | null
   mistakes?: { title: string; category: string; severity: string }[] | null
+  /**
+   * STATSIQ's charted credits for this clip. The batch box score is re-tallied
+   * from these rather than summed from each clip's totals — one clip is one
+   * play, and a game box score is the whole point, so it has to be the same
+   * arithmetic at both scales.
+   */
+  statCredits?: StatCredit[] | null
 }
 
 export interface RepeatedItem {
@@ -77,6 +85,8 @@ export interface BatchAggregate {
   topDrills: RepeatedItem[]
   playerRollup: PlayerRollup[]
   mistakeRollup: MistakeRollup[]
+  /** STATSIQ only: the box score for the whole batch. Null for every other module. */
+  statTally: StatTally | null
 }
 
 const SEVERITY_ORDER = ['minor', 'moderate', 'major', 'game_changing']
@@ -383,5 +393,8 @@ export function aggregateBatch(clips: BatchClipResult[]): BatchAggregate {
     mistakeRollup: [...mistakeCounts.entries()]
       .map(([category, v]) => ({ category, ...v }))
       .sort((a, b) => b.count - a.count),
+    statTally: clips.some((c) => c.statCredits?.length)
+      ? aggregateStatCredits(clips.map((c) => c.statCredits ?? []))
+      : null,
   }
 }

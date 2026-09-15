@@ -29,6 +29,7 @@ export const OWN_TEAM_MODULES = [
   'TEAMIQ',
   'MISTAKEIQ',
   'RANKERIQ',
+  'STATSIQ',
   'PRACTICEIQ',
 ] as const
 

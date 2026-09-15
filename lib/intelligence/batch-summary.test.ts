@@ -13,6 +13,7 @@ const AGGREGATE: BatchAggregate = {
   topDrills: [],
   playerRollup: [],
   mistakeRollup: [],
+  statTally: null,
 }
 
 const CLIPS: BatchClipResult[] = [

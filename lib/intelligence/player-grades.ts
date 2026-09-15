@@ -128,6 +128,23 @@ export function matchRosterPlayer(
   return matches.length === 1 ? matches[0].id : null
 }
 
+/**
+ * The minimum a claim about WHO a player is has to carry to be checked.
+ *
+ * Narrowed from PlayerGrade so StatsIQ can put a stat credit through the exact
+ * same gates — a stat counted for the wrong jersey is the same failure as a
+ * grade given to the wrong jersey, and it should not be re-implemented to a
+ * second standard.
+ */
+export interface IdentityClaim {
+  identifier?: string | null
+  position?: string | null
+  jersey_number?: string | null
+  jersey_number_frame?: number | null
+  identification_confidence?: number | null
+  note?: string | null
+}
+
 function rosterName(playerId: string | null, roster: RosterEntry[]): string | null {
   if (!playerId) return null
   const p = roster.find((r) => r.id === playerId)
@@ -143,7 +160,7 @@ function rosterName(playerId: string | null, roster: RosterEntry[]): string | nu
  * position and alignment, with any number scrubbed out. "#30" that we just
  * rejected must not survive anywhere in the label.
  */
-function roleLabel(grade: PlayerGrade): string {
+function roleLabel(grade: IdentityClaim): string {
   const stripNumbers = (s: string) => s.replace(/#\s*\d+/g, '').replace(/\s{2,}/g, ' ').trim()
   const fromIdentifier = stripNumbers(grade.identifier ?? '')
   const fromPosition = stripNumbers(grade.position ?? '')
@@ -197,7 +214,7 @@ export interface ResolvedIdentity {
  * claim in prose form.
  */
 export function resolvePlayerIdentity(
-  grade: PlayerGrade,
+  grade: IdentityClaim,
   roster: RosterEntry[] = [],
   opts: IdentityOptions = {}
 ): ResolvedIdentity {
@@ -239,7 +256,7 @@ export function resolvePlayerIdentity(
 }
 
 /** Removes a number we refused to stand behind from the coach-facing note. */
-function scrubNumberFromNote(note: string, rejected: string, replacement: string): string {
+export function scrubNumberFromNote(note: string, rejected: string, replacement: string): string {
   return note
     .replace(new RegExp(`#\\s*0*${rejected}\\b`, 'g'), replacement)
     .replace(/\s{2,}/g, ' ')

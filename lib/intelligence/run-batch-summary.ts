@@ -8,6 +8,7 @@ import { buildBatchSummaryPrompt, parseBatchSummary, BatchSummarySchema } from '
 import { applyDrillSafetyFilter } from './safety'
 import { resolveLevelTier } from './levels'
 import type { PlayerGrade } from './schemas'
+import type { StatCredit } from './stat-lines'
 
 /**
  * Writes the cumulative report for a batch once all of its clips are done.
@@ -26,6 +27,7 @@ type EvidenceShape = {
   plays_observed?: number | null
   player_grades?: PlayerGrade[] | null
   mistakes?: { title: string; category: string; severity: string }[] | null
+  stat_credits?: StatCredit[] | null
 }
 
 export type SummaryOutcome = 'written' | 'skipped' | 'not_ready' | 'failed'
@@ -213,6 +215,7 @@ export async function maybeSummarizeBatch(
           confidence: evidence.confidence ?? null,
           playerGrades: evidence.player_grades ?? null,
           mistakes: evidence.mistakes ?? null,
+          statCredits: evidence.stat_credits ?? null,
         }
       })
 

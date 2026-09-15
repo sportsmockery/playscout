@@ -7,6 +7,7 @@ import { buildTEAMIQSystemPrompt } from './modules/teamiq'
 import { buildMISTAKEIQSystemPrompt } from './modules/mistakeiq'
 import { buildSCOUTIQSystemPrompt } from './modules/scoutiq'
 import { buildRANKERIQSystemPrompt } from './modules/rankeriq'
+import { buildSTATSIQSystemPrompt } from './modules/statsiq'
 import { mapHudlRow, toPlaySequenceFields } from '../import/hudl-breakdown'
 import type { ModulePromptInput } from './schemas'
 
@@ -18,6 +19,7 @@ const BUILDERS: Record<string, (i: ModulePromptInput) => string> = {
   MISTAKEIQ: buildMISTAKEIQSystemPrompt,
   SCOUTIQ: buildSCOUTIQSystemPrompt,
   RANKERIQ: buildRANKERIQSystemPrompt,
+  STATSIQ: buildSTATSIQSystemPrompt,
 }
 
 const play = {

@@ -2,7 +2,7 @@ import { getTeamById, getRecentAnalysis, getTeamTendencies } from '@/lib/db/quer
 import type { PositionAnalysisResult } from '@/lib/db/types';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ArrowLeft, Brain, Zap, Gauge, Shield, TrendingUp, AlertTriangle, ArrowRight, BookOpen, Crosshair, ListOrdered } from 'lucide-react';
+import { ArrowLeft, Brain, Zap, Gauge, Shield, TrendingUp, AlertTriangle, ArrowRight, BookOpen, Crosshair, ListOrdered, BarChart3 } from 'lucide-react';
 import AnalysisQueue from '@/components/intelligence/AnalysisQueue';
 import CoachJobCards from '@/components/intelligence/CoachJobCards';
 
@@ -70,6 +70,15 @@ const MODULES = [
     bg: 'bg-amber-50',
     desc: 'Who played well and who needs work — every player graded, with the reason.',
     href: (id: string) => `/teams/${id}/modules/rankeriq`,
+  },
+  {
+    name: 'StatsIQ',
+    label: 'Statistical Intelligence',
+    icon: BarChart3,
+    color: 'text-sky-600',
+    bg: 'bg-sky-50',
+    desc: 'What are our actual numbers — carries, yards, catches, tackles, turnovers?',
+    href: (id: string) => `/teams/${id}/modules/statsiq`,
   },
   {
     name: 'ScoutIQ',

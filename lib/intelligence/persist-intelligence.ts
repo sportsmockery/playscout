@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { MistakeItem, PlayerGrade, Tendency } from './schemas'
 import { matchRosterPlayer, type RosterEntry } from './player-grades'
 import { rollupTendency, matchTendencyLabel } from './tendency-rollup'
+import type { StatCredit } from './stat-lines'
 
 /**
  * MISTAKEIQ writes one row per identified mistake to mistake_events. Before
@@ -182,4 +183,62 @@ export async function persistPlayerGrades(
 
   const { error } = await supabase.from('player_grades').insert(rows)
   if (error) console.error('[persist-intelligence] failed to insert player_grades', error)
+}
+
+/**
+ * STATSIQ writes one row per stat credit to play_stat_credits.
+ *
+ * The clip's own box score is already stored on the analysis result, so this
+ * is not about rendering the report — it is about the season. A carry only
+ * becomes "he's had 41 carries and 3.8 a pop since the bye" if the individual
+ * carries outlive the clip they were charted in, and only the ledger can be
+ * re-totalled when a coach later adds the jersey number that ties a position
+ * row to a real player.
+ *
+ * Credits arrive already resolved (identity checked, yardage basis settled) —
+ * this function stores, it does not decide.
+ */
+export async function persistStatCredits(
+  supabase: SupabaseClient,
+  params: {
+    teamId: string
+    videoId?: string | null
+    analysisResultId?: string | null
+    playSequenceId?: string | null
+    modelProvider?: string
+    modelName?: string
+  },
+  credits: StatCredit[] | undefined
+): Promise<void> {
+  if (!credits?.length) return
+
+  const rows = credits.map((c) => ({
+    team_id: params.teamId,
+    video_id: params.videoId ?? null,
+    analysis_result_id: params.analysisResultId ?? null,
+    play_sequence_id: params.playSequenceId ?? null,
+    play_index: c.playIndex,
+    side: c.side,
+    stat: c.stat,
+    position_id: c.positionId,
+    position_label: c.positionLabel,
+    position_detail: c.positionDetail,
+    role_on_play: c.roleOnPlay,
+    yards: c.yards,
+    yards_basis: c.yardsBasis,
+    touchdown: c.touchdown,
+    mistake_category: c.mistakeCategory,
+    player_id: c.playerId,
+    jersey_number: c.jerseyNumber,
+    identified_by: c.identifiedBy,
+    number_rejected_reason: c.numberRejectedReason,
+    identifier: c.identifier,
+    note: c.note,
+    evidence: { timestamps: c.evidenceTimestamps, frames: c.evidenceFrames },
+    model_provider: params.modelProvider ?? null,
+    model_name: params.modelName ?? null,
+  }))
+
+  const { error } = await supabase.from('play_stat_credits').insert(rows)
+  if (error) console.error('[persist-intelligence] failed to insert play_stat_credits', error)
 }

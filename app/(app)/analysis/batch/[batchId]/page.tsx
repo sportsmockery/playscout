@@ -9,6 +9,7 @@ import RetrySummaryButton from './RetrySummaryButton';
 import AwaitSummary from './AwaitSummary';
 import NextSteps from '@/components/intelligence/NextSteps';
 import PrintButton from '@/components/intelligence/PrintButton';
+import BoxScore from '@/components/intelligence/BoxScore';
 
 export async function generateMetadata({ params }: { params: Promise<{ batchId: string }> }) {
   const { batchId } = await params;
@@ -104,6 +105,21 @@ export default async function BatchReportPage({
           </div>
         </div>
       </div>
+
+      {/* For a StatsIQ batch the box score IS the report, so it leads — and it
+          is computed rather than written, so it is here even when the
+          narrative pass failed or is still running. One clip is one play; a
+          coach charts a game to get this page. */}
+      {aggregate?.statTally && (
+        <div className="mb-5">
+          <BoxScore
+            lines={aggregate.statTally.lines}
+            team={aggregate.statTally.team}
+            warnings={aggregate.statTally.warnings}
+            subtitle={`${completed} clip${completed === 1 ? '' : 's'} · ${aggregate.statTally.team.plays} play${aggregate.statTally.team.plays === 1 ? '' : 's'} charted`}
+          />
+        </div>
+      )}
 
       {/* Summary states */}
       {stillRunning && (

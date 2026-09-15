@@ -6,6 +6,7 @@ import { buildTEAMIQSystemPrompt } from './teamiq'
 import { buildMISTAKEIQSystemPrompt } from './mistakeiq'
 import { buildSCOUTIQSystemPrompt } from './scoutiq'
 import { buildRANKERIQSystemPrompt } from './rankeriq'
+import { buildSTATSIQSystemPrompt } from './statsiq'
 import { buildPlaybookIQPrompt } from './playbookiq'
 import type { ModulePromptInput } from '../schemas'
 
@@ -17,6 +18,7 @@ const BUILDERS: Record<string, (input: ModulePromptInput) => string> = {
   MISTAKEIQ: buildMISTAKEIQSystemPrompt,
   SCOUTIQ: buildSCOUTIQSystemPrompt,
   RANKERIQ: buildRANKERIQSystemPrompt,
+  STATSIQ: buildSTATSIQSystemPrompt,
 }
 
 const input = (over: Partial<ModulePromptInput> = {}): ModulePromptInput => ({

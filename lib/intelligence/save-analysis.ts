@@ -1,6 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { saveToTeamMemory } from './memory'
-import { persistMistakeEvents, persistPlayerGrades, persistTeamTendencies } from './persist-intelligence'
+import {
+  persistMistakeEvents,
+  persistPlayerGrades,
+  persistStatCredits,
+  persistTeamTendencies,
+} from './persist-intelligence'
 import { isMisdirectedRun, resolveFilmSubject } from './film-subject'
 import type { PositionAnalysisInput, PositionAnalysisResult } from './schemas'
 
@@ -81,6 +86,15 @@ export async function saveAnalysisResult(
         player_grades: result.player_grades ?? null,
         unit_graded: result.unit_graded ?? null,
         players_not_evaluable: result.players_not_evaluable ?? null,
+        // STATSIQ's box score. The lines and totals are stored so a reopened
+        // report renders without recomputing, and the CREDITS are stored so
+        // the batch report can re-tally the whole game through the identical
+        // code path rather than adding up per-clip totals a second way.
+        stat_lines: result.stat_lines ?? null,
+        stat_credits: result.stat_credits ?? null,
+        team_stats: result.team_stats ?? null,
+        stat_plays: result.stat_plays ?? null,
+        stat_warnings: result.stat_warnings ?? null,
       },
       model_provider: 'google',
       model_name: result.model,
@@ -128,6 +142,20 @@ export async function saveAnalysisResult(
         modelName: result.model,
       },
       result.player_grades
+    )
+  }
+  if (!misdirected && input.moduleKey === 'STATSIQ') {
+    await persistStatCredits(
+      supabase,
+      {
+        teamId: input.teamId,
+        videoId: input.videoId,
+        analysisResultId: saved?.id as string | undefined,
+        playSequenceId: input.playSequenceId,
+        modelProvider: 'google',
+        modelName: result.model,
+      },
+      result.stat_credits
     )
   }
   if (!misdirected && input.moduleKey === 'TEAMIQ') {

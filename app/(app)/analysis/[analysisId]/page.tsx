@@ -7,6 +7,8 @@ import RepBreakdownPanel, { type RepBreakdown } from '@/components/intelligence/
 import { createClient } from '@/lib/supabase/server';
 import PrintButton from './PrintButton';
 import NextSteps from '@/components/intelligence/NextSteps';
+import BoxScore from '@/components/intelligence/BoxScore';
+import type { StatLine, TeamStatTotals } from '@/lib/intelligence/stat-lines';
 
 export async function generateMetadata({ params }: { params: Promise<{ analysisId: string }> }) {
   const { analysisId } = await params;
@@ -34,6 +36,9 @@ interface EvidenceShape {
   // SCOUTIQ report was the one a coach could never reach.
   attack_points?: { point: string; category?: string }[] | null;
   target_players?: { identifier: string; reason: string; confidence: number }[] | null;
+  stat_lines?: StatLine[] | null;
+  team_stats?: TeamStatTotals | null;
+  stat_warnings?: string[] | null;
   player_grades?: {
     identifier: string;
     position?: string;
@@ -90,6 +95,7 @@ export default async function SavedAnalysisPage({
   // report reads as a development plan for the team you are trying to beat --
   // which is exactly what a coach reported seeing.
   const scouting = analysis.module_key === 'SCOUTIQ';
+  const charting = analysis.module_key === 'STATSIQ';
 
   // A breakdown anchor is only worth clicking if there is film behind it, so
   // resolve a playable URL the same way the film detail page does.
@@ -159,7 +165,12 @@ export default async function SavedAnalysisPage({
           {analysis.overall_score != null && (
             <div className="text-center">
               <p className="text-3xl font-bold text-[var(--brand-navy)]">{analysis.overall_score}</p>
-              <p className="text-xs text-[var(--brand-muted)]">/ 100</p>
+              {/* StatsIQ's number rates the FILM, not the team — how much of it
+                  could be charted. Shown as "/ 100" it reads as a grade, and a
+                  coach would take a 62 as a verdict on their players. */}
+              <p className="text-xs text-[var(--brand-muted)]">
+                {charting ? 'charting coverage' : '/ 100'}
+              </p>
             </div>
           )}
         </div>
@@ -188,6 +199,18 @@ export default async function SavedAnalysisPage({
       {analysis.video_id && ((evidence.frames?.length ?? 0) > 0 || (evidence.confidence_reasons?.length ?? 0) > 0) && (
         <div className="mb-5 print:hidden">
           <EvidenceFrames videoId={analysis.video_id} frameIndices={evidence.frames ?? []} confidence={evidence.confidence} confidenceReasons={evidence.confidence_reasons} />
+        </div>
+      )}
+
+      {/* StatsIQ's sheet is the report — it comes before the prose, because a
+          coach opening a stat sheet is looking for the numbers. */}
+      {evidence.stat_lines && evidence.team_stats && (
+        <div className="mb-5">
+          <BoxScore
+            lines={evidence.stat_lines}
+            team={evidence.team_stats}
+            warnings={evidence.stat_warnings ?? []}
+          />
         </div>
       )}
 

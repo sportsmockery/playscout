@@ -194,7 +194,7 @@ function buildSystemPrompt(athlete: Athlete | null): string { ... }
 export type IntelligenceModuleKey =
   | 'QBIQ' | 'OLIQ' | 'RBIQ' | 'WRIQ'
   | 'DLIQ' | 'LBIQ' | 'DBIQ'
-  | 'TEAMIQ' | 'MISTAKEIQ' | 'SCOUTIQ' | 'PRACTICEIQ' | 'RANKERIQ';
+  | 'TEAMIQ' | 'MISTAKEIQ' | 'SCOUTIQ' | 'PRACTICEIQ' | 'RANKERIQ' | 'STATSIQ';
 
 export interface PositionAnalysisInput {
   moduleKey: IntelligenceModuleKey;
@@ -300,6 +300,41 @@ export interface PositionAnalysisResult {
   it decides which numbers are allowed to exist.
 - Writes one row per graded player to `player_grades` (migration 030) so grades roll up to player
   profiles and trend over a season, not just live inside one report's jsonb.
+
+**STATSIQ** — `lib/intelligence/modules/statsiq.ts`
+- The box score, charted off the film: **offense** — carries, rushing yards, rush TD, pass
+  attempts/completions, passing yards, pass TD, interceptions thrown, targets, receptions,
+  receiving yards, receiving TD, fumbles lost; **defense** — solo tackles, assisted tackles,
+  interceptions, forced fumbles, and charted mistakes.
+- **The stat line is the POSITION, not the jersey number.** Sideline film rarely resolves two
+  digits on a moving jersey, so credits are filed under a closed position vocabulary
+  (`lib/intelligence/positions.ts`) and a number is only ever an upgrade — it goes through the
+  identical gates RankerIQ uses (`resolvePlayerIdentity`), so the two modules cannot drift to
+  two standards for the same claim. A position row can legitimately cover two kids; the UI says
+  so (`identifiedBy`).
+- Left/right in that vocabulary are **from the graded unit's own perspective**, never the
+  camera's — the same snap shot from the other sideline would otherwise flip every label and no
+  two plays could be added together.
+- Charting order is **formation → positions → the play → the credits**, stated as four steps in
+  the prompt. A model asked for "the stats" goes straight to the ball and attributes everything
+  to whoever is carrying it; placing the players before the ball moves is what makes a credit
+  attributable.
+- **The model counts nothing.** It reports per-play credits; `lib/intelligence/stat-lines.ts`
+  does every sum, the same function over one clip or a whole game
+  (`aggregateStatCredits`). A model asked for "rushing yards: 84" returns a figure that does not
+  equal the sum of its own carries, and nothing downstream can tell.
+- **Yardage carries its basis** (`coach_breakdown` | `field_landmarks` | `not_determinable`).
+  Youth film has no yard-line graphic; a gain that could not be measured is counted as an
+  unmeasured play rather than estimated, so "7 carries, 22 yards" reads as yards from the four
+  carries that could be measured. A staff-tagged gain on the play outranks the film read.
+- Cross-checks the sheet against itself (a reception with no completion behind it, receiving
+  yards that don't match passing yards) and shows the contradictions instead of reconciling them
+  silently.
+- Sacks are scored the NFHS/NCAA way — a rushing attempt and a rushing loss for the passer, not
+  a pass attempt.
+- Writes one row per credit to `play_stat_credits` (migration `20260915000000`), an event ledger
+  rather than a totals table: credits roll up into any question (a season, a down, one player),
+  and a total cannot be taken apart again.
 
 **Scoring scale (all modules):**
 90-100 Elite | 80-89 Advanced | 70-79 Solid | 60-69 Developing | <60 Beginner
@@ -830,7 +865,7 @@ route group adds no path segment — `app/(app)/dashboard/page.tsx` serves
 | `/teams/[teamId]/film/[videoId]` | Film detail |
 | `/teams/[teamId]/film/[videoId]/plays` | Play sequences + Hudl breakdown attach |
 | `/teams/[teamId]/intelligence` | Team intelligence dashboard |
-| `/teams/[teamId]/modules/{qbiq,oliq,rbiq,teamiq,mistakeiq,scoutiq,rankeriq,playbookiq}` | Module screens |
+| `/teams/[teamId]/modules/{qbiq,oliq,rbiq,teamiq,mistakeiq,scoutiq,rankeriq,statsiq,playbookiq}` | Module screens |
 | `/analysis/[analysisId]` | Saved intelligence report |
 | `/analysis/batch/[batchId]` | Cumulative batch report |
 | `/admin`, `/admin/usage` | Admin |
@@ -1133,7 +1168,7 @@ sampled ~2.7fps apart, so a frame-based read of those cues was inference
 dressed as observation.
 
 - Sample rate is a rubric decision, set per module in `analyze-position.ts`:
-  8fps for QBIQ/OLIQ/RBIQ, 6 for RANKERIQ, 4 for MISTAKEIQ, 2 at low resolution
+  8fps for QBIQ/OLIQ/RBIQ, 6 for RANKERIQ and STATSIQ, 4 for MISTAKEIQ, 2 at low resolution
   for TEAMIQ/SCOUTIQ (which grade alignment, and therefore cost LESS than the
   frame path they replace).
 - One play is read out of a longer film by start/end offset — no re-encode. The
@@ -1226,7 +1261,10 @@ order, previewed and confirmed by the coach rather than applied on trust.
 ### Known gaps
 
 - `player_grades` is written on every RankerIQ run and **read by nothing**.
-  There is no player profile page; the roster is a list.
+  There is no player profile page; the roster is a list. `play_stat_credits`
+  is in the same position: StatsIQ's clip and batch box scores are rendered
+  from the result jsonb, and the ledger exists for a season view nothing queries
+  yet.
 - WRIQ, DLIQ, LBIQ, DBIQ and PRACTICEIQ are declared and unbuilt — no defensive
   player can be graded individually.
 - `AnalysisCorrections` is in 4 of 8 module clients and only works in the

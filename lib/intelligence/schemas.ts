@@ -4,10 +4,11 @@ import type { EvidenceMode } from './football-brain'
 import { RepBreakdownSchema, type RepBreakdown } from './breakdown'
 import type { DrillPrescription } from './rubrics/drills'
 import type { ConfidenceSignals } from './confidence'
+import type { StatCredit, StatLine, TeamStatTotals } from './stat-lines'
 
 export type IntelligenceModuleKey =
   | 'QBIQ' | 'OLIQ' | 'RBIQ' | 'WRIQ' | 'DLIQ' | 'LBIQ' | 'DBIQ'
-  | 'TEAMIQ' | 'MISTAKEIQ' | 'SCOUTIQ' | 'PRACTICEIQ' | 'RANKERIQ'
+  | 'TEAMIQ' | 'MISTAKEIQ' | 'SCOUTIQ' | 'PRACTICEIQ' | 'RANKERIQ' | 'STATSIQ'
 
 export const PositionAnalysisInputSchema = z.object({
   moduleKey: z.string(),
@@ -175,6 +176,50 @@ export const PlayerGradeSchema = z.object({
 })
 export type PlayerGrade = z.infer<typeof PlayerGradeSchema>
 
+/**
+ * STATSIQ — one charted play, as the model reports it.
+ *
+ * Deliberately a record of OBSERVATIONS, not of statistics: a play, the
+ * formation it came from, and one credit per player per thing they did. Every
+ * number a coach eventually reads is summed from these in
+ * lib/intelligence/stat-lines.ts. Asking the model for "rushing yards: 84"
+ * instead returns a figure that does not equal the sum of its own carries, and
+ * nothing downstream can tell.
+ */
+export const StatCreditSchema = z.object({
+  stat: z.string(),
+  position: z.string(),
+  position_detail: z.string().nullable().optional(),
+  role_on_play: z.string().nullable().optional(),
+  yards: z.number().nullable().optional(),
+  touchdown: z.boolean().nullable().optional(),
+  mistake_category: z.string().nullable().optional(),
+  jersey_number: z.string().nullable().optional(),
+  jersey_number_frame: z.number().nullable().optional(),
+  identification_confidence: z.number().nullable().optional(),
+  note: z.string().nullable().optional(),
+  evidence_timestamps: z.array(z.number()).nullable().optional(),
+  evidence_frames: z.array(z.number()).nullable().optional(),
+})
+
+export const StatPlaySchema = z.object({
+  play_index: z.number().nullable().optional(),
+  possession: z.string().nullable().optional(),
+  offensive_formation: z.string().nullable().optional(),
+  defensive_front: z.string().nullable().optional(),
+  formation_note: z.string().nullable().optional(),
+  play_type: z.string().nullable().optional(),
+  result: z.string().nullable().optional(),
+  yards: z.number().nullable().optional(),
+  yards_basis: z.string().nullable().optional(),
+  yards_note: z.string().nullable().optional(),
+  confidence: z.number().nullable().optional(),
+  evidence_timestamps: z.array(z.number()).nullable().optional(),
+  evidence_frames: z.array(z.number()).nullable().optional(),
+  credits: z.array(StatCreditSchema).nullable().optional(),
+})
+export type StatPlay = z.infer<typeof StatPlaySchema>
+
 export const PositionAnalysisOutputSchema = z.object({
   overall_score: z.number().optional(),
   position_scores: z.record(z.string(), z.number().nullable()),
@@ -245,6 +290,8 @@ export const PositionAnalysisOutputSchema = z.object({
   mistakes: z.array(MistakeItemSchema).optional(),
   // RANKERIQ per-player grades — written one row per item to player_grades.
   player_grades: z.array(PlayerGradeSchema).optional(),
+  // STATSIQ per-play charting — tallied into stat lines, never read as totals.
+  stat_plays: z.array(StatPlaySchema).optional(),
   unit_graded: z.string().optional(),
   players_not_evaluable: z.string().optional(),
   // SCOUTIQ only — weak/target players on the OPPONENT. Anti-hallucination:
@@ -294,6 +341,17 @@ export interface PositionAnalysisResult {
   opponent_possession?: 'offense' | 'defense' | 'both' | 'unclear'
   mistakes?: MistakeItem[]
   player_grades?: PlayerGrade[]
+  /**
+   * STATSIQ. `stat_plays` is what the model charted; everything else here is
+   * computed from it by lib/intelligence/stat-lines.ts and is the only thing
+   * a coach is ever shown as a number.
+   */
+  stat_plays?: StatPlay[]
+  stat_credits?: StatCredit[]
+  stat_lines?: StatLine[]
+  team_stats?: TeamStatTotals
+  /** Where the charted film contradicts itself, or could not be measured. */
+  stat_warnings?: string[]
   unit_graded?: string
   players_not_evaluable?: string
   target_players?: { identifier: string; reason: string; confidence: number; evidence_frames?: number[] }[]
