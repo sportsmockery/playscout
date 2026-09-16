@@ -32,6 +32,11 @@ export interface BatchClipResult {
    * arithmetic at both scales.
    */
   statCredits?: StatCredit[] | null
+  /**
+   * Plays this clip lost to an accepted penalty. Carried separately because a
+   * nullified play leaves no credits to count — which is the point of it.
+   */
+  statNullifiedPlays?: number | null
 }
 
 export interface RepeatedItem {
@@ -393,8 +398,11 @@ export function aggregateBatch(clips: BatchClipResult[]): BatchAggregate {
     mistakeRollup: [...mistakeCounts.entries()]
       .map(([category, v]) => ({ category, ...v }))
       .sort((a, b) => b.count - a.count),
-    statTally: clips.some((c) => c.statCredits?.length)
-      ? aggregateStatCredits(clips.map((c) => c.statCredits ?? []))
+    statTally: clips.some((c) => c.statCredits?.length || c.statNullifiedPlays)
+      ? aggregateStatCredits(
+          clips.map((c) => c.statCredits ?? []),
+          clips.map((c) => c.statNullifiedPlays ?? 0)
+        )
       : null,
   }
 }

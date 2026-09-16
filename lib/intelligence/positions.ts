@@ -139,6 +139,41 @@ const POSITION_ALIGNMENT: Record<StatPosition, string> = {
   unknown: 'unplaceable',
 }
 
+/**
+ * The broad job a position does, used to sanity-check a jersey number nobody
+ * could verify.
+ *
+ * A player genuinely moves around inside a group — a back aligns in the slot,
+ * a linebacker walks out over a wing — and a number that follows them there is
+ * fine. A number that shows up as an offensive lineman on one play and a wide
+ * receiver on the next is a misread, not a versatile child, and stat-lines.ts
+ * abandons it. Same reasoning as groupGradesForRollup in aggregate-batch.ts,
+ * where "#55" was observed at six positions across seven reps.
+ */
+export const POSITION_GROUPS = [
+  'backfield', 'receiver', 'oline', 'dline', 'linebacker', 'secondary', 'other',
+] as const
+export type PositionGroup = (typeof POSITION_GROUPS)[number]
+
+const GROUP_OF: Record<StatPosition, PositionGroup> = {
+  qb: 'backfield', rb: 'backfield', fb: 'backfield',
+  wingback_left: 'backfield', wingback_right: 'backfield',
+  te_left: 'receiver', te_right: 'receiver',
+  wr_left: 'receiver', wr_right: 'receiver',
+  slot_left: 'receiver', slot_right: 'receiver',
+  lt: 'oline', lg: 'oline', c: 'oline', rg: 'oline', rt: 'oline',
+  other_offense: 'other',
+  de_left: 'dline', de_right: 'dline', dt_left: 'dline', dt_right: 'dline', nose: 'dline',
+  lb_left: 'linebacker', lb_middle: 'linebacker', lb_right: 'linebacker',
+  cb_left: 'secondary', cb_right: 'secondary', fs: 'secondary', ss: 'secondary',
+  other_defense: 'other',
+  unknown: 'other',
+}
+
+export function positionGroup(id: string): PositionGroup {
+  return GROUP_OF[id as StatPosition] ?? 'other'
+}
+
 export function isOffensivePosition(id: string): id is OffensivePosition {
   return (OFFENSIVE_POSITIONS as readonly string[]).includes(id)
 }

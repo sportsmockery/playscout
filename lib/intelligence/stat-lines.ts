@@ -1,5 +1,6 @@
 import {
   normalizeStatPosition,
+  positionGroup,
   positionLabel,
   isDefensivePosition,
   isOffensivePosition,
@@ -52,7 +53,17 @@ export const DEFENSIVE_STAT_KINDS = [
   'mistake',
 ] as const
 
-export const STAT_KINDS = [...OFFENSIVE_STAT_KINDS, ...DEFENSIVE_STAT_KINDS] as const
+/**
+ * A flag belongs to whichever of our units was on the field, so unlike every
+ * other kind it does not imply a side — it takes the side of the play.
+ */
+export const SHARED_STAT_KINDS = ['penalty'] as const
+
+export const STAT_KINDS = [
+  ...OFFENSIVE_STAT_KINDS,
+  ...DEFENSIVE_STAT_KINDS,
+  ...SHARED_STAT_KINDS,
+] as const
 export type StatKind = (typeof STAT_KINDS)[number]
 
 export function sideOfStat(stat: string): 'offense' | 'defense' | null {
@@ -60,6 +71,31 @@ export function sideOfStat(stat: string): 'offense' | 'defense' | null {
   if ((DEFENSIVE_STAT_KINDS as readonly string[]).includes(stat)) return 'defense'
   return null
 }
+
+/** The fouls a youth-through-varsity crew actually writes down. */
+export const PENALTY_TYPES = [
+  'false_start', 'offside', 'encroachment', 'neutral_zone_infraction', 'delay_of_game',
+  'illegal_formation', 'illegal_motion', 'illegal_shift', 'illegal_procedure',
+  'substitution_infraction', 'too_many_men',
+  'holding', 'illegal_block', 'block_in_the_back', 'clipping', 'chop_block',
+  'illegal_use_of_hands', 'ineligible_downfield', 'illegal_forward_pass',
+  'pass_interference', 'illegal_contact',
+  'facemask', 'horse_collar', 'roughing_the_passer', 'roughing_the_kicker',
+  'targeting', 'personal_foul', 'unsportsmanlike_conduct',
+  'other',
+] as const
+export type PenaltyType = (typeof PENALTY_TYPES)[number]
+
+/** What the other team did with the flag — which decides whether it counts. */
+export const PENALTY_ENFORCEMENTS = ['accepted', 'declined', 'offsetting', 'unclear'] as const
+export type PenaltyEnforcement = (typeof PENALTY_ENFORCEMENTS)[number]
+
+/**
+ * When the foul happened, which is what decides whether the play it touched
+ * still produced statistics.
+ */
+export const PENALTY_TIMINGS = ['pre_snap', 'during_play', 'dead_ball'] as const
+export type PenaltyTiming = (typeof PENALTY_TIMINGS)[number]
 
 /**
  * Where a yardage number came from. This is the field that keeps the box score
@@ -80,6 +116,16 @@ export function sideOfStat(stat: string): 'offense' | 'defense' | null {
 export const YARDS_BASES = ['coach_breakdown', 'field_landmarks', 'not_determinable'] as const
 export type YardsBasis = (typeof YARDS_BASES)[number]
 
+/**
+ * A credit can also carry yardage that was never measured at all because it
+ * did not have to be: 10 for holding, 5 for offside. `rule_assessed` is not
+ * offered to the model — a play's gain is never rule-assessed — so it exists
+ * only on the credit, where it stops penalty yards from being thrown away on
+ * film whose gains could not be measured.
+ */
+export const CREDIT_YARDS_BASES = [...YARDS_BASES, 'rule_assessed'] as const
+export type CreditYardsBasis = (typeof CREDIT_YARDS_BASES)[number]
+
 /** What the model reports for one player on one play, before any resolution. */
 export interface RawStatCredit {
   stat: string
@@ -89,6 +135,7 @@ export interface RawStatCredit {
   yards?: number | null
   touchdown?: boolean | null
   mistake_category?: string | null
+  penalty_type?: string | null
   jersey_number?: string | null
   jersey_number_frame?: number | null
   identification_confidence?: number | null
@@ -109,6 +156,13 @@ export interface RawStatPlay {
   yards?: number | null
   yards_basis?: string | null
   yards_note?: string | null
+  /** Which team was flagged, if either. */
+  penalty_on?: string | null
+  penalty_type?: string | null
+  penalty_enforcement?: string | null
+  penalty_timing?: string | null
+  /** Yards the penalty assessed — a rules number, not a measurement. */
+  penalty_yards?: number | null
   confidence?: number | null
   evidence_timestamps?: number[] | null
   evidence_frames?: number[] | null
@@ -125,11 +179,14 @@ export interface StatCredit {
   positionDetail: string | null
   roleOnPlay: string | null
   yards: number | null
-  yardsBasis: YardsBasis
+  yardsBasis: CreditYardsBasis
   touchdown: boolean
   mistakeCategory: string | null
+  penaltyType: string | null
   playerId: string | null
   jerseyNumber: string | null
+  /** True only when a roster existed and this number was on it. */
+  numberVerified: boolean
   numberRejectedReason: string | null
   identifier: string
   identifiedBy: 'roster' | 'number' | 'position'
@@ -179,12 +236,17 @@ export interface StatLine {
   positions: StatPosition[]
   side: 'offense' | 'defense'
   identifiedBy: 'roster' | 'number' | 'position'
+  /** False on a number read off the film with no roster to check it against. */
+  numberVerified: boolean
   playerId: string | null
   jerseyNumber: string | null
   /** Distinct plays this row was credited on — not snaps played. */
   playsCredited: number
   offense: OffensiveStats
   defense: DefensiveStats
+  /** Accepted penalties charged to this row, and the yards they cost. */
+  penalties: number
+  penaltyYards: number
   unmeasured: UnmeasuredCounts
 }
 
@@ -195,6 +257,15 @@ export interface TeamStatTotals {
   offense: OffensiveStats
   defense: DefensiveStats
   unmeasured: UnmeasuredCounts
+  /** Accepted penalties against us, and the yards they cost. */
+  penalties: number
+  penaltyYards: number
+  /**
+   * Plays an accepted penalty wiped off the books. They produced no
+   * statistics — which is why the play count and the carry count can
+   * legitimately disagree, and why the sheet says so out loud.
+   */
+  nullifiedPlays: number
   /** Completions ÷ attempts, null when nothing was thrown. */
   completionPct: number | null
   /** Rush yards ÷ carries, over measured carries only. */
@@ -241,7 +312,47 @@ function toBasis(raw: unknown): YardsBasis {
     : 'not_determinable'
 }
 
+/**
+ * Did an accepted penalty wipe this play off the books?
+ *
+ * This is the rule that keeps a stat sheet honest about penalties, and it is
+ * the one every hand-kept scorebook gets wrong: a play called back does not
+ * produce statistics. The 40-yard touchdown run that came back on a hold is
+ * not 40 yards, not a carry, and not a touchdown — it did not happen. Counting
+ * it inflates a back's season by exactly the plays his line cost him.
+ *
+ * Timing is what separates the two cases, so the model reports when the foul
+ * happened and the rule is applied here:
+ *   pre_snap    — there was no play to begin with.
+ *   during_play — the play is wiped.
+ *   dead_ball   — the foul came after the whistle and is enforced on the NEXT
+ *                 snap; the play it followed still counts in full.
+ * Offsetting fouls replay the down, so nothing counts there either.
+ */
+export function playIsNullified(play: RawStatPlay): boolean {
+  const enforcement = play.penalty_enforcement
+  if (enforcement !== 'accepted' && enforcement !== 'offsetting') return false
+  if (play.penalty_timing === 'dead_ball') return false
+  return true
+}
+
+/**
+ * Only an ACCEPTED penalty is charged in a box score. A declined flag cost the
+ * team nothing and is not a team penalty; offsetting fouls cancel and the down
+ * is replayed. Both are still recorded on the play itself, so the play log can
+ * show a coach the flag they remember without it landing in the totals.
+ */
+function penaltyIsCharged(play: RawStatPlay): boolean {
+  return play.penalty_enforcement === 'accepted' && play.penalty_on === 'us'
+}
+
 export interface ResolveOptions extends IdentityOptions {
+  /**
+   * StatsIQ passes `allowUnverifiedNumbers: true` (inherited from
+   * IdentityOptions): a number the camera actually showed is printed even with
+   * no roster behind it, marked unverified, because a count is something the
+   * coach who was at the game can check in a second.
+   */
   roster?: RosterEntry[]
   /**
    * What the coach said their team was doing, used only when the model could
@@ -274,7 +385,7 @@ export interface ResolveOptions extends IdentityOptions {
 export function resolveStatCredits(
   plays: RawStatPlay[] | null | undefined,
   opts: ResolveOptions = {}
-): { credits: StatCredit[]; warnings: string[] } {
+): { credits: StatCredit[]; warnings: string[]; nullifiedPlays: number } {
   const credits: StatCredit[] = []
   const warnings: string[] = []
   const roster = opts.roster ?? []
@@ -283,6 +394,7 @@ export function resolveStatCredits(
 
   let droppedOpponentCredits = 0
   let droppedUnclearPlays = 0
+  let nullifiedPlays = 0
 
   ;(plays ?? []).forEach((play, i) => {
     const playIndex = num(play.play_index) ?? i + 1
@@ -293,6 +405,8 @@ export function resolveStatCredits(
         : declared
 
     const playBasis = toBasis(play.yards_basis)
+    const nullified = playIsNullified(play)
+    const chargePenalty = penaltyIsCharged(play)
 
     if (!possession) {
       // Special teams and plays where the model could not tell which unit was
@@ -302,10 +416,20 @@ export function resolveStatCredits(
       return
     }
 
+    if (nullified) nullifiedPlays += 1
+
     for (const raw of play.credits ?? []) {
       const stat = String(raw.stat ?? '') as StatKind
-      const statSide = sideOfStat(stat)
+      const isPenalty = stat === 'penalty'
+      // A flag belongs to whichever of our units was on the field, so it takes
+      // the play's side rather than implying one.
+      const statSide: 'offense' | 'defense' | null = isPenalty ? possession : sideOfStat(stat)
       if (!statSide) continue
+
+      // A play called back produced no statistics — but the flag that called
+      // it back is itself a statistic, and the only one that survives.
+      if (nullified && !isPenalty) continue
+      if (isPenalty && !chargePenalty) continue
 
       if (statSide !== possession) {
         droppedOpponentCredits += 1
@@ -330,7 +454,13 @@ export function resolveStatCredits(
           identification_confidence: raw.identification_confidence ?? null,
         },
         roster,
-        { allowNumbers: opts.allowNumbers }
+        {
+          allowNumbers: opts.allowNumbers,
+          // Defaulted here rather than left to the caller: this is StatsIQ's
+          // rule about its own output, and a second caller that forgot the
+          // flag would quietly revert to grading-strength identity.
+          allowUnverifiedNumbers: opts.allowUnverifiedNumbers ?? true,
+        }
       )
 
       const rejectedDigits = identity.numberRejectedReason
@@ -344,7 +474,15 @@ export function resolveStatCredits(
 
       // A credit may carry its own yardage basis via the play it belongs to;
       // there is one measurement per play, so the play's basis governs.
-      const yards = playBasis === 'not_determinable' ? null : num(raw.yards)
+      //
+      // Penalty yardage is the exception and is never gated: 10 for holding is
+      // a rules number, not something read off the field, so it survives on a
+      // play whose gain could not be measured at all.
+      const yards = isPenalty
+        ? num(raw.yards) ?? num(play.penalty_yards)
+        : playBasis === 'not_determinable'
+          ? null
+          : num(raw.yards)
 
       credits.push({
         playIndex,
@@ -355,11 +493,13 @@ export function resolveStatCredits(
         positionDetail: raw.position_detail?.trim() || null,
         roleOnPlay: raw.role_on_play?.trim() || null,
         yards,
-        yardsBasis: playBasis,
+        yardsBasis: isPenalty ? 'rule_assessed' : playBasis,
         touchdown: raw.touchdown === true,
         mistakeCategory: stat === 'mistake' ? raw.mistake_category ?? null : null,
+        penaltyType: isPenalty ? raw.penalty_type ?? play.penalty_type ?? null : null,
         playerId: identity.playerId,
         jerseyNumber: identity.jerseyNumber,
+        numberVerified: identity.jerseyNumber != null && roster.length > 0,
         numberRejectedReason: identity.numberRejectedReason,
         identifier: identity.jerseyNumber ? identity.identifier : positionLabel(safePosition),
         identifiedBy: identity.playerId ? 'roster' : identity.jerseyNumber ? 'number' : 'position',
@@ -381,7 +521,13 @@ export function resolveStatCredits(
     )
   }
 
-  return { credits: reconcile(credits, opts.breakdownGain ?? null, warnings), warnings }
+  if (nullifiedPlays) {
+    warnings.push(
+      `${nullifiedPlays} play${nullifiedPlays === 1 ? ' was' : 's were'} called back by an accepted penalty and carr${nullifiedPlays === 1 ? 'ies' : 'y'} no stats — a run brought back on a hold is not a carry and not yards.`
+    )
+  }
+
+  return { credits: reconcile(credits, opts.breakdownGain ?? null, warnings), warnings, nullifiedPlays }
 }
 
 /**
@@ -430,19 +576,81 @@ function reconcile(credits: StatCredit[], breakdownGain: number | null, warnings
  * guessed name is false and harmful.
  */
 function lineKey(c: StatCredit): string {
-  if (c.playerId) return `player:${c.playerId}`
-  if (c.jerseyNumber) return `jersey:${c.jerseyNumber}`
+  // The side is always part of the key: a box score has an offensive half and
+  // a defensive half, and a two-way player — most of a youth roster — belongs
+  // in both with different numbers, not in one row that adds carries to
+  // tackles.
+  if (c.playerId) return `player:${c.playerId}:${c.side}`
+  if (c.jerseyNumber) return `jersey:${c.jerseyNumber}:${c.side}`
   return `position:${c.side}:${c.positionId}`
 }
 
+function positionKey(c: StatCredit): string {
+  return `position:${c.side}:${c.positionId}`
+}
+
+/**
+ * Throws out a jersey number that contradicts itself.
+ *
+ * A number nobody could check against a roster holds a row together only while
+ * the plays agree about roughly where that player lines up. A back who also
+ * takes a snap at wingback is one child; a number that appears at left tackle
+ * on one play and split wide on the next is a misread of two different
+ * children, and merging their stats is exactly the harm the number was
+ * supposed to avoid.
+ *
+ * So an unverified number survives only while its credits stay inside one
+ * position group. A roster-MATCHED number is exempt: there the roster is
+ * ground truth, and a two-way kid really does play several spots.
+ */
+function abandonInconsistentNumbers(credits: StatCredit[]): {
+  credits: StatCredit[]
+  abandoned: string[]
+} {
+  const byNumber = new Map<string, StatCredit[]>()
+  for (const c of credits) {
+    if (!c.jerseyNumber || c.playerId || c.numberVerified) continue
+    byNumber.set(c.jerseyNumber, [...(byNumber.get(c.jerseyNumber) ?? []), c])
+  }
+
+  const bad = new Set<string>()
+  for (const [number, group] of byNumber) {
+    const groups = new Set(group.map((c) => positionGroup(c.positionId)))
+    if (groups.size > 1) bad.add(number)
+  }
+  if (!bad.size) return { credits, abandoned: [] }
+
+  return {
+    credits: credits.map((c) =>
+      c.jerseyNumber && bad.has(c.jerseyNumber) && !c.playerId && !c.numberVerified
+        ? {
+            ...c,
+            jerseyNumber: null,
+            identifier: c.positionLabel,
+            identifiedBy: 'position' as const,
+            numberRejectedReason:
+              c.numberRejectedReason ??
+              'the same number was read at positions too far apart to be one player',
+            note: c.note
+              ? scrubNumberFromNote(c.note, c.jerseyNumber, c.positionLabel)
+              : c.note,
+          }
+        : c
+    ),
+    abandoned: [...bad],
+  }
+}
+
 /** Tally resolved credits into per-position lines and team totals. */
-export function computeStatLines(credits: StatCredit[]): StatTally {
+export function computeStatLines(rawCredits: StatCredit[], nullifiedPlays = 0): StatTally {
+  const { credits, abandoned } = abandonInconsistentNumbers(rawCredits)
+
   const byKey = new Map<string, { line: StatLine; plays: Set<number> }>()
   const offensePlays = new Set<number>()
   const defensePlays = new Set<number>()
 
   for (const c of credits) {
-    const key = lineKey(c)
+    const key = c.jerseyNumber || c.playerId ? lineKey(c) : positionKey(c)
     let entry = byKey.get(key)
     if (!entry) {
       entry = {
@@ -454,11 +662,14 @@ export function computeStatLines(credits: StatCredit[]): StatTally {
           positions: [],
           side: c.side,
           identifiedBy: c.identifiedBy,
+          numberVerified: c.numberVerified,
           playerId: c.playerId,
           jerseyNumber: c.jerseyNumber,
           playsCredited: 0,
           offense: emptyOffense(),
           defense: emptyDefense(),
+          penalties: 0,
+          penaltyYards: 0,
           unmeasured: emptyUnmeasured(),
         },
         plays: new Set<number>(),
@@ -479,14 +690,16 @@ export function computeStatLines(credits: StatCredit[]): StatTally {
     playsCredited: plays.size,
   }))
 
-  const team = totalsFrom(lines, offensePlays.size, defensePlays.size)
+  const team = totalsFrom(lines, offensePlays.size, defensePlays.size, nullifiedPlays)
 
-  return {
-    lines: sortLines(lines),
-    team,
-    credits,
-    warnings: consistencyWarnings(lines, team),
+  const warnings = consistencyWarnings(lines, team)
+  for (const number of abandoned) {
+    warnings.unshift(
+      `#${number} was read at positions too far apart to be one player, so those stats were filed by position instead.`
+    )
   }
+
+  return { lines: sortLines(lines), team, credits, warnings }
 }
 
 /**
@@ -569,6 +782,16 @@ function applyCredit(line: StatLine, c: StatCredit) {
     case 'mistake':
       d.mistakes += 1
       break
+
+    case 'penalty':
+      // Only accepted penalties reach here — see penaltyIsCharged. They sit
+      // outside the offensive and defensive blocks because a penalty is not a
+      // football play: it is charged to whichever unit was on the field, and a
+      // guard's hold and a corner's pass interference belong in the same
+      // column.
+      line.penalties += 1
+      if (c.yards != null) line.penaltyYards += Math.abs(c.yards)
+      break
   }
 }
 
@@ -601,7 +824,12 @@ function addDefense(a: DefensiveStats, b: DefensiveStats): DefensiveStats {
   }
 }
 
-function totalsFrom(lines: StatLine[], offensivePlays: number, defensivePlays: number): TeamStatTotals {
+function totalsFrom(
+  lines: StatLine[],
+  offensivePlays: number,
+  defensivePlays: number,
+  nullifiedPlays: number
+): TeamStatTotals {
   const offense = lines.reduce((acc, l) => addOffense(acc, l.offense), emptyOffense())
   const defense = lines.reduce((acc, l) => addDefense(acc, l.defense), emptyDefense())
   const unmeasured = lines.reduce(
@@ -622,6 +850,9 @@ function totalsFrom(lines: StatLine[], offensivePlays: number, defensivePlays: n
     offense,
     defense,
     unmeasured,
+    penalties: lines.reduce((sum, l) => sum + l.penalties, 0),
+    penaltyYards: lines.reduce((sum, l) => sum + l.penaltyYards, 0),
+    nullifiedPlays,
     completionPct: offense.pass_attempts
       ? Math.round((offense.pass_completions / offense.pass_attempts) * 1000) / 10
       : null,
@@ -670,10 +901,17 @@ export function consistencyWarnings(lines: StatLine[], team: TeamStatTotals): st
     )
   }
 
+  const unverified = lines.filter((l) => l.jerseyNumber && !l.numberVerified).length
+  if (unverified) {
+    out.push(
+      `${unverified} line${unverified === 1 ? '' : 's'} use a jersey number read off the film with no roster to check it against. Add your roster and these get names — and a misread number gets caught.`
+    )
+  }
+
   const byPosition = lines.filter((l) => l.identifiedBy === 'position').length
   if (byPosition && byPosition === lines.length) {
     out.push(
-      'Every line is by position rather than by player — no jersey number was legible and verified on this film.'
+      'Every line is by position rather than by player — no jersey number was legible on this film.'
     )
   }
 
@@ -700,8 +938,8 @@ export function tallyStatPlays(
   plays: RawStatPlay[] | null | undefined,
   opts: ResolveOptions = {}
 ): StatTally {
-  const { credits, warnings } = resolveStatCredits(plays, opts)
-  const tally = computeStatLines(credits)
+  const { credits, warnings, nullifiedPlays } = resolveStatCredits(plays, opts)
+  const tally = computeStatLines(credits, nullifiedPlays)
   return { ...tally, warnings: [...warnings, ...tally.warnings] }
 }
 
@@ -715,7 +953,15 @@ export function tallyStatPlays(
  * second summation path would be a second set of rounding and merging rules to
  * disagree with the first.
  */
-export function aggregateStatCredits(clipCredits: StatCredit[][]): StatTally {
+export function aggregateStatCredits(
+  clipCredits: StatCredit[][],
+  /**
+   * Plays each clip lost to an accepted penalty. Carried in rather than
+   * recomputed because a nullified play leaves no credits behind to count —
+   * that is the whole point of it.
+   */
+  nullifiedPerClip: number[] = []
+): StatTally {
   // Play indexes restart at 1 in every clip; offset them so "plays counted"
   // isn't one clip's worth for the whole batch.
   let offset = 0
@@ -725,5 +971,5 @@ export function aggregateStatCredits(clipCredits: StatCredit[][]): StatTally {
     for (const c of credits) all.push({ ...c, playIndex: c.playIndex + offset })
     offset += max
   }
-  return computeStatLines(all)
+  return computeStatLines(all, nullifiedPerClip.reduce((sum, n) => sum + (n || 0), 0))
 }

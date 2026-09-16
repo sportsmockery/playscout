@@ -145,7 +145,14 @@ function renderBoxScore(tally: StatTally): string {
       `(${o.pass_td} TD, ${o.interceptions_thrown} INT); ${o.receptions} catches for ${o.receiving_yards} receiving yards`,
     `  defense: ${d.tackles} solo tackles, ${d.assisted_tackles} assists, ${d.interceptions} interceptions, ` +
       `${d.forced_fumbles} forced fumbles, ${d.mistakes} charted mistakes`,
+    `  penalties: ${t.penalties} accepted for ${t.penaltyYards} yards`,
   ]
+
+  if (t.nullifiedPlays) {
+    lines.push(
+      `  ${t.nullifiedPlays} play${t.nullifiedPlays === 1 ? '' : 's'} were called back by an accepted penalty and produced NO statistics — they are already excluded from every figure above, so do not add them back or describe them as production.`
+    )
+  }
 
   if (unmeasured) {
     lines.push(
@@ -160,6 +167,10 @@ function renderBoxScore(tally: StatTally): string {
         ? `${l.identifier}: ${l.offense.carries} car / ${l.offense.rush_yards} yds, ${l.offense.receptions} rec / ${l.offense.receiving_yards} yds, ${l.offense.pass_completions}/${l.offense.pass_attempts} passing`
         : `${l.identifier}: ${l.defense.total_tackles} tackles (${l.defense.assisted_tackles} assisted), ${l.defense.interceptions} INT, ${l.defense.forced_fumbles} FF, ${l.defense.mistakes} mistakes`
     )
+  const penalized = tally.lines
+    .filter((l) => l.penalties > 0)
+    .map((l) => `${l.identifier}: ${l.penalties} for ${l.penaltyYards} yds`)
+  if (penalized.length) lines.push(`  penalties by position: ${penalized.join(' | ')}`)
   if (leaders.length) lines.push(`  by position:\n    ${leaders.join('\n    ')}`)
 
   if (tally.warnings.length) {

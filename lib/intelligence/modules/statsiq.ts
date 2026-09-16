@@ -12,7 +12,11 @@ import { OFFENSIVE_FORMATIONS, DEFENSIVE_FRONTS } from '../taxonomy'
 import {
   OFFENSIVE_STAT_KINDS,
   DEFENSIVE_STAT_KINDS,
+  SHARED_STAT_KINDS,
   YARDS_BASES,
+  PENALTY_TYPES,
+  PENALTY_ENFORCEMENTS,
+  PENALTY_TIMINGS,
 } from '../stat-lines'
 import { MISTAKE_CATEGORIES, type ModulePromptInput } from '../schemas'
 
@@ -74,6 +78,15 @@ const DEFENSIVE_STAT_RULES = `
                     do it. "Did not make the play" is not a mistake — ten players don't make the
                     tackle on every snap.`
 
+const PENALTY_STAT_RULES = `
+  penalty         — this player was flagged. Set penalty_type, and yards to the yardage the
+                    penalty assessed (5, 10, 15 — the rules number, not a distance you measured).
+                    Credit the player who committed the foul when you can see who it was; when
+                    you can only tell which unit was flagged, credit the position that was
+                    clearly involved, or leave the credit out rather than guessing a player.
+                    A flag is a penalty, not a "mistake" — do not report both for the same act
+                    unless the player also blew an assignment separately from the foul.`
+
 export function buildSTATSIQSystemPrompt(input: ModulePromptInput): string {
   const { team, playSequence, coachNote, roster, filmConditions } = input
   const tier = resolveLevelTier(team)
@@ -111,7 +124,7 @@ ${gameTypeContext}
 ${playContext}
 ${yardageContext}
 
-${buildRosterContext(roster, filmConditions)}
+${buildRosterContext(roster, filmConditions, { allowUnverifiedNumbers: true })}
 ${coachNote ? `COACH NOTE: ${coachNote}` : ''}
 
 HEAD CONTACT / CONCUSSION CHECK — mandatory for every clip:
@@ -145,6 +158,8 @@ OFFENSE (only when ${teamLabel} has the ball):${OFFENSIVE_STAT_RULES}
 
 DEFENSE (only when the other team has the ball):${DEFENSIVE_STAT_RULES}
 
+EITHER UNIT:${PENALTY_STAT_RULES}
+
 PAIRING RULES — a play's credits have to describe one coherent event:
 - A completed pass produces EXACTLY ONE pass_complete (the thrower) and EXACTLY ONE reception
   (the catcher), with the SAME yards on both. A completion with no receiver, or a reception with
@@ -155,6 +170,32 @@ PAIRING RULES — a play's credits have to describe one coherent event:
   the ball, never for the quarterback who handed it off.
 - Every play that ends in a tackle should produce tackle credits when we are on defense — and
   none at all when we are on offense.
+
+=== PENALTIES — AND WHAT THEY DO TO THE REST OF THE PLAY ===
+A flag is not a footnote on a stat sheet. It is a statistic of its own, and it can delete every
+other statistic on the play.
+
+For EVERY play, set:
+  penalty_on          — "us" (the unit you are charting), "them", "offsetting", or "none".
+  penalty_type        — the foul, from the list in the schema.
+  penalty_enforcement — "accepted", "declined", "offsetting", or "unclear". If you cannot tell
+                        from the film whether it was accepted, say "unclear" — do not assume.
+                        The clearest tell is what happens next: the ball moved back and the down
+                        was replayed (accepted), or the result stood (declined).
+  penalty_timing      — "pre_snap" (false start, offside before the snap), "during_play", or
+                        "dead_ball" (a foul after the whistle).
+  penalty_yards       — the yardage assessed.
+
+Report the flag on every play you see one, whoever it was on and whatever was done with it. The
+app decides what counts: an accepted penalty during or before the play wipes that play's
+statistics entirely — a 40-yard touchdown run called back on a hold is not a carry, not 40 yards
+and not a touchdown, and counting it would inflate a back's season by exactly the plays his line
+cost him. A dead-ball foul after the whistle leaves the play's stats intact. A declined flag is
+not charged to anyone. You do not need to apply any of that: report what you saw and let the app
+apply the rule.
+
+Still chart the play's credits as normal even when it was called back. The app removes what the
+penalty removes.
 
 === YARDAGE — THE RULE THAT MATTERS MOST ===
 You are watching film with no yard-line graphic and often no legible field markings. A yardage
@@ -172,13 +213,25 @@ A play charted as not_determinable still counts the carry, the completion and th
 app tells the coach how many plays had no measurable yardage, which is a true and useful thing
 to know. An invented 8-yard gain is not.
 
-=== IDENTIFICATION ===
-Credit the POSITION first. jersey_number is optional and almost always null — fill it only when
-you can point to the frame where you literally read the digits, set jersey_number_frame to that
-frame, and set identification_confidence honestly. A number you infer from the roster, from an
-earlier play, or from what would "make sense" is an invention that hands one child another
-child's statistics. The app discards any number that fails verification, and grades the credit by
-position instead — that outcome is expected, not a failure.
+=== IDENTIFICATION — NUMBER WHEN YOU CAN SEE IT, POSITION WHEN YOU CANNOT ===
+A stat belongs to a player, so read the jersey number whenever the film lets you. A coach wants
+"#22 had 14 carries", not "the running back had 14 carries" — report the number every time you
+can actually READ it.
+
+What "actually read it" means, and it is the whole rule:
+- You can point to a specific frame or moment where the digits on that player's jersey are
+  legible to you. Put that in jersey_number_frame. No frame means you did not read it.
+- identification_confidence is your honest read of how legible those digits were.
+- A number you got any other way is an invention, and it hands one child another child's
+  statistics. NEVER take a number from: the position played, what the roster suggests, a number
+  seen on a different player, a number from an earlier play, or what would "make sense".
+- Partly-read digits are null, not a guess. "Probably 30" is null. "3 or 8" is null. "#3X" is null.
+
+When you cannot read the number, set jersey_number to null and the app files the stat under the
+position instead. That is a normal, correct outcome on wide sideline film — most plays on most
+youth film end up there, and the sheet is still useful. Do not invent a number to avoid it.
+
+Use the SAME position id for the same player on every play so their stats add up into one line.
 
 === THE ENVELOPE ===
 - position_scores are about THE FILM, not the team: ball_tracking (could you follow the ball),
@@ -200,13 +253,17 @@ preamble.`
 const STAT_CREDIT_SCHEMA = {
   type: Type.OBJECT,
   properties: {
-    stat: { type: Type.STRING, enum: [...OFFENSIVE_STAT_KINDS, ...DEFENSIVE_STAT_KINDS] },
+    stat: {
+      type: Type.STRING,
+      enum: [...OFFENSIVE_STAT_KINDS, ...DEFENSIVE_STAT_KINDS, ...SHARED_STAT_KINDS],
+    },
     position: { type: Type.STRING, enum: [...OFFENSIVE_POSITIONS, ...DEFENSIVE_POSITIONS] },
     position_detail: { type: Type.STRING, nullable: true },
     role_on_play: { type: Type.STRING, nullable: true },
     yards: { type: Type.NUMBER, nullable: true },
     touchdown: { type: Type.BOOLEAN },
     mistake_category: { type: Type.STRING, enum: [...MISTAKE_CATEGORIES], nullable: true },
+    penalty_type: { type: Type.STRING, enum: [...PENALTY_TYPES], nullable: true },
     jersey_number: { type: Type.STRING, nullable: true },
     jersey_number_frame: { type: Type.INTEGER, nullable: true },
     identification_confidence: { type: Type.NUMBER },
@@ -263,6 +320,15 @@ export const STATSIQ_RESPONSE_SCHEMA = {
           yards: { type: Type.NUMBER, nullable: true },
           yards_basis: { type: Type.STRING, enum: [...YARDS_BASES] },
           yards_note: { type: Type.STRING, nullable: true },
+          penalty_on: { type: Type.STRING, enum: ['us', 'them', 'offsetting', 'none'] },
+          penalty_type: { type: Type.STRING, enum: [...PENALTY_TYPES], nullable: true },
+          penalty_enforcement: {
+            type: Type.STRING,
+            enum: [...PENALTY_ENFORCEMENTS],
+            nullable: true,
+          },
+          penalty_timing: { type: Type.STRING, enum: [...PENALTY_TIMINGS], nullable: true },
+          penalty_yards: { type: Type.NUMBER, nullable: true },
           confidence: { type: Type.NUMBER },
           evidence_timestamps: { type: Type.ARRAY, items: { type: Type.NUMBER } },
           evidence_frames: { type: Type.ARRAY, items: { type: Type.INTEGER } },
@@ -270,7 +336,7 @@ export const STATSIQ_RESPONSE_SCHEMA = {
         },
         required: [
           'play_index', 'possession', 'offensive_formation', 'defensive_front',
-          'play_type', 'result', 'yards', 'yards_basis', 'confidence', 'credits',
+          'play_type', 'result', 'yards', 'yards_basis', 'penalty_on', 'confidence', 'credits',
         ],
       },
     },

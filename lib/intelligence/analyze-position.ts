@@ -391,6 +391,11 @@ export async function analyzePosition(
     ? tallyStatPlays(parsed.stat_plays, {
         roster,
         allowNumbers,
+        // A stat is checkable by the coach who was at the game in a way a
+        // grade is not, so a number the film genuinely showed is kept and
+        // labelled unverified rather than discarded for want of a roster.
+        // The frame-cited and legibility gates still apply.
+        allowUnverifiedNumbers: true,
         declaredSide: input.team?.side_of_ball,
         // The staff's tagged gain outranks any yardage read off the film.
         breakdownGain: input.playSequence?.gain_loss ?? null,

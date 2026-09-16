@@ -9,10 +9,12 @@ import type { StatLine, TeamStatTotals } from '@/lib/intelligence/stat-lines';
  * and a stat sheet that needs explaining is a stat sheet that gets ignored.
  *
  * The one thing this adds to the familiar shape is honesty about its own
- * limits. Rows are labelled by POSITION unless a jersey number survived
- * verification, and the header says so; plays whose yardage the film could not
- * measure are reported rather than averaged in. A coach who knows which
- * numbers are soft can use the hard ones.
+ * limits. A row carries the jersey number when the film showed one and the
+ * position when it did not, and says which — including the middle case, a
+ * number read off the film with no roster to check it against. Plays whose
+ * yardage could not be measured are reported rather than averaged in, and
+ * plays an accepted penalty called back carry no statistics at all. A coach
+ * who knows which numbers are soft can use the hard ones.
  *
  * Presentational only (no hooks, no server APIs), so the module screen, the
  * saved report and the combined batch report all render the same component
@@ -93,17 +95,36 @@ function Table({
   );
 }
 
-/** A row's name, with the honest caveat attached when it is a position row. */
+/**
+ * A row's name, with the caveat that belongs to it.
+ *
+ * Three kinds of row, and a coach needs to be able to tell them apart at a
+ * glance: a number matched to their roster (a name), a number the film showed
+ * but nothing could check (useful, but they should confirm it), and a position
+ * that may cover more than one child.
+ */
 function PlayerLabel({ line }: { line: StatLine }) {
+  const caveat =
+    line.identifiedBy === 'position'
+      ? {
+          text: 'by position',
+          title:
+            'No jersey number was legible on this film, so this row is the position. If two players rotated through it, their stats are combined here.',
+        }
+      : !line.numberVerified
+        ? {
+            text: 'number unverified',
+            title:
+              'This number was read off the film, but there is no roster to check it against. Add your roster and it becomes a name — and a misread number gets caught.',
+          }
+        : null;
+
   return (
     <span className="inline-flex items-baseline gap-1.5 flex-wrap">
       <span className="font-medium">{line.identifier}</span>
-      {line.identifiedBy === 'position' ? (
-        <span
-          className="text-[10px] text-[var(--brand-muted)]"
-          title="No jersey number was legible and verified on this film, so this row is the position. If two players rotated through it, their stats are combined here."
-        >
-          by position
+      {caveat ? (
+        <span className="text-[10px] text-[var(--brand-muted)]" title={caveat.title}>
+          {caveat.text}
         </span>
       ) : line.positions.length > 1 ? (
         <span className="text-[10px] text-[var(--brand-muted)]">
@@ -129,9 +150,19 @@ export default function BoxScore({ lines, team, warnings = [], subtitle, compact
       l.defense.mistakes > 0
   );
 
+  // Penalties cross the offense/defense split — a guard's hold and a corner's
+  // pass interference belong in one column — so this list is not filtered by
+  // side the way the four tables above it are.
+  const penalized = lines.filter((l) => (l.penalties ?? 0) > 0);
+
   const o = team.offense;
   const d = team.defense;
   const unmeasured = team.unmeasured.rush + team.unmeasured.pass + team.unmeasured.receiving;
+  // A sheet charted before penalties existed has no penalty totals on it, and
+  // "undefined–undefined" is a worse answer than zero.
+  const teamPenalties = team.penalties ?? 0;
+  const teamPenaltyYards = team.penaltyYards ?? 0;
+  const nullifiedPlays = team.nullifiedPlays ?? 0;
 
   if (!lines.length) {
     return (
@@ -156,17 +187,18 @@ export default function BoxScore({ lines, team, warnings = [], subtitle, compact
       </div>
       <p className="text-[11px] text-[var(--brand-muted)] mb-4">
         Every figure here is counted from the individual plays — nothing is estimated as a total.
-        Rows are the position unless a jersey number was readable on the film and matched your
-        roster.
+        A row is the player when the film showed a readable jersey number, and the position when
+        it did not.
       </p>
 
       {!compact && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-5">
           {[
             ['Total yards', team.totalYards],
             ['Rushing', `${o.rush_yards} (${o.carries} car)`],
             ['Passing', `${o.pass_yards} (${o.pass_completions}/${o.pass_attempts})`],
             ['Touchdowns', o.rush_td + o.pass_td],
+            ['Penalties', `${teamPenalties}–${teamPenaltyYards}`],
           ].map(([label, value]) => (
             <div key={String(label)} className="rounded-lg bg-[var(--brand-bg)] border border-[var(--brand-border)] p-3">
               <p className="text-[10px] uppercase tracking-wide text-[var(--brand-muted)]">{label}</p>
@@ -243,6 +275,25 @@ export default function BoxScore({ lines, team, warnings = [], subtitle, compact
           d.mistakes,
         ]}
       />
+
+      <Table
+        title="Penalties"
+        columns={['No.', 'Yds']}
+        rows={penalized.map((l) => ({
+          key: `pen-${l.key}`,
+          label: <PlayerLabel line={l} />,
+          cells: [l.penalties ?? 0, l.penaltyYards ?? 0],
+        }))}
+        totals={[teamPenalties, teamPenaltyYards]}
+      />
+
+      {nullifiedPlays > 0 && (
+        <p className="text-[11px] text-[var(--brand-muted)] -mt-2 mb-4">
+          {nullifiedPlays} play{nullifiedPlays === 1 ? ' was' : 's were'} called back by an
+          accepted penalty and carr{nullifiedPlays === 1 ? 'ies' : 'y'} no stats — a run brought
+          back on a hold is not a carry and not yards.
+        </p>
+      )}
 
       {(o.fumbles_lost > 0 || unmeasured > 0) && (
         <p className="text-[11px] text-[var(--brand-muted)] mt-3 pt-3 border-t border-[var(--brand-border)]">

@@ -7,6 +7,7 @@ import type { Video, PositionAnalysisResult } from '@/lib/db/types';
 import type { StatLine, TeamStatTotals } from '@/lib/intelligence/stat-lines';
 import type { StatPlay } from '@/lib/intelligence/schemas';
 import { positionLabel } from '@/lib/intelligence/positions';
+import { playIsNullified } from '@/lib/intelligence/stat-lines';
 import BoxScore from '@/components/intelligence/BoxScore';
 import EvidenceFrames from '@/components/intelligence/EvidenceFrames';
 import QuickClipUpload from '@/components/intelligence/QuickClipUpload';
@@ -88,7 +89,9 @@ function PlayLog({ plays }: { plays: StatPlay[] }) {
         what each player did.
       </p>
       <ol className="space-y-3">
-        {plays.map((p, i) => (
+        {plays.map((p, i) => {
+          const wiped = playIsNullified(p);
+          return (
           <li key={i} className="rounded-xl border border-[var(--brand-border)] bg-white/60 p-3">
             <div className="flex items-baseline gap-2 flex-wrap">
               <span className="text-[10px] font-bold text-[var(--brand-muted)]">
@@ -102,6 +105,23 @@ function PlayLog({ plays }: { plays: StatPlay[] }) {
                   ? 'yardage not measurable on this film'
                   : `${p.yards ?? 0} yd${p.yards_basis === 'coach_breakdown' ? ' (your breakdown)' : ''}`}
               </span>
+              {p.penalty_on && p.penalty_on !== 'none' && (
+                <span
+                  className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                    wiped ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'
+                  }`}
+                  title={
+                    wiped
+                      ? 'An accepted penalty called this play back, so it produced no statistics.'
+                      : 'A flag on this play that did not wipe out its statistics.'
+                  }
+                >
+                  {titleCase(p.penalty_type) || 'Penalty'}
+                  {p.penalty_on === 'them' ? ' (on them)' : ''}
+                  {p.penalty_enforcement ? ` · ${p.penalty_enforcement}` : ''}
+                  {wiped ? ' · no stats' : ''}
+                </span>
+              )}
             </div>
 
             <p className="text-xs text-[var(--brand-muted)] mt-1">
@@ -110,12 +130,15 @@ function PlayLog({ plays }: { plays: StatPlay[] }) {
             </p>
 
             {p.credits && p.credits.length > 0 && (
-              <ul className="mt-2 space-y-1">
+              <ul className={`mt-2 space-y-1 ${wiped ? 'opacity-50 line-through' : ''}`}>
                 {p.credits.map((c, j) => (
                   <li key={j} className="text-xs text-[var(--brand-ink)]">
-                    <span className="font-semibold">{positionLabel(c.position)}</span>
+                    <span className="font-semibold">
+                      {c.jersey_number ? `#${c.jersey_number} ` : ''}
+                      {positionLabel(c.position)}
+                    </span>
                     <span className="text-[var(--brand-muted)]"> — {titleCase(c.stat)}</span>
-                    {c.yards != null && p.yards_basis !== 'not_determinable' && (
+                    {c.yards != null && (c.stat === 'penalty' || p.yards_basis !== 'not_determinable') && (
                       <span className="text-[var(--brand-muted)]"> ({c.yards} yd)</span>
                     )}
                     {c.touchdown && <span className="text-emerald-600 font-semibold"> TD</span>}
@@ -124,8 +147,14 @@ function PlayLog({ plays }: { plays: StatPlay[] }) {
                 ))}
               </ul>
             )}
+            {wiped && (
+              <p className="text-[11px] text-red-700 mt-1.5">
+                Called back — nothing on this play was counted.
+              </p>
+            )}
           </li>
-        ))}
+          );
+        })}
       </ol>
     </div>
   );
@@ -337,13 +366,14 @@ export default function StatsIQClient({
             {!isScrimmage &&
               (rosterWithNumbers === 0 ? (
                 <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2">
-                  {rosterSize === 0
-                    ? 'No roster on file, so stats are kept by position (Running Back, Middle Linebacker) rather than by player.'
-                    : 'Your roster has no jersey numbers, so stats are kept by position rather than by player.'}{' '}
+                  Numbers legible on the film still get used, but with no roster behind them
+                  nothing can catch a misread and they carry no names.{' '}
                   <Link href={`/teams/${teamId}/roster`} className="font-semibold underline">
                     Add jersey numbers
                   </Link>{' '}
-                  and readable numbers get credited to the player.
+                  {rosterSize === 0
+                    ? 'and every stat lands on a named player.'
+                    : 'to your roster and every stat lands on a named player.'}
                 </p>
               ) : (
                 <p className="text-[11px] text-[var(--brand-muted)]">
@@ -558,8 +588,9 @@ export default function StatsIQClient({
             <h3 className="font-bold text-[var(--brand-navy)] text-lg mb-2">StatsIQ Ready</h3>
             <p className="text-[var(--brand-muted)] text-sm max-w-sm mx-auto">
               Pick your film and StatsIQ charts every play — formation, then the positions, then
-              carries, yards, catches, tackles, interceptions and mistakes. Stats are kept by
-              position, because jersey numbers usually aren&apos;t readable on game film.
+              carries, yards, catches, tackles, interceptions, penalties and mistakes. A stat goes
+              to the jersey number when the film shows one, and to the position when it
+              doesn&apos;t.
             </p>
           </div>
         )}

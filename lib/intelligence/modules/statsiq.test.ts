@@ -51,10 +51,44 @@ describe('yardage', () => {
   })
 })
 
+describe('penalties', () => {
+  it('asks for the flag, and for the two facts that decide whether it counts', () => {
+    const prompt = buildSTATSIQSystemPrompt(input())
+    expect(prompt).toContain('penalty_enforcement')
+    expect(prompt).toContain('penalty_timing')
+    expect(prompt).toContain('dead_ball')
+  })
+
+  it('tells the model to chart the play anyway and let the app apply the rule', () => {
+    const prompt = buildSTATSIQSystemPrompt(input())
+    expect(prompt).toContain('Still chart the play')
+    expect(prompt).toContain('let the app')
+  })
+
+  it('offers the penalty types the tally can file', () => {
+    const credit = STATSIQ_RESPONSE_SCHEMA.properties.stat_plays.items.properties.credits.items
+      .properties.penalty_type as { enum: string[] }
+    expect(credit.enum).toContain('holding')
+    expect(credit.enum).toContain('pass_interference')
+    expect(credit.enum).toContain('false_start')
+  })
+})
+
 describe('identification', () => {
-  it('tells the model no number can be verified when there is no roster', () => {
+  it('asks for the number whenever the film can be read, not only with a roster', () => {
+    // The coach's rule: number if the tracker can see it, position if not.
     const prompt = buildSTATSIQSystemPrompt(input({ roster: [] }))
     expect(prompt).toContain('NO ROSTER ON FILE')
+    expect(prompt).toContain('Report a number ONLY where you can point to the frame')
+    // The old instruction — null every number without a roster — must not
+    // survive here; that is RankerIQ's rule, and it emptied this sheet.
+    expect(prompt).not.toContain('Set jersey_number to null for EVERY player and identify')
+  })
+
+  it('keeps the frame-cited bar as the thing that separates read from invented', () => {
+    const prompt = buildSTATSIQSystemPrompt(input())
+    expect(prompt).toContain('jersey_number_frame')
+    expect(prompt).toContain('No frame means you did not read it')
   })
 
   it('gives the roster as a closed set, never as a lookup table', () => {

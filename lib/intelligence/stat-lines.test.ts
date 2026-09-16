@@ -286,13 +286,69 @@ describe('identity: the position is the subject, the number is the exception', (
     expect(lines[0].identifier).toContain('#22')
   })
 
-  it('files the credit by position when no roster exists to check the number against', () => {
+  it('keeps a number the film showed even with no roster, marked unverified', () => {
+    // The coach's instruction: use the number when the tracker can see it, the
+    // position when it cannot. With no roster there is no name to attach and
+    // nothing to catch a misread, so the number is shown with that caveat
+    // rather than thrown away.
     const { lines, warnings } = tallyStatPlays([numbered()])
+    expect(lines[0].jerseyNumber).toBe('22')
+    expect(lines[0].identifiedBy).toBe('number')
+    expect(lines[0].numberVerified).toBe(false)
     expect(lines[0].playerId).toBeNull()
-    expect(lines[0].jerseyNumber).toBeNull()
-    expect(lines[0].identifiedBy).toBe('position')
-    expect(lines[0].identifier).toBe('Running Back')
-    expect(warnings.join(' ')).toContain('by position')
+    expect(warnings.join(' ')).toContain('no roster to check it against')
+  })
+
+  it('still refuses an unverified number the film did not actually show', () => {
+    // No frame cited and low confidence are the gates that separate a number
+    // the camera showed from one the model supplied — those never relax.
+    const noFrame = tallyStatPlays([numbered({ jersey_number_frame: null })])
+    expect(noFrame.lines[0].identifiedBy).toBe('position')
+
+    const illegible = tallyStatPlays([numbered({ identification_confidence: 0.4 })])
+    expect(illegible.lines[0].identifiedBy).toBe('position')
+  })
+
+  it('abandons an unverified number that turns up at positions too far apart', () => {
+    // Observed in production on the grading side: one number stuck onto half
+    // the roster. A back who also lines up in the slot is one child; a number
+    // that is a tackle on one play and a receiver on the next is two.
+    const wander = tallyStatPlays([
+      play({
+        play_index: 1,
+        credits: [
+          { stat: 'rush', position: 'rb', yards: 4, touchdown: false, jersey_number: '55', jersey_number_frame: 2, identification_confidence: 0.9 },
+        ],
+      }),
+      play({
+        play_index: 2,
+        credits: [
+          { stat: 'reception', position: 'lt', yards: 4, touchdown: false, jersey_number: '55', jersey_number_frame: 5, identification_confidence: 0.9 },
+        ],
+      }),
+    ])
+    expect(wander.lines.every((l) => l.jerseyNumber === null)).toBe(true)
+    expect(wander.warnings.join(' ')).toContain('#55 was read at positions too far apart')
+  })
+
+  it('keeps an unverified number that moves within one position group', () => {
+    const shifted = tallyStatPlays([
+      play({
+        play_index: 1,
+        credits: [
+          { stat: 'rush', position: 'rb', yards: 4, touchdown: false, jersey_number: '22', jersey_number_frame: 2, identification_confidence: 0.9 },
+        ],
+      }),
+      play({
+        play_index: 2,
+        credits: [
+          { stat: 'rush', position: 'wingback_left', yards: 6, touchdown: false, jersey_number: '22', jersey_number_frame: 5, identification_confidence: 0.9 },
+        ],
+      }),
+    ])
+    expect(shifted.lines).toHaveLength(1)
+    expect(shifted.lines[0].jerseyNumber).toBe('22')
+    expect(shifted.lines[0].offense.carries).toBe(2)
   })
 
   it('refuses a number the model never cited a frame for', () => {
@@ -312,7 +368,7 @@ describe('identity: the position is the subject, the number is the exception', (
 
   it('scrubs a rejected number out of the note, not just the label', () => {
     const { lines, credits } = tallyStatPlays(
-      [numbered({ note: '#22 bounced it outside' })],
+      [numbered({ note: '#22 bounced it outside', jersey_number_frame: null })],
       { roster: [], allowNumbers: true }
     )
     expect(lines[0].identifiedBy).toBe('position')
@@ -330,6 +386,172 @@ describe('identity: the position is the subject, the number is the exception', (
       }),
     ])
     expect(lines).toHaveLength(2)
+  })
+})
+
+describe('penalties, and what they do to the rest of the play', () => {
+  const touchdownRun = (over: Partial<RawStatPlay>) =>
+    play({
+      play_type: 'run',
+      result: 'touchdown',
+      yards: 40,
+      credits: [
+        { stat: 'rush', position: 'rb', yards: 40, touchdown: true, identification_confidence: 0.1 },
+        {
+          stat: 'penalty',
+          position: 'lt',
+          penalty_type: 'holding',
+          yards: 10,
+          touchdown: false,
+          identification_confidence: 0.1,
+        },
+      ],
+      ...over,
+    })
+
+  it('wipes every stat on a play an accepted penalty called back', () => {
+    const { lines, team, warnings } = tallyStatPlays([
+      touchdownRun({
+        penalty_on: 'us',
+        penalty_type: 'holding',
+        penalty_enforcement: 'accepted',
+        penalty_timing: 'during_play',
+        penalty_yards: 10,
+      }),
+    ])
+
+    // The 40-yard touchdown did not happen.
+    expect(team.offense.carries).toBe(0)
+    expect(team.offense.rush_yards).toBe(0)
+    expect(team.offense.rush_td).toBe(0)
+    // The flag that called it back did.
+    expect(team.penalties).toBe(1)
+    expect(team.penaltyYards).toBe(10)
+    expect(team.nullifiedPlays).toBe(1)
+    const lt = lines.find((l) => l.positionId === 'lt')!
+    expect(lt.penalties).toBe(1)
+    expect(warnings.join(' ')).toContain('called back')
+  })
+
+  it('leaves the play alone when the penalty was declined, and charges nobody', () => {
+    const { team } = tallyStatPlays([
+      touchdownRun({
+        penalty_on: 'us',
+        penalty_enforcement: 'declined',
+        penalty_timing: 'during_play',
+        penalty_yards: 10,
+      }),
+    ])
+    expect(team.offense.rush_yards).toBe(40)
+    expect(team.offense.rush_td).toBe(1)
+    // A declined flag cost the team nothing, so it is not a team penalty.
+    expect(team.penalties).toBe(0)
+    expect(team.nullifiedPlays).toBe(0)
+  })
+
+  it('keeps the stats on a dead-ball foul, which is enforced on the next snap', () => {
+    const { team } = tallyStatPlays([
+      touchdownRun({
+        penalty_on: 'us',
+        penalty_type: 'unsportsmanlike_conduct',
+        penalty_enforcement: 'accepted',
+        penalty_timing: 'dead_ball',
+        penalty_yards: 15,
+        credits: [
+          { stat: 'rush', position: 'rb', yards: 40, touchdown: true, identification_confidence: 0.1 },
+          {
+            stat: 'penalty',
+            position: 'ss',
+            penalty_type: 'unsportsmanlike_conduct',
+            yards: 15,
+            touchdown: false,
+            identification_confidence: 0.1,
+          },
+        ],
+      }),
+    ])
+    expect(team.offense.rush_td).toBe(1)
+    expect(team.penalties).toBe(1)
+    expect(team.penaltyYards).toBe(15)
+    expect(team.nullifiedPlays).toBe(0)
+  })
+
+  it('wipes the play but charges us nothing when the flag was on the other team', () => {
+    const { team } = tallyStatPlays([
+      touchdownRun({
+        penalty_on: 'them',
+        penalty_enforcement: 'accepted',
+        penalty_timing: 'during_play',
+        penalty_yards: 10,
+      }),
+    ])
+    expect(team.offense.carries).toBe(0)
+    expect(team.penalties).toBe(0)
+    expect(team.nullifiedPlays).toBe(1)
+  })
+
+  it('replays the down on offsetting fouls — no stats, no penalty charged', () => {
+    const { team } = tallyStatPlays([
+      touchdownRun({
+        penalty_on: 'offsetting',
+        penalty_enforcement: 'offsetting',
+        penalty_timing: 'during_play',
+        penalty_yards: 10,
+      }),
+    ])
+    expect(team.offense.carries).toBe(0)
+    expect(team.penalties).toBe(0)
+  })
+
+  it('counts penalty yardage even when the play’s gain could not be measured', () => {
+    // Assessed yardage is a rules constant, not something read off the field.
+    const { team } = tallyStatPlays([
+      play({
+        yards: null,
+        yards_basis: 'not_determinable',
+        penalty_on: 'us',
+        penalty_enforcement: 'accepted',
+        penalty_timing: 'pre_snap',
+        penalty_yards: 5,
+        credits: [
+          {
+            stat: 'penalty',
+            position: 'rg',
+            penalty_type: 'false_start',
+            yards: 5,
+            touchdown: false,
+            identification_confidence: 0.1,
+          },
+        ],
+      }),
+    ])
+    expect(team.penalties).toBe(1)
+    expect(team.penaltyYards).toBe(5)
+  })
+
+  it('charges a defensive penalty to the defender who drew it', () => {
+    const { lines, team } = tallyStatPlays([
+      play({
+        possession: 'defense',
+        penalty_on: 'us',
+        penalty_enforcement: 'accepted',
+        penalty_timing: 'during_play',
+        penalty_yards: 15,
+        credits: [
+          {
+            stat: 'penalty',
+            position: 'cb_right',
+            penalty_type: 'pass_interference',
+            yards: 15,
+            touchdown: false,
+            identification_confidence: 0.1,
+          },
+        ],
+      }),
+    ])
+    expect(team.penalties).toBe(1)
+    expect(lines[0].positionId).toBe('cb_right')
+    expect(lines[0].penaltyYards).toBe(15)
   })
 })
 

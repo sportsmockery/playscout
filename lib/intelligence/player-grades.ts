@@ -178,6 +178,22 @@ export interface IdentityOptions {
    * matching the roster there proves nothing about who is wearing it.
    */
   allowNumbers?: boolean
+  /**
+   * Whether a number the film genuinely showed may be kept when there is no
+   * roster to check it against.
+   *
+   * RankerIQ leaves this off: a grade is a judgement of a child, and putting
+   * one on the wrong child is the worst thing the product can do, so it wants
+   * the number corroborated or nothing.
+   *
+   * StatsIQ turns it on, because a stat is not a judgement — "#22: 14 carries"
+   * is something a coach can check against their own memory of the game in a
+   * second, and refusing to print a number the camera plainly showed costs
+   * them the whole point of a stat sheet. The number is still only kept when
+   * the model cited the frame it read the digits in and said it was legible
+   * (gates 2 and 3), and it is marked as unverified everywhere it appears.
+   */
+  allowUnverifiedNumbers?: boolean
 }
 
 export interface ResolvedIdentity {
@@ -203,10 +219,16 @@ export interface ResolvedIdentity {
  *   3. its own identification confidence is at least MIN_NUMBER_CONFIDENCE
  *   4. the number actually exists on that roster
  *
- * Gate 1 is deliberately strict: with no roster there is nothing to verify
+ * Gate 1 is strict by default: with no roster there is nothing to verify
  * against, and an unverifiable number is precisely what put one kid's grade on
  * another. Grading by role costs the coach a label; getting it wrong costs
- * them trust in every number on the page.
+ * them trust in every number on the page. `allowUnverifiedNumbers` relaxes
+ * exactly that gate for callers whose output is a count rather than a
+ * judgement — see IdentityOptions. Gates 2 and 3 never relax: they are what
+ * separates a number the film SHOWED from one the model supplied.
+ *
+ * Gate 4 never relaxes either. Once a roster exists it is a closed set, so
+ * digits that aren't on it are a misread, not a new player.
  *
  * Anything that fails is downgraded to a role label — never dropped, because
  * the grade itself is still useful. A rejected number is also scrubbed from
@@ -228,7 +250,7 @@ export function resolvePlayerIdentity(
   let reason: string | null = null
   if (!allowNumbers) {
     reason = 'scrimmage film — jerseys may not match the roster'
-  } else if (roster.length === 0) {
+  } else if (roster.length === 0 && !opts.allowUnverifiedNumbers) {
     // Without a roster there is nothing to check a number against, and an
     // unverifiable number is exactly what put another kid's grade on a real
     // player. Grade by role and tell the coach what would unlock names.
@@ -237,7 +259,9 @@ export function resolvePlayerIdentity(
     reason = 'no frame cited for the number'
   } else if ((grade.identification_confidence ?? 0) < MIN_NUMBER_CONFIDENCE) {
     reason = 'number not legible enough to trust'
-  } else if (!roster.some((p) => digitsOf(p.jersey_number) === reported)) {
+  } else if (roster.length > 0 && !roster.some((p) => digitsOf(p.jersey_number) === reported)) {
+    // Only meaningful when there IS a roster — an empty one is not a roster
+    // that happens to contain nobody, it is the absence of a closed set.
     reason = `no #${reported} on this roster`
   }
 

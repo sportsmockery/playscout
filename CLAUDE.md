@@ -305,13 +305,25 @@ export interface PositionAnalysisResult {
 - The box score, charted off the film: **offense** — carries, rushing yards, rush TD, pass
   attempts/completions, passing yards, pass TD, interceptions thrown, targets, receptions,
   receiving yards, receiving TD, fumbles lost; **defense** — solo tackles, assisted tackles,
-  interceptions, forced fumbles, and charted mistakes.
-- **The stat line is the POSITION, not the jersey number.** Sideline film rarely resolves two
-  digits on a moving jersey, so credits are filed under a closed position vocabulary
-  (`lib/intelligence/positions.ts`) and a number is only ever an upgrade — it goes through the
-  identical gates RankerIQ uses (`resolvePlayerIdentity`), so the two modules cannot drift to
-  two standards for the same claim. A position row can legitimately cover two kids; the UI says
-  so (`identifiedBy`).
+  interceptions, forced fumbles, and charted mistakes; **either unit** — accepted penalties and
+  the yards they cost.
+- **Number when the film shows one, position when it doesn't.** A credit is filed under a closed
+  position vocabulary (`lib/intelligence/positions.ts`) and carries a jersey number whenever the
+  model cited the frame it read the digits in and called them legible. This is where StatsIQ
+  deliberately differs from RankerIQ: `IdentityOptions.allowUnverifiedNumbers` lets a number
+  survive with no roster to check it against, because a stat is something the coach who was at
+  the game can verify in a second while a grade is not. Everything else is the same
+  `resolvePlayerIdentity` machinery, so the two modules cannot drift to two standards for the
+  same claim.
+  - `identifiedBy`: `roster` (number matched a roster player — a name), `number` (read off the
+    film, nothing to check it against — `numberVerified: false`, and the UI says "number
+    unverified"), `position` (no legible number; the row may cover more than one child).
+  - A number nobody could verify holds a row together only while its credits stay inside one
+    position group (`positionGroup`). One number appearing as both a lineman and a receiver is a
+    misread of two children, so it is abandoned and those credits fall back to position rows —
+    the same failure `groupGradesForRollup` catches on the grading side.
+  - Line keys always include the side, so a two-way player gets an offensive line and a
+    defensive line rather than one row adding carries to tackles.
 - Left/right in that vocabulary are **from the graded unit's own perspective**, never the
   camera's — the same snap shot from the other sideline would otherwise flip every label and no
   two plays could be added together.
@@ -327,6 +339,15 @@ export interface PositionAnalysisResult {
   Youth film has no yard-line graphic; a gain that could not be measured is counted as an
   unmeasured play rather than estimated, so "7 carries, 22 yards" reads as yards from the four
   carries that could be measured. A staff-tagged gain on the play outranks the film read.
+- **A penalty can delete every other statistic on its play.** The model reports the flag
+  (`penalty_on`, `penalty_type`, `penalty_enforcement`, `penalty_timing`, `penalty_yards`) and
+  `playIsNullified` applies the rule: an accepted foul pre-snap or during the play wipes that
+  play's stats entirely — a 40-yard touchdown called back on a hold is not a carry, not 40 yards
+  and not a touchdown, and counting it would inflate a back's season by exactly the plays his
+  line cost him. A dead-ball foul is enforced on the next snap and leaves the play intact. Only
+  ACCEPTED penalties are charged (declined costs the team nothing; offsetting replays the down),
+  and penalty yardage is `rule_assessed` — 10 for holding is a rules constant, so it survives on
+  film whose gains could not be measured at all.
 - Cross-checks the sheet against itself (a reception with no completion behind it, receiving
   yards that don't match passing yards) and shows the contradictions instead of reconciling them
   silently.

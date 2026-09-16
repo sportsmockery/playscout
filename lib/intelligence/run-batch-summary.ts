@@ -28,6 +28,7 @@ type EvidenceShape = {
   player_grades?: PlayerGrade[] | null
   mistakes?: { title: string; category: string; severity: string }[] | null
   stat_credits?: StatCredit[] | null
+  team_stats?: { nullifiedPlays?: number | null } | null
 }
 
 export type SummaryOutcome = 'written' | 'skipped' | 'not_ready' | 'failed'
@@ -216,6 +217,7 @@ export async function maybeSummarizeBatch(
           playerGrades: evidence.player_grades ?? null,
           mistakes: evidence.mistakes ?? null,
           statCredits: evidence.stat_credits ?? null,
+          statNullifiedPlays: evidence.team_stats?.nullifiedPlays ?? null,
         }
       })
 

@@ -40,9 +40,20 @@ create table if not exists public.play_stat_credits (
   -- not measure is not a carry for no gain, and averaging it as one would
   -- understate every back on wide film.
   yards numeric,
-  yards_basis text check (yards_basis in ('coach_breakdown', 'field_landmarks', 'not_determinable')),
+  -- 'rule_assessed' is penalty yardage: 10 for holding is a rules constant, not
+  -- something read off the field, so it survives on film whose gains could not
+  -- be measured at all.
+  yards_basis text check (yards_basis in ('coach_breakdown', 'field_landmarks', 'not_determinable', 'rule_assessed')),
   touchdown boolean not null default false,
   mistake_category text,
+  -- Set on a 'penalty' credit. Only ACCEPTED penalties are stored: a declined
+  -- flag costs the team nothing and is not charged in a box score, and the play
+  -- row still records it so the play log can show the coach the flag they
+  -- remember.
+  penalty_type text,
+  -- False on a number the film showed with no roster to check it against. The
+  -- stat still counts; the claim about whose it is carries its caveat with it.
+  number_verified boolean not null default false,
   -- Set only when a legible jersey number cleared every gate in
   -- resolvePlayerIdentity and matched exactly one roster player.
   player_id uuid references public.players(id) on delete set null,
@@ -56,6 +67,19 @@ create table if not exists public.play_stat_credits (
   model_name text,
   created_at timestamptz not null default now()
 );
+
+-- Penalties and unverified numbers arrived after the first draft of this file,
+-- and `create table if not exists` above will not add a column to a table that
+-- already exists. These make the migration land the same way whether or not an
+-- earlier version of it was already applied.
+alter table public.play_stat_credits add column if not exists penalty_type text;
+alter table public.play_stat_credits add column if not exists number_verified boolean not null default false;
+do $$
+begin
+  alter table public.play_stat_credits drop constraint if exists play_stat_credits_yards_basis_check;
+  alter table public.play_stat_credits add constraint play_stat_credits_yards_basis_check
+    check (yards_basis in ('coach_breakdown', 'field_landmarks', 'not_determinable', 'rule_assessed'));
+end $$;
 
 create index if not exists play_stat_credits_team_created_idx
   on public.play_stat_credits (team_id, created_at desc);

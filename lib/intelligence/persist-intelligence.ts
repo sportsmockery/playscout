@@ -228,6 +228,8 @@ export async function persistStatCredits(
     yards_basis: c.yardsBasis,
     touchdown: c.touchdown,
     mistake_category: c.mistakeCategory,
+    penalty_type: c.penaltyType,
+    number_verified: c.numberVerified,
     player_id: c.playerId,
     jersey_number: c.jerseyNumber,
     identified_by: c.identifiedBy,

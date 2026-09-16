@@ -14,9 +14,23 @@ import type { ModulePromptInput } from './schemas'
  * grade given to the wrong jersey, and two copies of this reasoning would
  * drift apart the first time either was edited.
  */
+export interface RosterContextOptions {
+  /**
+   * Whether a number with no roster behind it is still worth reporting.
+   *
+   * Off (RankerIQ): a grade lands on a child, so an unverifiable number is
+   * refused outright. On (StatsIQ): a count is checkable by the coach who was
+   * at the game, so a number the camera plainly showed is reported and marked
+   * unverified rather than thrown away. See IdentityOptions in
+   * player-grades.ts, which enforces the same split on the output.
+   */
+  allowUnverifiedNumbers?: boolean
+}
+
 export function buildRosterContext(
   roster: ModulePromptInput['roster'],
-  filmConditions: ModulePromptInput['filmConditions']
+  filmConditions: ModulePromptInput['filmConditions'],
+  opts: RosterContextOptions = {}
 ): string {
   if (filmConditions === 'scrimmage') {
     return `FILM CONDITIONS: SCRIMMAGE / PRACTICE FILM. Players may be wearing practice pinnies, a
@@ -26,7 +40,13 @@ expected — do not treat it as a limitation worth apologising for.`
   }
 
   if (!roster?.length) {
-    return `NO ROSTER ON FILE: this team has not entered a roster, so no jersey number can be
+    return opts.allowUnverifiedNumbers
+      ? `NO ROSTER ON FILE: this team has not entered a roster, so there is no list to check a
+number against. Report a number ONLY where you can point to the frame you read the digits in —
+that bar does not move because there is no roster; it is the only bar left. Everything the app
+shows from such a number is labelled unverified, and everyone else is identified by position,
+which is the normal case on this kind of film.`
+      : `NO ROSTER ON FILE: this team has not entered a roster, so no jersey number can be
 verified against anything. Set jersey_number to null for EVERY player and identify everyone by
 role. Do not report numbers you think you can read — without a roster they cannot be checked.`
   }
