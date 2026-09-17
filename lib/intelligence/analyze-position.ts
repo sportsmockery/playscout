@@ -32,6 +32,13 @@ import { applyDrillSafetyFilter, scrubProhibitedDrillMentions } from './safety'
 import { rankPlayerGrades } from './player-grades'
 import { tallyStatPlays } from './stat-lines'
 import {
+  buildPlayLocatorPrompt,
+  PLAY_LOCATOR_SCHEMA,
+  parseLocatedPlays,
+  playWindow,
+  type ClipWindow,
+} from './locate-play'
+import {
   buildPlayVerificationPrompt,
   PLAY_VERIFICATION_SCHEMA,
   parseVerification,
@@ -218,12 +225,71 @@ export async function analyzePosition(
   // truth (lib/ai/model-router.ts) instead of being hardcoded per provider.
   const route = getRoute('frame_observation')
 
+  // STATSIQ: find the football before reading it.
+  //
+  // A clip of "one play" is mostly not the play — the 31-second clip that
+  // produced three contradictory sheets holds a snap at ~6.5s and a score at
+  // ~22s, and the rest is teams lining up. Handed all of it, the charting pass
+  // anchored on a different stretch each run and reported a different
+  // FORMATION each time. Locating the play first costs one cheap low-fps call
+  // and hands the expensive pass a window that is mostly football.
+  let located: ClipWindow | null = null
+  if (input.moduleKey === 'STATSIQ' && clip) {
+    const locatorPrompt = buildPlayLocatorPrompt(inputWithGameType)
+    const locatorKey = [
+      clip.source.kind === 'file' ? clip.source.fileUri : clip.source.bytes.toString('base64'),
+      `locate@${clip.startOffsetSeconds ?? 0}-${clip.endOffsetSeconds ?? ''}`,
+    ]
+    const locatorHash = hashCacheKey('frame_observation', locatorPrompt, locatorKey)
+    let locatorJson = await getCachedResponse<string>(supabase, locatorHash)
+    if (locatorJson == null) {
+      // Deliberately cheap: finding a snap does not need to resolve a jersey.
+      const locatorResult = await analyzeClipWithGemini(
+        locatorPrompt,
+        clip.source,
+        PLAY_LOCATOR_SCHEMA,
+        {
+          model: route.model,
+          fps: 2,
+          mediaResolution: 'low',
+          startOffsetSeconds: clip.startOffsetSeconds,
+          endOffsetSeconds: clip.endOffsetSeconds,
+        }
+      ).catch(() => null)
+      if (locatorResult) {
+        locatorJson = locatorResult.text
+        await recordUsage(supabase, {
+          teamId: input.teamId, userId, jobType: 'frame_observation',
+          provider: route.provider, model: route.model,
+          inputTokens: locatorResult.usage.inputTokens, outputTokens: locatorResult.usage.outputTokens,
+        })
+        await setCachedResponse(supabase, locatorHash, 'frame_observation', locatorJson)
+      }
+    }
+    if (locatorJson != null) {
+      located = playWindow(
+        parseLocatedPlays(locatorJson),
+        clip.durationSeconds,
+        clip.startOffsetSeconds != null && clip.endOffsetSeconds != null
+          ? { startOffsetSeconds: clip.startOffsetSeconds, endOffsetSeconds: clip.endOffsetSeconds }
+          : null
+      )
+    }
+  }
+
+  // The slice every later pass reads — the located window when there is one,
+  // otherwise whatever the clip already resolved to.
+  const readWindow = {
+    startOffsetSeconds: located?.startOffsetSeconds ?? clip?.startOffsetSeconds,
+    endOffsetSeconds: located?.endOffsetSeconds ?? clip?.endOffsetSeconds,
+  }
+
   // In video mode the evidence is the clip plus the slice and sample rate we
   // read it at, so that — not frame bytes — is what identifies the request.
   const evidenceKey = clip
     ? [
         clip.source.kind === 'file' ? clip.source.fileUri : clip.source.bytes.toString('base64'),
-        `${clip.startOffsetSeconds ?? 0}-${clip.endOffsetSeconds ?? ''}@${config.fps}/${config.resolution}`,
+        `${readWindow.startOffsetSeconds ?? 0}-${readWindow.endOffsetSeconds ?? ''}@${config.fps}/${config.resolution}`,
       ]
     : frames.map((f) => f.base64)
 
@@ -248,8 +314,8 @@ export async function analyzePosition(
           model: route.model,
           fps: config.fps,
           mediaResolution: config.resolution,
-          startOffsetSeconds: clip.startOffsetSeconds,
-          endOffsetSeconds: clip.endOffsetSeconds,
+          startOffsetSeconds: readWindow.startOffsetSeconds,
+          endOffsetSeconds: readWindow.endOffsetSeconds,
         })
       : await analyzeFramesWithGemini(systemPrompt, frames, config.schema, { model: route.model })
     rawJson = result.text
@@ -434,8 +500,8 @@ export async function analyzePosition(
             model: route.model,
             fps: config.fps,
             mediaResolution: config.resolution,
-            startOffsetSeconds: clip.startOffsetSeconds,
-            endOffsetSeconds: clip.endOffsetSeconds,
+            startOffsetSeconds: readWindow.startOffsetSeconds,
+            endOffsetSeconds: readWindow.endOffsetSeconds,
           })
         : analyzeFramesWithGemini(verifyPrompt, frames, PLAY_VERIFICATION_SCHEMA, {
             model: route.model,
