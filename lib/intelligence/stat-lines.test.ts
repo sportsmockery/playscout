@@ -555,6 +555,64 @@ describe('penalties, and what they do to the rest of the play', () => {
   })
 })
 
+describe('the model may abstain instead of guessing', () => {
+  it('parks a credit it cannot attribute, and counts none of it', () => {
+    const { lines, team, credits } = tallyStatPlays([
+      play({
+        credits: [
+          {
+            stat: 'rush',
+            position: 'rb',
+            yards: 55,
+            touchdown: true,
+            identification_confidence: 0.2,
+            unresolved: true,
+            question: 'Who carried the ball on this play?',
+            candidates: ['qb', 'rb'],
+          },
+        ],
+      }),
+    ])
+
+    expect(lines).toHaveLength(0)
+    expect(team.offense.carries).toBe(0)
+    expect(team.pendingQuestions).toBe(1)
+    // The credit survives so the question can be asked — it is parked, not lost.
+    expect(credits[0].resolutionStatus).toBe('unresolved')
+    expect(credits[0].candidates).toEqual(['qb', 'rb'])
+  })
+
+  it('supplies a question when the model abstained without writing one', () => {
+    const { credits } = tallyStatPlays([
+      play({
+        possession: 'defense',
+        credits: [
+          { stat: 'tackle', position: 'lb_middle', touchdown: false, identification_confidence: 0.1, unresolved: true },
+        ],
+      }),
+    ])
+    expect(credits[0].question).toBe('Who made this tackle?')
+  })
+
+  it('normalizes candidate positions into the closed vocabulary', () => {
+    const { credits } = tallyStatPlays([
+      play({
+        credits: [
+          {
+            stat: 'rush',
+            position: 'rb',
+            touchdown: false,
+            identification_confidence: 0.1,
+            unresolved: true,
+            candidates: ['quarterback', 'tailback'],
+          },
+        ],
+      }),
+    ])
+    expect(credits[0].candidates).toEqual(['qb', 'rb'])
+  })
+})
+
 describe('the sheet reports where it contradicts itself', () => {
   it('flags a catch with no completion behind it', () => {
     const { warnings } = tallyStatPlays([

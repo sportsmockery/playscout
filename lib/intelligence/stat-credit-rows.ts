@@ -1,7 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   computeStatLines,
+  RESOLUTION_STATUSES,
   type CreditYardsBasis,
+  type ResolutionStatus,
   type StatCredit,
   type StatKind,
   type StatTally,
@@ -48,12 +50,16 @@ export interface StatCreditRow {
   identifier: string | null
   note: string | null
   evidence: { timestamps?: number[]; frames?: number[] } | null
+  resolution_status: string | null
+  question: string | null
+  candidates: string[] | null
 }
 
 export const STAT_CREDIT_COLUMNS =
   'id, play_index, side, stat, position_id, position_label, position_detail, role_on_play, ' +
   'yards, yards_basis, touchdown, mistake_category, penalty_type, player_id, jersey_number, ' +
-  'number_verified, identified_by, number_rejected_reason, identifier, note, evidence'
+  'number_verified, identified_by, number_rejected_reason, identifier, note, evidence, ' +
+  'resolution_status, question, candidates'
 
 export function statCreditFromRow(row: StatCreditRow): StatCredit {
   const yards = row.yards == null ? null : Number(row.yards)
@@ -80,6 +86,11 @@ export function statCreditFromRow(row: StatCreditRow): StatCredit {
     note: row.note,
     evidenceTimestamps: row.evidence?.timestamps ?? [],
     evidenceFrames: row.evidence?.frames ?? [],
+    resolutionStatus: (RESOLUTION_STATUSES as readonly string[]).includes(row.resolution_status ?? '')
+      ? (row.resolution_status as ResolutionStatus)
+      : 'confirmed',
+    question: row.question,
+    candidates: row.candidates,
   }
 }
 
@@ -138,6 +149,20 @@ export function applyCreditPatch(credit: StatCredit, patch: CreditPatch): StatCr
   if (patch.remove) return null
 
   let next = { ...credit }
+
+  // Answering the question is what settles the credit: a coach naming the
+  // player turns a parked stat into a counted one, and the question stops
+  // being asked. Their answer is filed as coach_entered rather than confirmed
+  // because they were at the game and the film was not enough — provenance
+  // worth keeping when these rows later train anything.
+  if (patch.position_id && credit.resolutionStatus === 'unresolved') {
+    next = {
+      ...next,
+      resolutionStatus: 'coach_entered',
+      question: null,
+      candidates: null,
+    }
+  }
 
   if (patch.position_id && patch.position_id !== credit.positionId) {
     next = {

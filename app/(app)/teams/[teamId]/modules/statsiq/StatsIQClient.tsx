@@ -10,6 +10,7 @@ import { positionLabel } from '@/lib/intelligence/positions';
 import { playIsNullified } from '@/lib/intelligence/stat-lines';
 import BoxScore from '@/components/intelligence/BoxScore';
 import StatCorrections from '@/components/intelligence/StatCorrections';
+import StatQuestionQueue from '@/components/intelligence/StatQuestionQueue';
 import EvidenceFrames from '@/components/intelligence/EvidenceFrames';
 import QuickClipUpload from '@/components/intelligence/QuickClipUpload';
 import FilmPicker, { isReadyNow, type FilmPickerFolder } from '@/components/intelligence/FilmPicker';
@@ -265,7 +266,18 @@ export default function StatsIQClient({
   }
 
   return (
-    <div className="grid lg:grid-cols-3 gap-6">
+    <div className="space-y-6">
+      {/* Above everything, because an unanswered question is a stat that is
+          missing from the totals — and the coach is the only one who can
+          supply it. `queueVersion` also re-fetches it after a batch is
+          queued, so newly charted questions appear without a reload. */}
+      <StatQuestionQueue
+        key={queueVersion}
+        teamId={teamId}
+        onAnswered={() => setQueueVersion((v) => v + 1)}
+      />
+
+      <div className="grid lg:grid-cols-3 gap-6">
       {/* Config panel */}
       <div className="lg:col-span-1 space-y-5">
         <div className="glass-card p-5">
@@ -609,6 +621,7 @@ export default function StatsIQClient({
             </p>
           </div>
         )}
+      </div>
       </div>
     </div>
   );

@@ -6,8 +6,10 @@ import {
   OFFENSIVE_POSITIONS,
   DEFENSIVE_POSITIONS,
   POSITION_LABELS,
+  isDefensivePosition,
   type StatPosition,
 } from '@/lib/intelligence/positions';
+import { sideOfStat } from '@/lib/intelligence/stat-lines';
 import type { StatLine, TeamStatTotals } from '@/lib/intelligence/stat-lines';
 
 /**
@@ -54,6 +56,28 @@ function titleCase(id: string): string {
   return id.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+/**
+ * What a coach can add by hand, in their words.
+ *
+ * Deliberately not every stat kind: a hand-entered completion without its
+ * matching reception would trip the sheet's own pairing check, so passing
+ * plays are entered as the catch and the throw separately, in that order, and
+ * the cross-check tells them if they forget one.
+ */
+const ADDABLE_STATS: Array<[string, string]> = [
+  ['rush', 'Carry'],
+  ['pass_complete', 'Completed pass (thrower)'],
+  ['reception', 'Catch'],
+  ['pass_incomplete', 'Incomplete pass'],
+  ['pass_intercepted', 'Interception thrown'],
+  ['fumble_lost', 'Fumble lost'],
+  ['tackle', 'Tackle'],
+  ['assisted_tackle', 'Assisted tackle'],
+  ['interception', 'Interception (defense)'],
+  ['forced_fumble', 'Forced fumble'],
+  ['penalty', 'Penalty'],
+];
+
 export default function StatCorrections({ analysisId, onCorrected }: Props) {
   const [credits, setCredits] = useState<EditableCredit[] | null>(null);
   const [patches, setPatches] = useState<Record<string, Patch>>({});
@@ -61,6 +85,58 @@ export default function StatCorrections({ analysisId, onCorrected }: Props) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
+  const [add, setAdd] = useState({ stat: 'rush', position_id: 'rb', yards: '', touchdown: false });
+
+  // A penalty belongs to whichever unit was on the field, which the stat kind
+  // cannot say — so for that one the chosen position decides the side.
+  const addSide: 'offense' | 'defense' =
+    sideOfStat(add.stat) ?? (isDefensivePosition(add.position_id) ? 'defense' : 'offense');
+  const addOptions =
+    add.stat === 'penalty'
+      ? [...OFFENSIVE_POSITIONS, ...DEFENSIVE_POSITIONS]
+      : addSide === 'offense'
+        ? OFFENSIVE_POSITIONS
+        : DEFENSIVE_POSITIONS;
+
+  /** Keep the position valid when the stat moves to the other side of the ball. */
+  function changeAddStat(stat: string) {
+    const side = sideOfStat(stat)
+    const stillValid =
+      stat === 'penalty' ||
+      (side === 'defense' ? isDefensivePosition(add.position_id) : !isDefensivePosition(add.position_id))
+    setAdd({
+      ...add,
+      stat,
+      position_id: stillValid ? add.position_id : side === 'defense' ? 'lb_middle' : 'rb',
+    });
+  }
+
+  async function addCredit() {
+    setSaving(true);
+    setError('');
+    try {
+      const res = await fetch(`/api/intelligence/analysis/${analysisId}/stat-credits`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          stat: add.stat,
+          position_id: add.position_id,
+          side: addSide,
+          yards: add.yards === '' ? null : Number(add.yards),
+          touchdown: add.touchdown,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not add that stat.');
+      onCorrected?.({ lines: data.lines, team: data.team, warnings: data.warnings });
+      setAdd({ ...add, yards: '', touchdown: false });
+      setCredits(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not add that stat.');
+    } finally {
+      setSaving(false);
+    }
+  }
 
   useEffect(() => {
     if (!open || credits) return;
@@ -251,6 +327,79 @@ export default function StatCorrections({ analysisId, onCorrected }: Props) {
           })}
         </ul>
       )}
+
+      {/* The film misses plays — a late pan, a pile, a clip that starts after
+          the snap. Without a way to type one in, the sheet stays permanently
+          short by whatever the camera missed. */}
+      <div className="rounded-xl border border-dashed border-[var(--brand-border)] p-3 mb-4">
+        <p className="text-xs font-semibold text-[var(--brand-ink)] mb-2">Add a stat the film missed</p>
+        <div className="flex items-end gap-2 flex-wrap">
+          <label>
+            <span className="block text-[10px] uppercase tracking-wide text-[var(--brand-muted)] mb-1">
+              What
+            </span>
+            <select
+              value={add.stat}
+              onChange={(e) => changeAddStat(e.target.value)}
+              className="text-sm px-2 py-1.5 rounded-lg border border-[var(--brand-border)] bg-white text-[var(--brand-ink)]"
+            >
+              {ADDABLE_STATS.map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            <span className="block text-[10px] uppercase tracking-wide text-[var(--brand-muted)] mb-1">
+              Who
+            </span>
+            <select
+              value={add.position_id}
+              onChange={(e) => setAdd({ ...add, position_id: e.target.value })}
+              className="text-sm px-2 py-1.5 rounded-lg border border-[var(--brand-border)] bg-white text-[var(--brand-ink)]"
+            >
+              {addOptions.map((id) => (
+                <option key={id} value={id}>
+                  {POSITION_LABELS[id as StatPosition]}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="w-20">
+            <span className="block text-[10px] uppercase tracking-wide text-[var(--brand-muted)] mb-1">
+              Yards
+            </span>
+            <input
+              type="number"
+              value={add.yards}
+              placeholder="—"
+              onChange={(e) => setAdd({ ...add, yards: e.target.value })}
+              className="w-full text-sm px-2 py-1.5 rounded-lg border border-[var(--brand-border)] bg-white text-[var(--brand-ink)]"
+            />
+          </label>
+
+          <label className="flex items-center gap-1.5 pb-1.5">
+            <input
+              type="checkbox"
+              checked={add.touchdown}
+              onChange={(e) => setAdd({ ...add, touchdown: e.target.checked })}
+              className="accent-[var(--brand-navy)]"
+            />
+            <span className="text-xs text-[var(--brand-ink)]">TD</span>
+          </label>
+
+          <button
+            onClick={addCredit}
+            disabled={saving}
+            className="text-xs font-semibold px-3 py-2 rounded-lg border border-[var(--brand-border)] text-[var(--brand-navy)] hover:bg-[var(--brand-bg)] transition-colors mb-0.5 disabled:opacity-60"
+          >
+            Add
+          </button>
+        </div>
+      </div>
 
       <div className="flex items-center gap-2">
         <button

@@ -187,8 +187,9 @@ Before you credit a carry, answer one question: DID THE BALL CHANGE HANDS AFTER 
 At every level this module serves, the quarterback is often the team's leading rusher. Do not
 credit a back because a back is who you EXPECT to carry the ball, and do not credit a back
 because the runner lined up behind the line — the quarterback lines up there too. Watch the mesh
-point. If you cannot see whether the ball changed hands, say so in the note and lower your
-confidence rather than assuming a handoff.
+point. If you cannot see whether the ball changed hands, that is precisely what "unresolved" is
+for: chart the carry, set candidates ["qb", "rb"], and let the coach settle it in one tap. Never
+resolve it by assuming a handoff.
 
 A carry charted to a back that the quarterback actually made puts a season of another child's
 production on the wrong name.
@@ -245,6 +246,35 @@ A play charted as not_determinable still counts the carry, the completion and th
 app tells the coach how many plays had no measurable yardage, which is a true and useful thing
 to know. An invented 8-yard gain is not.
 
+=== WHEN YOU DO NOT KNOW: ASK, DO NOT PICK ===
+You have a way to say "I don't know who that was", and using it is a correct
+answer — not a failure.
+
+On any credit where you can see WHAT happened but not WHO did it, set:
+  unresolved: true
+  question:   one plain sentence a coach can answer from memory without
+              re-watching. "Who carried the ball on this play?" — not "Please
+              clarify the identity of the ball carrier given the occlusion."
+  candidates: the positions you were choosing between, most likely first
+              (e.g. ["qb", "rb"]). If you have no idea, leave it empty.
+
+Fill in everything else you DID see — the stat, the yardage, the touchdown, the
+timestamp. The play is not in question, only the player. The app parks these,
+counts none of them, and asks the coach. One tap and it becomes a real stat.
+
+WHEN TO USE IT, and this matters — abstaining on everything is as useless as
+guessing on everything:
+- Use it when a SPECIFIC, answerable question would settle it: two players were
+  in the same spot, the pile hid the exchange, the camera panned late.
+- Do NOT use it to avoid effort on a play you can actually read. If you saw it,
+  chart it.
+- Do NOT use it because you are unsure of the jersey NUMBER — position is the
+  answer there, and an unnumbered position credit is a normal, complete stat.
+  This is only for not knowing which PLAYER, not which number.
+
+A guessed carry costs a coach more than a question does: they have to notice it
+is wrong, find it, and fix it. A question costs them one tap.
+
 === IDENTIFICATION — NUMBER WHEN YOU CAN SEE IT, POSITION WHEN YOU CANNOT ===
 A stat belongs to a player, so read the jersey number whenever the film lets you. A coach wants
 "#22 had 14 carries", not "the running back had 14 carries" — report the number every time you
@@ -299,6 +329,12 @@ const STAT_CREDIT_SCHEMA = {
     jersey_number: { type: Type.STRING, nullable: true },
     jersey_number_frame: { type: Type.INTEGER, nullable: true },
     identification_confidence: { type: Type.NUMBER },
+    unresolved: { type: Type.BOOLEAN },
+    question: { type: Type.STRING, nullable: true },
+    candidates: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING, enum: [...OFFENSIVE_POSITIONS, ...DEFENSIVE_POSITIONS] },
+    },
     note: { type: Type.STRING, nullable: true },
     evidence_timestamps: { type: Type.ARRAY, items: { type: Type.NUMBER } },
     evidence_frames: { type: Type.ARRAY, items: { type: Type.INTEGER } },

@@ -198,6 +198,10 @@ export const StatCreditSchema = z.object({
   jersey_number: z.string().nullable().optional(),
   jersey_number_frame: z.number().nullable().optional(),
   identification_confidence: z.number().nullable().optional(),
+  /** The model saw what happened but not who did it — see RESOLUTION_STATUSES. */
+  unresolved: z.boolean().nullable().optional(),
+  question: z.string().nullable().optional(),
+  candidates: z.array(z.string()).nullable().optional(),
   note: z.string().nullable().optional(),
   evidence_timestamps: z.array(z.number()).nullable().optional(),
   evidence_frames: z.array(z.number()).nullable().optional(),

@@ -139,6 +139,14 @@ export interface RawStatCredit {
   jersey_number?: string | null
   jersey_number_frame?: number | null
   identification_confidence?: number | null
+  /**
+   * Set by the model when it knows something happened but cannot see who did
+   * it. The credit is then parked as a question instead of being guessed —
+   * see RESOLUTION_STATUSES.
+   */
+  unresolved?: boolean | null
+  question?: string | null
+  candidates?: string[] | null
   note?: string | null
   evidence_timestamps?: number[] | null
   evidence_frames?: number[] | null
@@ -169,6 +177,21 @@ export interface RawStatPlay {
   credits?: RawStatCredit[] | null
 }
 
+/**
+ * Whether a credit is settled enough to be counted.
+ *
+ * `unresolved` is the one that matters: the play happened, the yardage is
+ * usually known, and the only missing fact is who did it. It is excluded from
+ * every total and surfaced as a question instead — a guessed carry a coach has
+ * to find and fix later is worse than a number that says "waiting on you".
+ */
+export const RESOLUTION_STATUSES = ['confirmed', 'unresolved', 'coach_entered'] as const
+export type ResolutionStatus = (typeof RESOLUTION_STATUSES)[number]
+
+export function countsTowardTotals(status: ResolutionStatus | undefined): boolean {
+  return status !== 'unresolved'
+}
+
 /** A credit after identity resolution and normalization — the stored form. */
 export interface StatCredit {
   playIndex: number
@@ -193,6 +216,12 @@ export interface StatCredit {
   note: string | null
   evidenceTimestamps: number[]
   evidenceFrames: number[]
+  /** Defaults to 'confirmed' for credits charted before questions existed. */
+  resolutionStatus?: ResolutionStatus
+  /** What the model needs to know, in language a coach answers from memory. */
+  question?: string | null
+  /** The positions it was choosing between — the one-tap answers. */
+  candidates?: string[] | null
 }
 
 export interface OffensiveStats {
@@ -266,6 +295,12 @@ export interface TeamStatTotals {
    * legitimately disagree, and why the sheet says so out loud.
    */
   nullifiedPlays: number
+  /**
+   * Stats the film could not attribute, waiting on the coach. Excluded from
+   * every figure above — the sheet says what it does not know rather than
+   * filling it in.
+   */
+  pendingQuestions: number
   /** Completions ÷ attempts, null when nothing was thrown. */
   completionPct: number | null
   /** Rush yards ÷ carries, over measured carries only. */
@@ -344,6 +379,40 @@ export function playIsNullified(play: RawStatPlay): boolean {
  */
 function penaltyIsCharged(play: RawStatPlay): boolean {
   return play.penalty_enforcement === 'accepted' && play.penalty_on === 'us'
+}
+
+/**
+ * A fallback question, so an abstention is never a dead end.
+ *
+ * If the model marks a credit unresolved but writes a vague question — or
+ * none — the coach still gets something they can answer in one read. The
+ * question is always about WHO, because that is the only field abstention
+ * applies to: the play and the yardage were visible, the player was not.
+ */
+function defaultQuestion(stat: StatKind): string {
+  switch (stat) {
+    case 'rush':
+    case 'sack_taken':
+      return 'Who carried the ball on this play?'
+    case 'pass_complete':
+    case 'pass_incomplete':
+    case 'pass_intercepted':
+      return 'Who threw this pass?'
+    case 'reception':
+    case 'target':
+      return 'Who was this pass thrown to?'
+    case 'tackle':
+    case 'assisted_tackle':
+      return 'Who made this tackle?'
+    case 'interception':
+      return 'Who intercepted this pass?'
+    case 'forced_fumble':
+      return 'Who forced this fumble?'
+    case 'penalty':
+      return 'Who was flagged on this play?'
+    default:
+      return 'Which player should this go to?'
+  }
 }
 
 export interface ResolveOptions extends IdentityOptions {
@@ -504,6 +573,14 @@ export function resolveStatCredits(
         identifier: identity.jerseyNumber ? identity.identifier : positionLabel(safePosition),
         identifiedBy: identity.playerId ? 'roster' : identity.jerseyNumber ? 'number' : 'position',
         note,
+        resolutionStatus: raw.unresolved === true ? 'unresolved' : 'confirmed',
+        question: raw.unresolved === true ? raw.question?.trim() || defaultQuestion(stat) : null,
+        candidates:
+          raw.unresolved === true
+            ? (raw.candidates ?? [])
+                .map((c) => normalizeStatPosition(c, statSide))
+                .filter((c, i, all) => all.indexOf(c) === i)
+            : null,
         evidenceTimestamps: (raw.evidence_timestamps ?? []).filter((t) => num(t) != null),
         evidenceFrames: (raw.evidence_frames ?? []).filter((f) => num(f) != null),
       })
@@ -645,11 +722,17 @@ function abandonInconsistentNumbers(credits: StatCredit[]): {
 export function computeStatLines(rawCredits: StatCredit[], nullifiedPlays = 0): StatTally {
   const { credits, abandoned } = abandonInconsistentNumbers(rawCredits)
 
+  // An unresolved credit is a question, not a statistic. It stays in `credits`
+  // so the UI can ask it, and touches no total until someone answers — which
+  // is the difference between a sheet that is incomplete and one that is wrong.
+  const counted = credits.filter((c) => countsTowardTotals(c.resolutionStatus))
+  const pendingQuestions = credits.length - counted.length
+
   const byKey = new Map<string, { line: StatLine; plays: Set<number> }>()
   const offensePlays = new Set<number>()
   const defensePlays = new Set<number>()
 
-  for (const c of credits) {
+  for (const c of counted) {
     const key = c.jerseyNumber || c.playerId ? lineKey(c) : positionKey(c)
     let entry = byKey.get(key)
     if (!entry) {
@@ -690,7 +773,10 @@ export function computeStatLines(rawCredits: StatCredit[], nullifiedPlays = 0): 
     playsCredited: plays.size,
   }))
 
-  const team = totalsFrom(lines, offensePlays.size, defensePlays.size, nullifiedPlays)
+  const team = {
+    ...totalsFrom(lines, offensePlays.size, defensePlays.size, nullifiedPlays),
+    pendingQuestions,
+  }
 
   const warnings = consistencyWarnings(lines, team)
   for (const number of abandoned) {
@@ -829,7 +915,7 @@ function totalsFrom(
   offensivePlays: number,
   defensivePlays: number,
   nullifiedPlays: number
-): TeamStatTotals {
+): Omit<TeamStatTotals, 'pendingQuestions'> {
   const offense = lines.reduce((acc, l) => addOffense(acc, l.offense), emptyOffense())
   const defense = lines.reduce((acc, l) => addDefense(acc, l.defense), emptyDefense())
   const unmeasured = lines.reduce(
@@ -870,9 +956,18 @@ function totalsFrom(
  * the sheet, and what makes a systematically bad prompt visible instead of
  * plausible.
  */
-export function consistencyWarnings(lines: StatLine[], team: TeamStatTotals): string[] {
+export function consistencyWarnings(
+  lines: StatLine[],
+  team: Omit<TeamStatTotals, 'pendingQuestions'> & { pendingQuestions?: number }
+): string[] {
   const out: string[] = []
   const o = team.offense
+
+  if (team.pendingQuestions) {
+    out.unshift(
+      `${team.pendingQuestions} stat${team.pendingQuestions === 1 ? '' : 's'} could not be attributed from the film and ${team.pendingQuestions === 1 ? 'is' : 'are'} waiting on you — ${team.pendingQuestions === 1 ? 'it is' : 'they are'} not counted in anything above.`
+    )
+  }
 
   if (o.receptions !== o.pass_completions) {
     out.push(

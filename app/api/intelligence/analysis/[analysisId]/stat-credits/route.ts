@@ -8,7 +8,8 @@ import {
   retally,
   type CreditPatch,
 } from '@/lib/intelligence/stat-credit-rows'
-import { STAT_POSITIONS } from '@/lib/intelligence/positions'
+import { STAT_POSITIONS, positionLabel } from '@/lib/intelligence/positions'
+import { STAT_KINDS, sideOfStat } from '@/lib/intelligence/stat-lines'
 
 /**
  * Correcting a charted stat.
@@ -55,7 +56,122 @@ export async function GET(
       yards: credits[i].yards,
       touchdown: credits[i].touchdown,
       note: credits[i].note,
+      resolutionStatus: credits[i].resolutionStatus ?? 'confirmed',
+      question: credits[i].question ?? null,
+      candidates: credits[i].candidates ?? [],
+      evidenceTimestamps: credits[i].evidenceTimestamps,
     })),
+  })
+}
+
+/**
+ * A stat the coach adds by hand.
+ *
+ * The film misses plays — the camera pans late, the pile hides a fumble, a
+ * clip starts after the snap. Without this the only way to get a missed carry
+ * into the record is to re-chart and hope, so the sheet is permanently short
+ * by however much the camera missed. A typed stat is filed as coach_entered
+ * and counts immediately: they were there.
+ */
+export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<{ analysisId: string }> }
+) {
+  const { analysisId } = await params
+
+  const access = await requireTeamMemberForRow('position_analysis_results', analysisId, {
+    writeRoles: WRITE_ROLES,
+  })
+  if (access.error) return access.error
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+
+  const body = await req.json().catch(() => ({}))
+  const stat = String(body.stat ?? '')
+  const positionId = String(body.position_id ?? '')
+  const playIndex = Number(body.play_index ?? 1)
+  const yards = body.yards == null || body.yards === '' ? null : Number(body.yards)
+
+  if (!(STAT_KINDS as readonly string[]).includes(stat)) {
+    return NextResponse.json({ error: 'Pick what the player did.' }, { status: 400 })
+  }
+  if (!(STAT_POSITIONS as readonly string[]).includes(positionId)) {
+    return NextResponse.json({ error: 'Pick a position.' }, { status: 400 })
+  }
+  // A penalty takes the side of the play, which a hand-entered stat has no way
+  // to know, so the client states it; everything else derives from the stat.
+  const side =
+    sideOfStat(stat) ?? (body.side === 'defense' ? 'defense' : 'offense')
+  if (!positionIsValidForSide(positionId, side)) {
+    return NextResponse.json(
+      { error: `${positionLabel(positionId)} is not on the ${side}.` },
+      { status: 400 }
+    )
+  }
+  if (yards != null && !Number.isFinite(yards)) {
+    return NextResponse.json({ error: 'Yards must be a number.' }, { status: 400 })
+  }
+
+  const { data: analysis } = await supabase
+    .from('position_analysis_results')
+    .select('id, team_id, video_id, play_sequence_id, evidence, model_name')
+    .eq('id', analysisId)
+    .maybeSingle()
+  if (!analysis) return NextResponse.json({ error: 'Analysis not found.' }, { status: 404 })
+
+  const { error: insertError } = await supabase.from('play_stat_credits').insert({
+    team_id: analysis.team_id,
+    video_id: analysis.video_id,
+    analysis_result_id: analysisId,
+    play_sequence_id: analysis.play_sequence_id,
+    play_index: Number.isFinite(playIndex) ? playIndex : 1,
+    side,
+    stat,
+    position_id: positionId,
+    position_label: positionLabel(positionId),
+    yards,
+    // Typed by someone who was at the game — a fact, not a film estimate.
+    yards_basis: yards == null ? 'not_determinable' : 'coach_breakdown',
+    touchdown: body.touchdown === true,
+    identifier: positionLabel(positionId),
+    identified_by: 'position',
+    number_verified: false,
+    resolution_status: 'coach_entered',
+    resolved_by: user.id,
+    resolved_at: new Date().toISOString(),
+    note: typeof body.note === 'string' && body.note.trim() ? body.note.trim() : 'Entered by coach',
+  })
+  if (insertError) return NextResponse.json({ error: insertError.message }, { status: 403 })
+
+  const { credits } = await readStatCredits(supabase, analysisId)
+  const evidence = (analysis.evidence ?? {}) as Record<string, unknown> & {
+    team_stats?: { nullifiedPlays?: number }
+  }
+  const tally = retally(credits, evidence.team_stats?.nullifiedPlays ?? 0)
+
+  const { error: saveError } = await supabase
+    .from('position_analysis_results')
+    .update({
+      evidence: {
+        ...evidence,
+        stat_lines: tally.lines,
+        stat_credits: tally.credits,
+        team_stats: tally.team,
+        stat_warnings: tally.warnings,
+      },
+      edited_by: user.id,
+      edited_at: new Date().toISOString(),
+    })
+    .eq('id', analysisId)
+  if (saveError) return NextResponse.json({ error: saveError.message }, { status: 403 })
+
+  return NextResponse.json({
+    lines: tally.lines,
+    team: tally.team,
+    warnings: tally.warnings,
+    credits: tally.credits,
   })
 }
 
@@ -164,6 +280,12 @@ export async function PATCH(
         identified_by: after.identifiedBy,
         number_rejected_reason: after.numberRejectedReason,
         identifier: after.identifier,
+        resolution_status: after.resolutionStatus ?? 'confirmed',
+        question: after.question ?? null,
+        candidates: after.candidates ?? null,
+        ...(after.resolutionStatus === 'coach_entered'
+          ? { resolved_by: user.id, resolved_at: new Date().toISOString() }
+          : {}),
       })
       .eq('id', id)
     if (error) return NextResponse.json({ error: error.message }, { status: 403 })

@@ -31,6 +31,9 @@ const row = (over: Partial<StatCreditRow> = {}): StatCreditRow => ({
   identifier: 'Running Back',
   note: 'Took the handoff on an off-tackle run to the right.',
   evidence: { timestamps: [2.4], frames: [] },
+  resolution_status: 'confirmed',
+  question: null,
+  candidates: null,
   ...over,
 })
 
@@ -136,6 +139,69 @@ describe('correcting a credit', () => {
     expect(after.playIndex).toBe(before.playIndex)
     expect(after.note).toBe(before.note)
     expect(after.evidenceTimestamps).toEqual(before.evidenceTimestamps)
+  })
+})
+
+describe('a stat the film could not attribute', () => {
+  const unresolved = () =>
+    statCreditFromRow(
+      row({
+        resolution_status: 'unresolved',
+        question: 'Who carried the ball on this play?',
+        candidates: ['qb', 'rb'],
+      })
+    )
+
+  it('counts toward nothing until someone answers', () => {
+    const { lines, team } = retally([unresolved()])
+    expect(lines).toHaveLength(0)
+    expect(team.offense.carries).toBe(0)
+    expect(team.offense.rush_yards).toBe(0)
+    expect(team.pendingQuestions).toBe(1)
+  })
+
+  it('says so on the sheet rather than hiding the gap', () => {
+    const { warnings } = retally([unresolved()])
+    expect(warnings.join(' ')).toContain('waiting on you')
+    expect(warnings.join(' ')).toContain('not counted')
+  })
+
+  it('becomes a real stat the moment the coach names the player', () => {
+    const answered = applyCreditPatch(unresolved(), { position_id: 'qb' })!
+    expect(answered.resolutionStatus).toBe('coach_entered')
+    expect(answered.question).toBeNull()
+    expect(answered.candidates).toBeNull()
+
+    const { lines, team } = retally([answered])
+    expect(team.pendingQuestions).toBe(0)
+    expect(lines[0].positionId).toBe('qb')
+    expect(lines[0].offense.rush_yards).toBe(55)
+    expect(lines[0].offense.rush_td).toBe(1)
+  })
+
+  it('still counts when the coach confirms the position the model had parked', () => {
+    // Answering "yes, it was the running back" is an answer, not a no-op —
+    // the credit has to start counting either way.
+    const answered = applyCreditPatch(unresolved(), { position_id: 'rb' })!
+    expect(answered.resolutionStatus).toBe('coach_entered')
+    expect(retally([answered]).team.offense.carries).toBe(1)
+  })
+
+  it('leaves a confirmed credit alone when its position is corrected', () => {
+    // A correction to something the film DID see is not an answer to a
+    // question, and must not be relabelled as coach-entered.
+    const corrected = applyCreditPatch(statCreditFromRow(row()), { position_id: 'qb' })!
+    expect(corrected.resolutionStatus).toBe('confirmed')
+  })
+
+  it('keeps the rest of the sheet countable around it', () => {
+    const { team } = retally([
+      statCreditFromRow(row({ id: 'a' })),
+      unresolved(),
+    ])
+    expect(team.offense.carries).toBe(1)
+    expect(team.offense.rush_yards).toBe(55)
+    expect(team.pendingQuestions).toBe(1)
   })
 })
 
