@@ -416,24 +416,30 @@ export async function analyzePosition(
   let statPlays = parsed.stat_plays
   let statDisputes: string[] = []
   let chartingAgreement: number | null = null
-  if (input.moduleKey === 'STATSIQ' && statPlays?.length && clip) {
+  // Runs on EVERY StatsIQ analysis, both evidence paths. The frame path is the
+  // weakest read in the product — a browser quick clip or film we have no
+  // stored copy of — so exempting it would have left the least reliable
+  // charting as the only uncorroborated charting, while still showing an
+  // agreement score. There is no toggle: a sheet nobody checked is the thing
+  // this module exists to stop producing.
+  if (input.moduleKey === 'STATSIQ' && statPlays?.length) {
     const verifyPrompt = buildPlayVerificationPrompt(inputWithGameType)
     const verifyHash = hashCacheKey('frame_observation', `STATSIQ:verify:${verifyPrompt}`, evidenceKey)
     const cachedVerify = await getCachedResponse<string>(supabase, verifyHash)
 
     let verifyJson = cachedVerify
     if (verifyJson == null) {
-      const verifyResult = await analyzeClipWithGemini(
-        verifyPrompt,
-        clip.source,
-        PLAY_VERIFICATION_SCHEMA,
-        {
-          model: route.model,
-          fps: config.fps,
-          mediaResolution: config.resolution,
-          startOffsetSeconds: clip.startOffsetSeconds,
-          endOffsetSeconds: clip.endOffsetSeconds,
-        }
+      const verifyResult = await (clip
+        ? analyzeClipWithGemini(verifyPrompt, clip.source, PLAY_VERIFICATION_SCHEMA, {
+            model: route.model,
+            fps: config.fps,
+            mediaResolution: config.resolution,
+            startOffsetSeconds: clip.startOffsetSeconds,
+            endOffsetSeconds: clip.endOffsetSeconds,
+          })
+        : analyzeFramesWithGemini(verifyPrompt, frames, PLAY_VERIFICATION_SCHEMA, {
+            model: route.model,
+          })
       ).catch(() => null)
       if (verifyResult) {
         verifyJson = verifyResult.text
