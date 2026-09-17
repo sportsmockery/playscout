@@ -68,19 +68,6 @@ create table if not exists public.play_stat_credits (
   created_at timestamptz not null default now()
 );
 
--- Penalties and unverified numbers arrived after the first draft of this file,
--- and `create table if not exists` above will not add a column to a table that
--- already exists. These make the migration land the same way whether or not an
--- earlier version of it was already applied.
-alter table public.play_stat_credits add column if not exists penalty_type text;
-alter table public.play_stat_credits add column if not exists number_verified boolean not null default false;
-do $$
-begin
-  alter table public.play_stat_credits drop constraint if exists play_stat_credits_yards_basis_check;
-  alter table public.play_stat_credits add constraint play_stat_credits_yards_basis_check
-    check (yards_basis in ('coach_breakdown', 'field_landmarks', 'not_determinable', 'rule_assessed'));
-end $$;
-
 create index if not exists play_stat_credits_team_created_idx
   on public.play_stat_credits (team_id, created_at desc);
 create index if not exists play_stat_credits_player_idx
