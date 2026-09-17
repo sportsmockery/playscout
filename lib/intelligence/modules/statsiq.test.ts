@@ -51,6 +51,44 @@ describe('yardage', () => {
   })
 })
 
+describe('who carried the ball', () => {
+  // Observed on the first real chart: a 55-yard quarterback touchdown run was
+  // credited to "Running Back". The old prompt only said a handoff is NOT the
+  // quarterback's carry, which is a one-way bias toward crediting a back.
+  it('makes the mesh point the test, not the formation', () => {
+    const prompt = buildSTATSIQSystemPrompt(input())
+    expect(prompt).toContain('DID THE BALL CHANGE HANDS AFTER THE SNAP?')
+    expect(prompt).toContain('A quarterback keeper, a designed quarterback run, a sneak')
+    expect(prompt).toContain('scramble')
+    expect(prompt).toContain('no back gets a carry')
+  })
+
+  it('warns against crediting the back the model expects to carry it', () => {
+    const prompt = buildSTATSIQSystemPrompt(input())
+    expect(prompt).toContain('who you EXPECT to carry the ball')
+    expect(prompt).toContain('the quarterback lines up there too')
+  })
+})
+
+describe('standing team context', () => {
+  it("carries the team's scheme into every chart", () => {
+    const prompt = buildSTATSIQSystemPrompt(
+      input({ team: { name: 'T', offensive_style: 'Tight double wing, QB keeps on power' } })
+    )
+    expect(prompt).toContain('OUR OFFENSE: Tight double wing, QB keeps on power')
+  })
+
+  it('says the film outranks the scheme', () => {
+    const prompt = buildSTATSIQSystemPrompt(input({ team: { name: 'T', offensive_style: 'Double wing' } }))
+    expect(prompt).toContain('never to decide who ended up with it')
+  })
+
+  it('states nothing when the team has recorded no scheme', () => {
+    const prompt = buildSTATSIQSystemPrompt(input({ team: { name: 'T' } }))
+    expect(prompt).not.toContain('OUR OFFENSE:')
+  })
+})
+
 describe('penalties', () => {
   it('asks for the flag, and for the two facts that decide whether it counts', () => {
     const prompt = buildSTATSIQSystemPrompt(input())

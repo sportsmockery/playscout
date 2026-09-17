@@ -133,7 +133,7 @@ export async function analyzePosition(
   // a client-supplied value here would let a caller bypass the gate.
   const { data: teamRow } = await supabase
     .from('teams')
-    .select('game_type, level, age_group')
+    .select('game_type, level, age_group, offensive_style, defensive_style')
     .eq('id', input.teamId)
     .maybeSingle()
   const gameType = teamRow?.game_type as 'flag' | 'tackle' | 'rookie_tackle' | null | undefined
@@ -184,6 +184,18 @@ export async function analyzePosition(
           // own careful no-colour branch.
           jersey_color: misdirected ? undefined : input.team.jersey_color,
           game_type: gameType ?? undefined,
+          // Standing scheme context from the team row, so a coach records it
+          // once in team settings rather than retyping it into every run.
+          // A value the client sent for THIS run still wins — some module
+          // screens let a coach override the style for one analysis — and it
+          // is dropped entirely on opponent film, where it describes the
+          // wrong team.
+          offensive_style: misdirected
+            ? undefined
+            : input.team.offensive_style ?? (teamRow?.offensive_style as string | undefined),
+          defensive_style: misdirected
+            ? undefined
+            : input.team.defensive_style ?? (teamRow?.defensive_style as string | undefined),
         }
       : input.team,
     roster: roster.map(({ jersey_number, position, name }) => ({ jersey_number, position, name })),

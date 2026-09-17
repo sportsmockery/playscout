@@ -2,7 +2,7 @@ import { createClient as createServerClient } from '@/lib/supabase/server';
 import { getTeamById, getVideoById } from '@/lib/db/queries';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ArrowLeft, Clock, Sparkles, Zap, Gauge, Shield, TrendingUp, AlertTriangle, ListOrdered } from 'lucide-react';
+import { ArrowLeft, Clock, Sparkles, Zap, Gauge, Shield, TrendingUp, AlertTriangle, ListOrdered, BarChart3 } from 'lucide-react';
 
 // Film-based IQ modules only (PlaybookIQ is document-based, not film).
 const FILM_MODULES = [
@@ -12,6 +12,7 @@ const FILM_MODULES = [
   { key: 'teamiq', name: 'TeamIQ', label: 'Team Tendencies', icon: TrendingUp, color: 'text-purple-600', bg: 'bg-purple-50' },
   { key: 'mistakeiq', name: 'MistakeIQ', label: 'Mistakes', icon: AlertTriangle, color: 'text-orange-600', bg: 'bg-orange-50' },
   { key: 'rankeriq', name: 'RankerIQ', label: 'Player Grades', icon: ListOrdered, color: 'text-amber-600', bg: 'bg-amber-50' },
+  { key: 'statsiq', name: 'StatsIQ', label: 'Box Score', icon: BarChart3, color: 'text-sky-600', bg: 'bg-sky-50' },
 ] as const;
 
 export async function generateMetadata({ params }: { params: Promise<{ teamId: string; videoId: string }> }) {

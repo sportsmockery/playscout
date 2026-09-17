@@ -53,6 +53,8 @@ import { MISTAKE_CATEGORIES, type ModulePromptInput } from '../schemas'
 const OFFENSIVE_STAT_RULES = `
   rush            — a running play where this player carried the ball. yards = the gain or loss
                     on the carry (negative for a loss). touchdown=true if the carry scored.
+                    Read "WHO ACTUALLY CARRIED IT" below before crediting this — a quarterback
+                    who keeps the ball is a carry for qb, not for a back.
   sack_taken      — the passer was tackled behind the line before throwing. yards = yards lost
                     (negative). Do NOT also report a pass_incomplete for the same snap.
   pass_complete   — this player THREW a pass that was caught. yards = the total gain on the play
@@ -94,6 +96,17 @@ export function buildSTATSIQSystemPrompt(input: ModulePromptInput): string {
   const playContext = buildPlayContext(playSequence)
   const teamLabel = team?.name ?? 'this team'
 
+  // Standing context from the team row — set once in team settings, applied to
+  // every chart. This is where a coach records something like "double wing,
+  // quarterback keeps on power", which is exactly the knowledge that decides
+  // whether a carry belongs to the quarterback or to a back.
+  const schemeContext = [
+    team?.offensive_style ? `OUR OFFENSE: ${team.offensive_style}.` : null,
+    team?.defensive_style ? `OUR DEFENSE: ${team.defensive_style}.` : null,
+  ]
+    .filter(Boolean)
+    .join(' ')
+
   const jerseyContext = team?.jersey_color
     ? `IDENTIFYING ${teamLabel}: they wear ${team.jersey_color}. Chart stats ONLY for players wearing that. A stat belonging to the other team in our box score is worse than a missing stat — if you cannot tell which side a player is on, leave the credit out.`
     : `IDENTIFYING ${teamLabel}: no jersey/helmet colour was given. Work out which team is ours from the play itself (the ball carrier's blockers, which way they are going) and chart only credits where that is unambiguous. If you cannot tell the teams apart at all, return no credits for that play and say so — an empty sheet is recoverable, a wrong one is not.`
@@ -120,6 +133,7 @@ ${team ? `TEAM: ${team.name ?? ''} | ${team.age_group ?? ''}` : ''}
 ${team?.name ? `Always refer to this team by its exact full name, "${team.name}".` : ''}
 ${jerseyContext}
 ${sideContext}
+${schemeContext ? `${schemeContext} Use it to know where the ball is likely to go — never to decide who ended up with it. What you SEE always outranks what the scheme suggests.` : ''}
 ${gameTypeContext}
 ${playContext}
 ${yardageContext}
@@ -160,14 +174,32 @@ DEFENSE (only when the other team has the ball):${DEFENSIVE_STAT_RULES}
 
 EITHER UNIT:${PENALTY_STAT_RULES}
 
+=== WHO ACTUALLY CARRIED IT — FOLLOW THE BALL, NOT THE FORMATION ===
+This is the single most common charting error, so do it deliberately on every running play.
+
+Before you credit a carry, answer one question: DID THE BALL CHANGE HANDS AFTER THE SNAP?
+- If it did NOT — the player who took the snap is the player who ran with it — the carry belongs
+  to qb. A quarterback keeper, a designed quarterback run, a sneak, a bootleg and a scramble are
+  all carries for qb. The ball never touched a back, so no back gets a carry.
+- If it DID, the carry belongs to whoever ended up with the ball — a back, a wing, a receiver on
+  a sweep. The quarterback who handed it off gets nothing.
+
+At every level this module serves, the quarterback is often the team's leading rusher. Do not
+credit a back because a back is who you EXPECT to carry the ball, and do not credit a back
+because the runner lined up behind the line — the quarterback lines up there too. Watch the mesh
+point. If you cannot see whether the ball changed hands, say so in the note and lower your
+confidence rather than assuming a handoff.
+
+A carry charted to a back that the quarterback actually made puts a season of another child's
+production on the wrong name.
+
 PAIRING RULES — a play's credits have to describe one coherent event:
 - A completed pass produces EXACTLY ONE pass_complete (the thrower) and EXACTLY ONE reception
   (the catcher), with the SAME yards on both. A completion with no receiver, or a reception with
   no thrower, means you charted half a play.
 - An incomplete pass produces one pass_incomplete, plus a target for the intended receiver when
   you can see who it was.
-- A running play produces exactly one rush. A handoff is a carry for the player who RUNS with
-  the ball, never for the quarterback who handed it off.
+- A running play produces exactly one rush, credited per the rule above.
 - Every play that ends in a tackle should produce tackle credits when we are on defense — and
   none at all when we are on offense.
 
