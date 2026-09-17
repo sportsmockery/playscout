@@ -43,6 +43,7 @@ interface StatsResult {
   team_stats?: TeamStatTotals;
   stat_plays?: StatPlay[];
   stat_warnings?: string[];
+  stat_disputes?: string[];
   strengths: string[];
   weaknesses: string[];
   summary: string;
@@ -519,11 +520,12 @@ export default function StatsIQClient({
 
             <div className="glass-card p-5">
               <h3 className="font-bold text-[var(--brand-navy)] text-sm uppercase tracking-wide mb-1">
-                Charting Coverage — {result.overall_score}/100
+                Read Agreement — {result.overall_score}/100
               </h3>
               <p className="text-[11px] text-[var(--brand-muted)] mb-3">
-                How much of this film could actually be charted. This is a measure of the FILM, not
-                of how the team played.
+                This film was read twice, independently. This is how much the two reads agreed
+                about what happened and who did it — not how confident the model feels. Anything
+                they disagreed on was left for you rather than counted.
               </p>
               <div className="grid sm:grid-cols-3 gap-3">
                 {COVERAGE.map(([key, label, why]) => (
@@ -540,6 +542,26 @@ export default function StatsIQClient({
                 ))}
               </div>
             </div>
+
+            {result.stat_disputes && result.stat_disputes.length > 0 && (
+              <div className="glass-card p-5 border border-red-200 bg-red-50/60">
+                <h3 className="font-bold text-red-800 text-sm uppercase tracking-wide mb-1">
+                  The two reads disagreed — enter these yourself
+                </h3>
+                <p className="text-[11px] text-red-800 mb-3">
+                  Reading this film twice produced two different accounts of these plays, so
+                  nothing was counted from them. Use &ldquo;Fix a stat&rdquo; above to type what
+                  actually happened.
+                </p>
+                <ul className="space-y-1.5">
+                  {result.stat_disputes.map((d, i) => (
+                    <li key={i} className="text-sm text-red-900">
+                      {d}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             {result.stat_plays && <PlayLog plays={result.stat_plays} />}
 

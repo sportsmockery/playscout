@@ -362,6 +362,11 @@ export interface PositionAnalysisResult {
   team_stats?: TeamStatTotals
   /** Where the charted film contradicts itself, or could not be measured. */
   stat_warnings?: string[]
+  /**
+   * Plays the two independent reads of the film could not agree about, so
+   * nothing was charted from them. These are the ones to enter by hand.
+   */
+  stat_disputes?: string[]
   unit_graded?: string
   players_not_evaluable?: string
   target_players?: { identifier: string; reason: string; confidence: number; evidence_frames?: number[] }[]

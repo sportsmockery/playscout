@@ -31,6 +31,12 @@ import type { EvidenceMode } from './football-brain'
 import { applyDrillSafetyFilter, scrubProhibitedDrillMentions } from './safety'
 import { rankPlayerGrades } from './player-grades'
 import { tallyStatPlays } from './stat-lines'
+import {
+  buildPlayVerificationPrompt,
+  PLAY_VERIFICATION_SCHEMA,
+  parseVerification,
+  reconcileReadings,
+} from './stat-verify'
 import { resolveLevelTier } from './levels'
 import { isMisdirectedRun, resolveFilmSubject, subjectNameFor } from './film-subject'
 
@@ -58,10 +64,12 @@ const MODULE_MAP: Record<string, ModuleConfig> = {
   MISTAKEIQ: { buildPrompt: buildMISTAKEIQSystemPrompt, schema: MISTAKEIQ_RESPONSE_SCHEMA, fps: 4, resolution: 'medium' },
   SCOUTIQ:   { buildPrompt: buildSCOUTIQSystemPrompt,   schema: SCOUTIQ_RESPONSE_SCHEMA,   fps: 2, resolution: 'low' },
   RANKERIQ:  { buildPrompt: buildRANKERIQSystemPrompt,  schema: RANKERIQ_RESPONSE_SCHEMA,  fps: 6, resolution: 'medium' },
-  // Charting needs to see the ball change hands, a catch made or dropped, and
-  // who arrived at the tackle — events that live between frames. It does not
-  // need the sub-second technique resolution QBIQ and OLIQ grade at.
-  STATSIQ:   { buildPrompt: buildSTATSIQSystemPrompt,   schema: STATSIQ_RESPONSE_SCHEMA,   fps: 6, resolution: 'medium' },
+  // Charting hinges on one detail the size of a football: whether the ball left
+  // the quarterback's hands, and to whom. At 6fps/medium that exchange was
+  // being read wrong on real film — twice, two different ways, at 0.95
+  // self-reported confidence. This is the one module where resolution is not a
+  // cost knob but the difference between a stat sheet and a story.
+  STATSIQ:   { buildPrompt: buildSTATSIQSystemPrompt,   schema: STATSIQ_RESPONSE_SCHEMA,   fps: 8, resolution: 'high' },
 }
 
 /**
@@ -395,12 +403,66 @@ export async function analyzePosition(
     ? rankPlayerGrades(parsed.player_grades, roster, { allowNumbers })
     : parsed.player_grades
 
+  // STATSIQ: the charting read gets checked by a SECOND, independent read
+  // before any of it is counted.
+  //
+  // A single pass produced two mutually exclusive accounts of the same clip on
+  // consecutive runs — a rushing touchdown by a back, then a passing touchdown
+  // to a receiver — each citing timestamps, each reporting 0.95 confidence, and
+  // the truth (a quarterback keeper) matching neither. The model's own
+  // confidence cannot detect that, so corroboration has to come from outside
+  // it. Where the two reads agree, the credits count. Where they disagree, the
+  // coach is asked. See stat-verify.ts.
+  let statPlays = parsed.stat_plays
+  let statDisputes: string[] = []
+  let chartingAgreement: number | null = null
+  if (input.moduleKey === 'STATSIQ' && statPlays?.length && clip) {
+    const verifyPrompt = buildPlayVerificationPrompt(inputWithGameType)
+    const verifyHash = hashCacheKey('frame_observation', `STATSIQ:verify:${verifyPrompt}`, evidenceKey)
+    const cachedVerify = await getCachedResponse<string>(supabase, verifyHash)
+
+    let verifyJson = cachedVerify
+    if (verifyJson == null) {
+      const verifyResult = await analyzeClipWithGemini(
+        verifyPrompt,
+        clip.source,
+        PLAY_VERIFICATION_SCHEMA,
+        {
+          model: route.model,
+          fps: config.fps,
+          mediaResolution: config.resolution,
+          startOffsetSeconds: clip.startOffsetSeconds,
+          endOffsetSeconds: clip.endOffsetSeconds,
+        }
+      ).catch(() => null)
+      if (verifyResult) {
+        verifyJson = verifyResult.text
+        await recordUsage(supabase, {
+          teamId: input.teamId, userId, jobType: 'frame_observation',
+          provider: route.provider, model: route.model,
+          inputTokens: verifyResult.usage.inputTokens, outputTokens: verifyResult.usage.outputTokens,
+        })
+        await setCachedResponse(supabase, verifyHash, 'frame_observation', verifyJson)
+      }
+    }
+
+    // A verification that fails to run must never fail the analysis — but it
+    // must not silently pass it either, so agreement stays null and the sheet
+    // says it was not corroborated.
+    if (verifyJson != null) {
+      const reconciled = reconcileReadings(statPlays, parseVerification(verifyJson))
+      statPlays = reconciled.plays
+      statDisputes = reconciled.disputes
+      chartingAgreement = reconciled.agreement
+    }
+  }
+
   // STATSIQ: same division of labour one more time. The model charted plays;
   // every carry, yard and tackle a coach reads is summed here, from credits
   // whose jersey numbers went through the identity gates above. A model asked
   // for a stat line returns one whose own columns disagree.
-  const stats = parsed.stat_plays?.length
-    ? tallyStatPlays(parsed.stat_plays, {
+  const stats = statPlays?.length
+    ? tallyStatPlays(statPlays, {
         roster,
         allowNumbers,
         // A stat is checkable by the coach who was at the game in a way a
@@ -423,7 +485,10 @@ export async function analyzePosition(
   }))
 
   return {
-    overall_score: overall.value ?? 0,
+    // StatsIQ's headline number is how much the two independent reads AGREED,
+    // not how sure the model says it is. A self-reported 0.95 sat on top of a
+    // wrong answer; measured corroboration cannot.
+    overall_score: chartingAgreement ?? overall.value ?? 0,
     position_scores: parsed.position_scores,
     reasoning: written?.reasoning && Object.keys(written.reasoning).length
       ? written.reasoning
@@ -459,11 +524,12 @@ export async function analyzePosition(
     opponent_possession: parsed.opponent_possession,
     mistakes: safeMistakes,
     player_grades: rankedGrades,
-    stat_plays: parsed.stat_plays,
+    stat_plays: statPlays,
     stat_credits: statCredits,
     stat_lines: stats?.lines,
     team_stats: stats?.team,
-    stat_warnings: stats?.warnings,
+    stat_warnings: stats ? [...statDisputes, ...stats.warnings] : statDisputes.length ? statDisputes : undefined,
+    stat_disputes: statDisputes.length ? statDisputes : undefined,
     unit_graded: parsed.unit_graded,
     players_not_evaluable: parsed.players_not_evaluable,
     target_players: parsed.target_players,
