@@ -212,6 +212,29 @@ export async function persistStatCredits(
 ): Promise<void> {
   if (!credits?.length) return
 
+  // Re-charting a clip REPLACES its credits rather than adding a second set.
+  //
+  // The ledger answers "what happened in this game", and one clip happened
+  // once. A coach who re-charts after fixing the prompt, the jersey colour or
+  // the side of the ball would otherwise double every carry in it — invisibly,
+  // because each run's own report still looks right and only the season total
+  // is wrong. The superseded analysis result keeps its own box score in jsonb,
+  // so the old reading is still readable; it just stops being counted.
+  if (params.videoId) {
+    let stale = supabase
+      .from('play_stat_credits')
+      .delete()
+      .eq('team_id', params.teamId)
+      .eq('video_id', params.videoId)
+    stale = params.playSequenceId
+      ? stale.eq('play_sequence_id', params.playSequenceId)
+      : stale.is('play_sequence_id', null)
+    const { error: staleError } = await stale
+    if (staleError) {
+      console.error('[persist-intelligence] failed to clear superseded stat credits', staleError)
+    }
+  }
+
   const rows = credits.map((c) => ({
     team_id: params.teamId,
     video_id: params.videoId ?? null,

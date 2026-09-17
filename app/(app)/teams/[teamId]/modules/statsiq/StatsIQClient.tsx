@@ -9,6 +9,7 @@ import type { StatPlay } from '@/lib/intelligence/schemas';
 import { positionLabel } from '@/lib/intelligence/positions';
 import { playIsNullified } from '@/lib/intelligence/stat-lines';
 import BoxScore from '@/components/intelligence/BoxScore';
+import StatCorrections from '@/components/intelligence/StatCorrections';
 import EvidenceFrames from '@/components/intelligence/EvidenceFrames';
 import QuickClipUpload from '@/components/intelligence/QuickClipUpload';
 import FilmPicker, { isReadyNow, type FilmPickerFolder } from '@/components/intelligence/FilmPicker';
@@ -487,6 +488,20 @@ export default function StatsIQClient({
                 lines={result.stat_lines}
                 team={result.team_stats}
                 warnings={result.stat_warnings}
+              />
+            )}
+
+            {/* The coach was at the game. A correction here rewrites the
+                ledger, so it carries into season totals rather than living
+                in this one report. */}
+            {analysisId && result.stat_lines && (
+              <StatCorrections
+                analysisId={analysisId}
+                onCorrected={({ lines, team, warnings }) =>
+                  setResult((r) =>
+                    r ? { ...r, stat_lines: lines, team_stats: team, stat_warnings: warnings } : r,
+                  )
+                }
               />
             )}
 

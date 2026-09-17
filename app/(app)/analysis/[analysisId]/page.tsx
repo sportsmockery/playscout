@@ -7,7 +7,7 @@ import RepBreakdownPanel, { type RepBreakdown } from '@/components/intelligence/
 import { createClient } from '@/lib/supabase/server';
 import PrintButton from './PrintButton';
 import NextSteps from '@/components/intelligence/NextSteps';
-import BoxScore from '@/components/intelligence/BoxScore';
+import StatSheet from '@/components/intelligence/StatSheet';
 import type { StatLine, TeamStatTotals } from '@/lib/intelligence/stat-lines';
 
 export async function generateMetadata({ params }: { params: Promise<{ analysisId: string }> }) {
@@ -206,7 +206,8 @@ export default async function SavedAnalysisPage({
           coach opening a stat sheet is looking for the numbers. */}
       {evidence.stat_lines && evidence.team_stats && (
         <div className="mb-5">
-          <BoxScore
+          <StatSheet
+            analysisId={analysisId}
             lines={evidence.stat_lines}
             team={evidence.team_stats}
             warnings={evidence.stat_warnings ?? []}
