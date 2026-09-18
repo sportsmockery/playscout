@@ -388,6 +388,19 @@ export interface PositionAnalysisResult {
   attribution, the emptier the box score became — an option team would have read "0 carries, 0
   yards, 12 questions" over a game it had just charted. A press box does the opposite: team rushing
   counts every carry and an unattributed one simply has no name beside it yet.
+- **The locator's window keeps a long TAIL** (`POST_PLAY_MARGIN` 6s against a 2s head). The two
+  errors do not cost the same: trimming the front loses a little pre-snap look, trimming the back
+  cuts the play before it finishes, so the charting pass reads a runner who never scores and
+  measures the gain to wherever the window stopped. Measured — the locator called the same
+  touchdown's end at 16.8s twice and 21s once, and with a 2s tail the short windows charted 45
+  yards. Extra tail costs tokens; a cut tail costs the touchdown.
+- **Measured state of the module** (6 runs against MVI_0072, a 55-yard QB keeper off a dive fake,
+  `EVAL_OFFENSE` set to the team's real scheme note): run + touchdown **6/6**; yardage measured
+  **6/6** (it was 0/6 before the marked-field fix — the sheet simply had no yards on it); yardage
+  accuracy **45–50 against a true 55**, i.e. still short by a stripe or two, which the coach closes
+  in one field or exactly with a Plays-screen breakdown; ball carrier **qb 3 / rb 2 /
+  wingback_right 1** — a genuine coin flip, parked as a question **6/6** so a wrong name never
+  reaches a player's line. Re-measure before changing any of this.
 - **Sample rate is 6fps/medium, and that is measured, not assumed.** Raising it to 8fps/high made
   the module worse: swept against real film it read a quarterback touchdown run as an intercepted
   pass, while 6fps/medium returned "run, touchdown" every time and came within a yard of the true

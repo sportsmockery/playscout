@@ -76,8 +76,25 @@ export const PLAY_LOCATOR_SCHEMA = {
 
 /** Seconds kept before the first snap, so the pre-snap look is still readable. */
 export const PRE_SNAP_MARGIN = 2
-/** Seconds kept after the last play ends, to catch a score or a late flag. */
-export const POST_PLAY_MARGIN = 2
+/**
+ * Seconds kept after the last play ends.
+ *
+ * Deliberately much larger than the head margin, because the two errors do not
+ * cost the same thing. Trimming too much off the FRONT costs a little of the
+ * pre-snap look. Trimming too much off the BACK cuts the play before it
+ * finishes, and the charting pass then reads a runner who never scores: it
+ * loses the result, and it measures the gain to wherever the window stopped.
+ *
+ * MEASURED, on the 55-yard touchdown this module was built against. The locator
+ * called the same play's end at 16.8s twice and 21s once — under-calling it by
+ * four seconds, because a long run's "end" is genuinely ambiguous at 2fps. With
+ * a 2-second tail the two short windows charted 45 yards and one of them lost
+ * the ball carrier as well; the run that got the longer window charted 50. The
+ * locator's end is an estimate with several seconds of error in it, and the
+ * margin has to absorb that error rather than assume it away. Extra tail costs
+ * tokens; a cut tail costs the touchdown.
+ */
+export const POST_PLAY_MARGIN = 6
 
 /**
  * Narrowing has to be worth it and it has to be safe. A window is only used

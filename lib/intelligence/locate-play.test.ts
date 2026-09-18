@@ -7,9 +7,21 @@ describe('narrowing the film to the football', () => {
     // lining up and then celebrating — and reading it was why consecutive runs
     // reported different formations for the same snap.
     const window = playWindow([{ snap_seconds: 6.5, end_seconds: 22, confidence: 0.8 }], 31.68)
-    expect(window).toEqual({ startOffsetSeconds: 4.5, endOffsetSeconds: 24 })
-    // Nearly 40% of the frames were never football.
-    expect(24 - 4.5).toBeLessThan(31.68 * 0.65)
+    expect(window).toEqual({ startOffsetSeconds: 4.5, endOffsetSeconds: 28 })
+    // A quarter of the frames were never football, and the tail is generous on
+    // purpose — see POST_PLAY_MARGIN.
+    expect(28 - 4.5).toBeLessThan(31.68 * 0.85)
+  })
+
+  it('keeps a long tail, because a cut tail loses the end of the play', () => {
+    // Measured: the locator called this same play's end at 16.8s twice and 21s
+    // once. A 2-second tail cut the touchdown off two runs out of three, which
+    // cost the yardage and, on one of them, the ball carrier too.
+    const short = playWindow([{ snap_seconds: 7.2, end_seconds: 16.8, confidence: 1 }], 31.68)
+    const long = playWindow([{ snap_seconds: 7.2, end_seconds: 21, confidence: 1 }], 31.68)
+    // Both windows now reach past where the play actually ended (~22s).
+    expect(short!.endOffsetSeconds).toBeGreaterThanOrEqual(22)
+    expect(long!.endOffsetSeconds).toBeGreaterThanOrEqual(22)
   })
 
   it('spans every play when the clip holds more than one', () => {
@@ -20,7 +32,7 @@ describe('narrowing the film to the football', () => {
       ],
       60
     )
-    expect(window).toEqual({ startOffsetSeconds: 3, endOffsetSeconds: 50 })
+    expect(window).toEqual({ startOffsetSeconds: 3, endOffsetSeconds: 54 })
   })
 
   it('keeps a pre-snap look rather than starting at the snap', () => {
