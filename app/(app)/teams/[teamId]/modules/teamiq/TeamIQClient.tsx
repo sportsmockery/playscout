@@ -132,8 +132,15 @@ export default function TeamIQClient({
 }: Props) {
   const [selectedVideoIds, setSelectedVideoIds] = useState<string[]>(initialVideoIds ?? []);
   const [quickClipFrames, setQuickClipFrames] = useState<string[] | null>(null);
+  // A team that wears two colours cannot be defaulted. Telling the model the
+  // WRONG colour is worse than telling it none: with none it charts only the
+  // credits it can attribute unambiguously, while with the opposite colour it
+  // confidently charts the OTHER team's stats as ours and the whole sheet
+  // inverts. So when both colours exist and differ, the coach picks.
+  const jerseyAmbiguous =
+    !!homeJerseyColor && !!awayJerseyColor && homeJerseyColor !== awayJerseyColor;
   const [jerseyChoice, setJerseyChoice] = useState<JerseyChoice>(
-    homeJerseyColor ? 'home' : awayJerseyColor ? 'away' : 'unknown'
+    jerseyAmbiguous ? 'unknown' : homeJerseyColor ? 'home' : awayJerseyColor ? 'away' : 'unknown',
   );
   const [sideChoice, setSideChoice] = useState<SideChoice>('unknown');
   const [coachNote, setCoachNote] = useState('');
@@ -287,13 +294,23 @@ export default function TeamIQClient({
                           : 'bg-white text-[var(--brand-muted)] border-[var(--brand-border)] hover:border-[var(--brand-navy)]'
                       }`}
                     >
-                      {choice === 'unknown' ? 'Not sure' : choice}
+                      {choice === 'home'
+                        ? `Home${homeJerseyColor ? ` · ${homeJerseyColor}` : ''}`
+                        : choice === 'away'
+                          ? `Away${awayJerseyColor ? ` · ${awayJerseyColor}` : ''}`
+                          : 'Not sure'}
                     </button>
                   ))}
                 </div>
                 {resolvedJerseyColor && (
                   <p className="text-xs text-[var(--brand-muted)] mt-1.5">
                     Identifying by: {resolvedJerseyColor}
+                  </p>
+                )}
+                {jerseyAmbiguous && jerseyChoice === 'unknown' && (
+                  <p className="text-[11px] text-amber-800 mt-1.5">
+                    Pick the colour your team is wearing in this film — the wrong one puts the
+                    other team&apos;s players on your sheet.
                   </p>
                 )}
               </div>

@@ -417,7 +417,17 @@ export interface PositionAnalysisResult {
   quarterback's season. `ball_ended_with` names one of OUR positions, so it is a statement that we
   kept the ball. One-directional: the verifier has no vocabulary for "a defender took it", so
   silence is never a veto.
-- **Set the team's jersey colour.** With none, the charting prompt falls to its "work out which
+- **Set the team's jersey colour, and NEVER default it when a team wears two.** `teams` carries
+  `home_jersey_color` and `away_jersey_color` (team settings), and the module screen asks which was
+  worn in this film. That picker used to default to HOME whenever a home colour existed, and the
+  buttons read "Home / Away / Not sure" without naming the colours — so a coach charting away film
+  silently shipped the wrong colour. **A wrong colour is worse than none**: with none the prompt
+  charts only what it can attribute unambiguously, with the opposite colour it confidently charts
+  the OTHER team's stats as ours and the whole sheet inverts. Now the buttons name the colour
+  ("Home · Blue"), and when both colours exist and differ the choice defaults to "Not sure" so the
+  coach makes it. Covered in STATSIQ/RANKERIQ/TEAMIQ/MISTAKEIQ; QBIQ, OLIQ, RBIQ and SCOUTIQ have
+  no own-team colour at all and always take the no-colour branch — a real gap.
+- With none, the charting prompt falls to its "work out which
   side is ours from the play itself" branch, and on a deep ball caught among defenders that is how
   our completion becomes their interception. Measured on that clip: 0/3 correct without a colour,
   1/3 with — suggestive, not conclusive, and `EVAL_JERSEY` exists so the next person measures

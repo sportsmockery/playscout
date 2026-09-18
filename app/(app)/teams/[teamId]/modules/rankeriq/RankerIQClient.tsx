@@ -125,8 +125,15 @@ export default function RankerIQClient({
 }: Props) {
   const [selectedVideoIds, setSelectedVideoIds] = useState<string[]>(initialVideoIds ?? []);
   const [quickClipFrames, setQuickClipFrames] = useState<string[] | null>(null);
+  // A team that wears two colours cannot be defaulted. Telling the model the
+  // WRONG colour is worse than telling it none: with none it charts only the
+  // credits it can attribute unambiguously, while with the opposite colour it
+  // confidently charts the OTHER team's stats as ours and the whole sheet
+  // inverts. So when both colours exist and differ, the coach picks.
+  const jerseyAmbiguous =
+    !!homeJerseyColor && !!awayJerseyColor && homeJerseyColor !== awayJerseyColor;
   const [jerseyChoice, setJerseyChoice] = useState<JerseyChoice>(
-    homeJerseyColor ? 'home' : awayJerseyColor ? 'away' : 'unknown',
+    jerseyAmbiguous ? 'unknown' : homeJerseyColor ? 'home' : awayJerseyColor ? 'away' : 'unknown',
   );
   const [sideChoice, setSideChoice] = useState<SideChoice>('unknown');
   const [isScrimmage, setIsScrimmage] = useState(false);
@@ -276,10 +283,20 @@ export default function RankerIQClient({
                           : 'border-[var(--brand-border)] text-[var(--brand-muted)] hover:bg-[var(--brand-bg)]'
                       }`}
                     >
-                      {choice === 'home' ? 'Home' : choice === 'away' ? 'Away' : 'Not sure'}
+                      {choice === 'home'
+                        ? `Home${homeJerseyColor ? ` · ${homeJerseyColor}` : ''}`
+                        : choice === 'away'
+                          ? `Away${awayJerseyColor ? ` · ${awayJerseyColor}` : ''}`
+                          : 'Not sure'}
                     </button>
                   ))}
                 </div>
+                {jerseyAmbiguous && jerseyChoice === 'unknown' && (
+                  <p className="text-[11px] text-amber-800 mt-1.5">
+                    Pick the colour your team is wearing in this film — the wrong one puts the
+                    other team&apos;s players on your sheet.
+                  </p>
+                )}
                 <p className="text-[11px] text-[var(--brand-muted)] mt-1">
                   Telling the sides apart is what keeps grades off the other team&apos;s players.
                 </p>
