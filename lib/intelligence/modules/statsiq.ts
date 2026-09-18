@@ -275,21 +275,47 @@ apply the rule.
 Still chart the play's credits as normal even when it was called back. The app removes what the
 penalty removes.
 
-=== YARDAGE — THE RULE THAT MATTERS MOST ===
-You are watching film with no yard-line graphic and often no legible field markings. A yardage
-number you cannot actually measure is a made-up statistic that looks exactly like a real one, and
-it will be added into a season total and handed to a child.
+=== YARDAGE — MEASURE IT OFF THE LINES, THEY ARE THERE ===
+This film was shot on a MARKED football field. Youth and high-school games are played on lined
+fields: a stripe across the field every 5 yards, hash marks, numbers on many fields, sidelines and
+two goal lines. Those lines are your measuring instrument and they are almost always readable on
+sideline film. MEASURE THE PLAY. Do not treat yardage as something the film cannot tell you.
+
+How to measure, every play:
+1. At the snap, find the yard line the ball is on (or the nearest stripe and how far off it the
+   ball is).
+2. At the end of the play, find the yard line where the ball carrier was stopped, went down, went
+   out of bounds, or crossed the goal line.
+3. Count the stripes between them, times five, and adjust for the part-lines at each end. A play
+   that ends in the end zone ran from its starting line to the goal line.
+
+What is NOT missing information:
+- The camera panning with the play. The lines pan with it. Read the line the ball is on at each
+  end, not both ends in one image.
+- No televised yard-line overlay. That is a broadcast graphic; painted stripes do the same job
+  and are what a press box has always used.
+- A number you cannot pin to the exact yard. Say "from the 35 to the goal line, 35 yards" — a
+  measurement read off real lines is a measurement even when it rounds to the nearest stripe.
 
 For every play set yards_basis:
   coach_breakdown  — the staff already tagged the gain (see above). Use their number exactly.
-  field_landmarks  — you can SEE where the ball started and ended against yard lines, hash marks,
-                     the sideline, cones or the goal line. Name the landmarks in yards_note.
-  not_determinable — you cannot. Set yards to null. This is a NORMAL answer on wide sideline
-                     film and it is the RIGHT answer whenever you would otherwise be guessing.
+  field_landmarks  — you read it off the field: yard lines, hash marks, numbers, the sideline,
+                     cones or the goal line. THIS IS THE EXPECTED ANSWER. Name the landmarks at
+                     both ends in yards_note ("snapped at the 40, scored, 40 yards").
+  not_determinable — the lines genuinely are not readable on this clip: an unlined practice
+                     field, a crop so tight no stripe is in frame, or the start of the play
+                     happens off camera. Set yards to null and say in yards_note WHICH end you
+                     could not place and why.
 
-A play charted as not_determinable still counts the carry, the completion and the catch — the
-app tells the coach how many plays had no measurable yardage, which is a true and useful thing
-to know. An invented 8-yard gain is not.
+not_determinable is the answer for film that has no lines in it, NOT for a long gain, NOT for a
+play the camera followed, and NOT for a run that ends in the end zone. A marked field with a
+visible goal line is a measurable play. Reaching for not_determinable on a lined field throws
+away a number the coach can see with his own eyes, and it makes the whole rushing column read
+zero — which is its own kind of wrong answer.
+
+A play charted as not_determinable still counts the carry, the completion and the catch, and the
+app tells the coach how many plays had no measurable yardage. But an honest measurement off real
+lines beats that every time. Measure first; abstain only when there is nothing to measure against.
 
 === WHEN YOU DO NOT KNOW: ASK, DO NOT PICK ===
 You have a way to say "I don't know who that was", and using it is a correct

@@ -336,9 +336,24 @@ export interface PositionAnalysisResult {
   (`aggregateStatCredits`). A model asked for "rushing yards: 84" returns a figure that does not
   equal the sum of its own carries, and nothing downstream can tell.
 - **Yardage carries its basis** (`coach_breakdown` | `field_landmarks` | `not_determinable`).
-  Youth film has no yard-line graphic; a gain that could not be measured is counted as an
-  unmeasured play rather than estimated, so "7 carries, 22 yards" reads as yards from the four
-  carries that could be measured. A staff-tagged gain on the play outranks the film read.
+  A gain that could not be measured is counted as an unmeasured play rather than estimated, so
+  "7 carries, 22 yards" reads as yards from the four carries that could be measured. A
+  staff-tagged gain on the play outranks the film read.
+  **But `field_landmarks` is the EXPECTED answer, not the exception.** Youth and high-school games
+  are played on LINED fields — a stripe every 5 yards, hash marks, two goal lines — and those
+  stripes are plainly readable on sideline film. The prompt used to open this section with "film
+  with no yard-line graphic and often no legible field markings" and call `not_determinable` the
+  normal answer; the model obeyed the false premise and charted a 55-yard touchdown with no
+  yardage, echoing the wording back ("outside of any visible field markings"). Do NOT reintroduce
+  it. A televised yard-line overlay is a broadcast graphic, not the measuring instrument; painted
+  stripes are, and the camera panning with the play does not hide them (the lines pan too — each
+  end is read separately). `not_determinable` is for an unlined practice field, a crop with no
+  stripe in frame, or a snap that happens off camera.
+- **The two reads' yardage tolerance is proportional, not flat** (`yardsTolerance`: the greater of
+  3 yards and 12%). Both passes count the same stripes, so the rounding error scales with the gain:
+  55 against 50 on a touchdown is one measurement read twice, while 1 against 5 on a short gain is
+  a real disagreement. A flat 3 yards treated those the same and withheld the number on exactly
+  the long runs a coach most wants one for.
 - **A penalty can delete every other statistic on its play.** The model reports the flag
   (`penalty_on`, `penalty_type`, `penalty_enforcement`, `penalty_timing`, `penalty_yards`) and
   `playIsNullified` applies the rule: an accepted foul pre-snap or during the play wipes that

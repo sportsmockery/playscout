@@ -36,10 +36,26 @@ describe('the charting order the coach asked for', () => {
 })
 
 describe('yardage', () => {
-  it('tells the model that "not determinable" is a correct answer', () => {
+  it('tells the model the field is marked and to measure off it', () => {
+    // The prompt used to open this section with "film with no yard-line graphic
+    // and often no legible field markings" and call not_determinable the NORMAL
+    // answer. Youth games are played on lined fields, the stripes are plainly
+    // visible on sideline film, and the model obeyed the false premise: it
+    // charted a 55-yard touchdown with no yardage and echoed the wording back
+    // ("outside of any visible field markings"). The whole rushing column read
+    // zero over a gain the coach could see with his own eyes.
+    const prompt = buildSTATSIQSystemPrompt(input())
+    expect(prompt).toContain('MARKED football field')
+    expect(prompt).toContain('THIS IS THE EXPECTED ANSWER')
+    expect(prompt).not.toContain('no legible field markings')
+    // And the camera following the play is not a reason to abstain.
+    expect(prompt).toContain('The lines pan with it')
+  })
+
+  it('keeps "not determinable" available for film with nothing to measure against', () => {
     const prompt = buildSTATSIQSystemPrompt(input())
     expect(prompt).toContain('not_determinable')
-    expect(prompt).toContain('NORMAL answer')
+    expect(prompt).toContain('unlined practice')
   })
 
   it("uses the staff's tagged gain when the play carries one", () => {

@@ -87,8 +87,12 @@ For EVERY play in this clip, in order, answer these questions from what you can 
 
 4. thrown_by — on a pass, the position of the thrower. Null on a run or if you cannot tell.
 
-5. yards — how far the ball advanced, if and only if you can measure it against yard lines, hash
-   marks, the sideline or the goal line. Null otherwise. Do not estimate.
+5. yards — how far the ball advanced, measured off the field. This was shot on a MARKED field:
+   a stripe every 5 yards, hash marks, sidelines, two goal lines. Find the yard line the ball was
+   on at the snap, find the line where the play ended (the goal line, if it scored), and count.
+   The camera panning does not stop you — the lines pan with it, so read each end separately.
+   Null ONLY if no line is readable in this clip at all. Do not estimate without lines, and do not
+   refuse a line you can see.
 
 6. confidence — 0.0 to 1.0, honestly.
 
@@ -126,8 +130,22 @@ export const PLAY_VERIFICATION_SCHEMA = {
   required: ['plays'],
 }
 
-/** How far two yardage readings may differ before neither is trusted. */
-const YARDS_TOLERANCE = 3
+/**
+ * How far two yardage readings may differ before neither is trusted.
+ *
+ * Proportional, not flat. Both reads measure off the same painted stripes, and
+ * the error in reading a stripe scales with the distance being read: 53 against
+ * 57 on a 55-yard touchdown is two people rounding the same run to the nearest
+ * line, while 1 against 5 on a short gain is a real disagreement about what
+ * happened. A flat 3 yards treated those identically and would have thrown away
+ * the measurement on exactly the long runs a coach most wants a number for.
+ */
+const YARDS_TOLERANCE_MIN = 3
+const YARDS_TOLERANCE_FRACTION = 0.12
+
+function yardsTolerance(a: number, b: number): number {
+  return Math.max(YARDS_TOLERANCE_MIN, Math.abs(a) * YARDS_TOLERANCE_FRACTION, Math.abs(b) * YARDS_TOLERANCE_FRACTION)
+}
 
 /** Charting says "pass"/"run"; the verifier says the same in its own vocabulary. */
 function chartedKind(play: RawStatPlay): 'run' | 'pass' | 'other' {
@@ -269,7 +287,7 @@ export function reconcileReadings(
     let nextPlay: RawStatPlay = { ...play, credits: nextCredits }
     if (play.yards != null && check.yards != null) {
       checks += 1
-      if (Math.abs(play.yards - check.yards) > YARDS_TOLERANCE) {
+      if (Math.abs(play.yards - check.yards) > yardsTolerance(play.yards, check.yards)) {
         disputes.push(
           `Play ${index}: the two reads measured this as ${play.yards} and ${check.yards} yards, so no yardage was counted. Type the real number in if you know it.`
         )

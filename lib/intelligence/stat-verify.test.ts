@@ -128,16 +128,32 @@ describe('the two reads must agree before anything is counted', () => {
 })
 
 describe('yardage neither read can confirm', () => {
-  it('drops a measurement the two reads disagree about', () => {
-    // 55 and 50 are two estimates, not a measurement.
-    const { plays, disputes } = reconcileReadings(
-      [chartedAsRun({ credits: [
-        { stat: 'rush', position: 'qb', yards: 55, touchdown: true, identification_confidence: 0.3 },
+  /** Two reads of one run, differing only in the number. */
+  const twoReads = (charted: number, checked: number) =>
+    reconcileReadings(
+      [chartedAsRun({ yards: charted, credits: [
+        { stat: 'rush', position: 'qb', yards: charted, touchdown: true, identification_confidence: 0.3 },
       ] })],
-      [verified({ ball_ended_with: 'qb', yards: 50 })]
+      [verified({ ball_ended_with: 'qb', yards: checked })]
     )
 
-    expect(disputes.join(' ')).toContain('55 and 50 yards')
+  it('keeps a long gain the two reads rounded to different yard lines', () => {
+    // The real case: 55 and 50 on a 55-yard touchdown. Both reads are counting
+    // the same painted stripes and rounding the ends differently — that is one
+    // measurement, not two guesses. A flat 3-yard tolerance called it a dispute
+    // and handed the coach a 55-yard touchdown with 0 yards on it.
+    const { plays, disputes } = twoReads(55, 50)
+    expect(disputes).toHaveLength(0)
+    expect(plays[0].yards).toBe(55)
+
+    const { team } = tallyStatPlays(plays)
+    expect(team.offense.rush_yards).toBe(55)
+    expect(team.unmeasured.rush).toBe(0)
+  })
+
+  it('still drops two readings that cannot be the same run', () => {
+    const { plays, disputes } = twoReads(55, 20)
+    expect(disputes.join(' ')).toContain('55 and 20 yards')
     expect(plays[0].yards).toBeNull()
 
     // The carry still counts — only the yardage is withheld.
@@ -147,13 +163,16 @@ describe('yardage neither read can confirm', () => {
     expect(team.unmeasured.rush).toBe(1)
   })
 
+  it('holds a short gain to the tight tolerance it deserves', () => {
+    // 3 yards apart on a 55-yard run is rounding. On a 4-yard run it is a
+    // disagreement about what happened, so the proportional tolerance floors
+    // out rather than scaling to nothing.
+    expect(twoReads(4, 12).disputes).toHaveLength(1)
+    expect(twoReads(4, 6).disputes).toHaveLength(0)
+  })
+
   it('accepts a small difference between two readings', () => {
-    const { plays, disputes } = reconcileReadings(
-      [chartedAsRun({ yards: 50, credits: [
-        { stat: 'rush', position: 'qb', yards: 50, touchdown: true, identification_confidence: 0.3 },
-      ] })],
-      [verified({ ball_ended_with: 'qb', yards: 52 })]
-    )
+    const { plays, disputes } = twoReads(50, 52)
     expect(disputes).toHaveLength(0)
     expect(plays[0].yards).toBe(50)
   })
