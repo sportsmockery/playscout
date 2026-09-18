@@ -351,6 +351,16 @@ export interface PositionAnalysisResult {
 - Cross-checks the sheet against itself (a reception with no completion behind it, receiving
   yards that don't match passing yards) and shows the contradictions instead of reconciling them
   silently.
+- **Reads the film TWICE and counts only what both reads agree on** — the charting pass plus an
+  independent verification pass answering six closed questions (run or pass, did the ball change
+  hands, who finished with it, who threw it, yards). Play type disagreeing discards the play;
+  the player disagreeing leaves the player open as a question; the yardage disagreeing drops the
+  measurement. The headline number is measured agreement, never the model's self-report — a
+  self-reported 0.95 sat on top of a wrong answer.
+- **Sample rate is 6fps/medium, and that is measured, not assumed.** Raising it to 8fps/high made
+  the module worse: swept against real film it read a quarterback touchdown run as an intercepted
+  pass, while 6fps/medium returned "run, touchdown" every time and came within a yard of the true
+  gain. Re-run `EVAL_SWEEP=1` before changing it.
 - Sacks are scored the NFHS/NCAA way — a rushing attempt and a rushing loss for the passer, not
   a pass attempt.
 - Writes one row per credit to `play_stat_credits` (migration `20260915000000`), an event ledger
@@ -1290,8 +1300,11 @@ order, previewed and confirmed by the coach rather than applied on trust.
   player can be graded individually.
 - `AnalysisCorrections` is in 4 of 8 module clients and only works in the
   moments after a run; the saved-report and batch pages have no edit path.
-- No eval harness runs against real film yet — the metrics exist, the runner
-  does not.
+- `scripts/eval-statsiq.ts` runs the real StatsIQ pipeline against a clip on
+  disk (`GOOGLE_API_KEY=... npx tsx scripts/eval-statsiq.ts <clip> [runs]`, or
+  `EVAL_SWEEP=1` to compare fps/resolution/window settings). It exists because
+  four StatsIQ fixes were shipped on reasoning alone and two were wrong. The
+  other modules still have no runner.
 
 ---
 

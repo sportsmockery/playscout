@@ -71,12 +71,16 @@ const MODULE_MAP: Record<string, ModuleConfig> = {
   MISTAKEIQ: { buildPrompt: buildMISTAKEIQSystemPrompt, schema: MISTAKEIQ_RESPONSE_SCHEMA, fps: 4, resolution: 'medium' },
   SCOUTIQ:   { buildPrompt: buildSCOUTIQSystemPrompt,   schema: SCOUTIQ_RESPONSE_SCHEMA,   fps: 2, resolution: 'low' },
   RANKERIQ:  { buildPrompt: buildRANKERIQSystemPrompt,  schema: RANKERIQ_RESPONSE_SCHEMA,  fps: 6, resolution: 'medium' },
-  // Charting hinges on one detail the size of a football: whether the ball left
-  // the quarterback's hands, and to whom. At 6fps/medium that exchange was
-  // being read wrong on real film — twice, two different ways, at 0.95
-  // self-reported confidence. This is the one module where resolution is not a
-  // cost knob but the difference between a stat sheet and a story.
-  STATSIQ:   { buildPrompt: buildSTATSIQSystemPrompt,   schema: STATSIQ_RESPONSE_SCHEMA,   fps: 8, resolution: 'high' },
+  // 6fps/medium, MEASURED — see scripts/eval-statsiq.ts.
+  //
+  // I raised this to 8fps/high on the theory that reading a handoff needs
+  // pixels, and it made the module worse. Swept against real film, 8fps/high
+  // read a quarterback touchdown RUN as an intercepted pass on both windowed
+  // and whole-clip reads, while 6fps/medium got "run, touchdown" every time and
+  // came within a yard of the true gain. More frames at higher fidelity is not
+  // a better read; past some point it is a worse one. Do not raise this again
+  // without running the sweep.
+  STATSIQ:   { buildPrompt: buildSTATSIQSystemPrompt,   schema: STATSIQ_RESPONSE_SCHEMA,   fps: 6, resolution: 'medium' },
 }
 
 /**

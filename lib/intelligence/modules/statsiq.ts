@@ -174,8 +174,42 @@ DEFENSE (only when the other team has the ball):${DEFENSIVE_STAT_RULES}
 
 EITHER UNIT:${PENALTY_STAT_RULES}
 
+=== RUN OR PASS: THE TEST IS THE BALL IN FLIGHT ===
+Before anything else on a play, settle this one question, because everything else you chart
+depends on it.
+
+A pass happened ONLY if you can see the ball leave a hand and travel through the air, separate
+from every player, before someone catches it or it hits the ground. If you never see the ball
+airborne and alone, it was NOT a pass — chart a run.
+
+Measured on this product's own film, this is the most common charting error by a distance: a
+play-action fake, a bootleg, a quarterback carrying the ball to the edge with it held away from
+his body, or a throwing motion that never releases all LOOK like passes and are runs. A
+quarterback who faked a handoff, rolled out and then ran 55 yards has run the ball, however much
+the play started like a pass.
+
+Never infer a pass from the shape of the play, from receivers running routes, from an arm motion,
+or from where the ball ends up. Only from the ball in the air.
+
 === WHO ACTUALLY CARRIED IT — FOLLOW THE BALL, NOT THE FORMATION ===
 This is the single most common charting error, so do it deliberately on every running play.
+
+A FAKE AND A HANDOFF ARE IDENTICAL AT THE MESH POINT. This is not a detail — option football is
+built on it, and it is where this module is wrong most often. At the moment the quarterback and
+the back come together you CANNOT tell whether the ball was left in the back's belly or pulled
+back out. Deciding there means deciding by coin flip.
+
+So do not decide there. Follow BOTH players out of the mesh for a full second or more:
+- The one who is still carrying the ball two or three steps later is the ball carrier.
+- A back who took a real handoff is running WITH the ball, in both arms or tucked.
+- A back who took a fake disappears into the line empty-handed and the defence loses interest in
+  him, while the quarterback comes out the other side with the ball.
+- Where the defenders chase is strong evidence. Where the ball crosses the goal line is stronger.
+- On a veer, option, zone read, bootleg or counter, the quarterback faking inside and keeping
+  outside IS the play. Expect it rather than being surprised by it.
+
+If, after following both players, you still cannot say which one carried it, that is exactly what
+unresolved is for: candidates ["qb", "rb"] or ["qb", "fb"], and the coach settles it in one tap.
 
 Before you credit a carry, answer one question: DID THE BALL CHANGE HANDS AFTER THE SNAP?
 - If it did NOT — the player who took the snap is the player who ran with it — the carry belongs
@@ -183,6 +217,17 @@ Before you credit a carry, answer one question: DID THE BALL CHANGE HANDS AFTER 
   all carries for qb. The ball never touched a back, so no back gets a carry.
 - If it DID, the carry belongs to whoever ended up with the ball — a back, a wing, a receiver on
   a sweep. The quarterback who handed it off gets nothing.
+
+POSITION MEANS WHERE HE LINED UP, NOT WHERE YOU SAW HIM.
+Measured on real film: on a long run the camera finds the ball carrier thirty yards downfield and
+near a sideline, and the carrier then gets labelled from THAT spot — a quarterback who kept it and
+ran 55 yards to the left came back as "left wide receiver", "right wingback" and "running back" on
+three different reads of the same snap. Every one of those is the same mistake: reading his
+position off the end of the run.
+
+So: find the ball carrier at the END of the play, then track him BACKWARD to the snap, and credit
+the position he lined up in before the ball moved. If you cannot follow him back to a pre-snap
+alignment you did not identify him — set unresolved and let the coach answer.
 
 At every level this module serves, the quarterback is often the team's leading rusher. Do not
 credit a back because a back is who you EXPECT to carry the ball, and do not credit a back

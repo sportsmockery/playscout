@@ -56,13 +56,29 @@ ${jersey}
 For EVERY play in this clip, in order, answer these questions from what you can actually see:
 
 1. play_type — was it a RUN or a PASS?
-   A pass means the ball left a player's hand as a forward throw. A run means it did not.
-   A quarterback who kept the ball and ran is a RUN. A sack is a RUN. If you cannot tell, say
-   "cannot_tell" — that is a real answer and a useful one.
+
+   THE TEST IS THE BALL IN FLIGHT. A pass happened only if you can see the ball leave a hand and
+   travel through the air, separate from every player, before another player catches it or it
+   hits the ground. If you never see the ball airborne and alone, IT WAS NOT A PASS.
+
+   This is the error this check exists to catch, and it is the most common one on this film: a
+   play-action fake, a bootleg, a quarterback carrying the ball out to the edge with it held away
+   from his body, or a throwing motion that never releases, all LOOK like passes and are RUNS. A
+   quarterback who kept the ball and ran is a RUN no matter how much the play began like a pass.
+   A sack is a RUN.
+
+   Do not infer a pass from the shape of the play, from a receiver running a route, from a
+   quarterback's arm motion, or from where the ball carrier ends up. Only from the ball in the
+   air. If you cannot find that moment, answer "cannot_tell" or "run" — never "pass".
 
 2. ball_changed_hands — after the snap, did the ball pass from the player who took the snap to
    another player (a handoff, pitch or toss)? "no" means whoever took the snap still had it.
    If the exchange is hidden by bodies or the camera, say "cannot_tell".
+
+   MEASURED: elaborating this question with fake-detection guidance made question 1 worse — the
+   check started answering "no handoff, therefore he threw it" and flipped a rushing touchdown to
+   a pass on three runs out of three. Keep this question short. The charting prompt carries the
+   mesh-point reasoning; this one only has to corroborate.
 
 3. ball_ended_with — the position of the player who finished the play with the ball (the runner,
    or the receiver who caught it). Use the position vocabulary ids: qb, rb, fb, wingback_left,
@@ -126,7 +142,14 @@ function principalCredit(credits: RawStatCredit[]): RawStatCredit | undefined {
   return (
     credits.find((c) => c.stat === 'rush') ??
     credits.find((c) => c.stat === 'reception') ??
-    credits.find((c) => c.stat === 'pass_complete')
+    // An incompletion and an interception have a receiver the ball was meant
+    // for, and the two reads disagreed about who he was — wr_left against
+    // wr_right — on a sheet this function scored 100/100 because neither
+    // `target` nor `pass_intercepted` was listed here and the actor check
+    // never ran.
+    credits.find((c) => c.stat === 'target') ??
+    credits.find((c) => c.stat === 'pass_complete') ??
+    credits.find((c) => c.stat === 'pass_intercepted')
   )
 }
 
