@@ -147,6 +147,34 @@ interface RunResult {
   /** Claims joined, for measuring how much two runs of the same clip agree. */
   claimText: string[]
   violations: string[]
+  /**
+   * The module's actual product, counted.
+   *
+   * The first sweep reported MISTAKEIQ swinging 38/43/88 on one clip and gave
+   * no way to ask WHY, because the one number that defines that module — how
+   * many mistakes it found — was not being recorded. A score is downstream of
+   * the finding; measuring only the score measures the symptom.
+   */
+  yield: string
+}
+
+/** What each module is actually for, as a count. */
+function moduleYield(moduleKey: string, d: Record<string, unknown>): string {
+  const n = (v: unknown) => (Array.isArray(v) ? v.length : 0)
+  switch (moduleKey) {
+    case 'MISTAKEIQ':
+      return `${n(d.mistakes)} mistakes`
+    case 'TEAMIQ':
+      return `${n(d.offensive_tendencies) + n(d.defensive_tendencies)} tendencies, ${n(d.formations)} formations`
+    case 'SCOUTIQ':
+      return `${n(d.attack_points)} attack points, ${n(d.target_players)} targets`
+    case 'RANKERIQ':
+      return `${n(d.player_grades)} players graded`
+    case 'STATSIQ':
+      return `${n(d.stat_plays)} plays charted`
+    default:
+      return `${n(d.breakdown ? (d.breakdown as { cue_notes?: unknown[] }).cue_notes : [])} cues read`
+  }
 }
 
 /**
@@ -284,6 +312,7 @@ async function runOnce(moduleKey: string, window: { start?: number; end?: number
     catalogCoverage: depth?.catalogCoverage ?? null,
     claimText: [...(data.strengths ?? []), ...(data.weaknesses ?? [])],
     violations: findViolations(moduleKey, data as Record<string, unknown>, res.text),
+    yield: moduleYield(moduleKey, data as Record<string, unknown>),
   }
 }
 
@@ -291,7 +320,7 @@ function blank(failure: string): RunResult {
   return {
     ok: false, failure, ms: 0, inputTokens: 0, outputTokens: 0, score: null, claims: 0,
     anchoredProse: 0, anchoredCues: 0, emptyMarkers: 0, catalogCoverage: null,
-    claimText: [], violations: [],
+    claimText: [], violations: [], yield: '—',
   }
 }
 
@@ -348,7 +377,7 @@ async function main() {
       const scores = r.score == null ? 'no score' : `score ${r.score}`
       console.log(
         r.ok
-          ? `  run ${i}: ok   ${scores.padEnd(10)} ${r.claims} claims  ${(r.ms / 1000).toFixed(1)}s  ${r.inputTokens} tok` +
+          ? `  run ${i}: ok   ${scores.padEnd(10)} ${r.yield.padEnd(28)} ${(r.ms / 1000).toFixed(1)}s  ${r.inputTokens} tok` +
             (r.violations.length ? `\n         ⚠ ${r.violations.join('\n         ⚠ ')}` : '')
           : `  run ${i}: ✗ ${r.failure}`
       )
