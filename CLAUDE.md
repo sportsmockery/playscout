@@ -404,6 +404,28 @@ export interface PositionAnalysisResult {
   measures the gain to wherever the window stopped. Measured — the locator called the same
   touchdown's end at 16.8s twice and 21s once, and with a 2s tail the short windows charted 45
   yards. Extra tail costs tokens; a cut tail costs the touchdown.
+- **The CHARTING pass is the unreliable component, and that is measured.** On a second clip the
+  coach supplied — a completed 4th-down pass on lined high-school film — six runs of the real
+  pipeline: charting called it right **once**, and produced an interception (×3), a sack-fumble
+  (×2) and a completion (×1). The verification pass answered `pass, thrown by qb` **every time it
+  completed**. The short closed-question prompt beats the 25k-token charting prompt on the
+  load-bearing facts, and any future work on this module should start there rather than adding
+  more instructions to the big one.
+- **A charted turnover the second read contradicts is discarded.** A completion and an
+  interception are both `play_type: "pass"`, so the run/pass check could not catch either
+  interception above, and an interception the film did not contain would have gone onto a
+  quarterback's season. `ball_ended_with` names one of OUR positions, so it is a statement that we
+  kept the ball. One-directional: the verifier has no vocabulary for "a defender took it", so
+  silence is never a veto.
+- **Set the team's jersey colour.** With none, the charting prompt falls to its "work out which
+  side is ours from the play itself" branch, and on a deep ball caught among defenders that is how
+  our completion becomes their interception. Measured on that clip: 0/3 correct without a colour,
+  1/3 with — suggestive, not conclusive, and `EVAL_JERSEY` exists so the next person measures
+  rather than assumes. Note the eval ran for months against no-colour, which is a configuration no
+  coach uses.
+- **The verification call is retried once.** Losing it is not neutral: what ships is then the read
+  that is usually wrong, labelled only "not corroborated". A 503 from an overloaded model was
+  observed mid-eval and is transient.
 - **Measured state of the module** (6 runs against MVI_0072, a 55-yard QB keeper off a dive fake,
   `EVAL_OFFENSE` set to the team's real scheme note): run + touchdown **6/6**; yardage measured
   **6/6** (it was 0/6 before the marked-field fix — the sheet simply had no yards on it); yardage

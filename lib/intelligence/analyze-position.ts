@@ -535,18 +535,31 @@ export async function analyzePosition(
 
     let verifyJson = cachedVerify
     if (verifyJson == null) {
-      const verifyResult = await (clip
-        ? analyzeClipWithGemini(verifyPrompt, clip.source, PLAY_VERIFICATION_SCHEMA, {
-            model: route.model,
-            fps: config.fps,
-            mediaResolution: config.resolution,
-            startOffsetSeconds: readWindow.startOffsetSeconds,
-            endOffsetSeconds: readWindow.endOffsetSeconds,
-          })
-        : analyzeFramesWithGemini(verifyPrompt, frames, PLAY_VERIFICATION_SCHEMA, {
-            model: route.model,
-          })
-      ).catch(() => null)
+      const runVerification = () =>
+        clip
+          ? analyzeClipWithGemini(verifyPrompt, clip.source, PLAY_VERIFICATION_SCHEMA, {
+              model: route.model,
+              fps: config.fps,
+              mediaResolution: config.resolution,
+              startOffsetSeconds: readWindow.startOffsetSeconds,
+              endOffsetSeconds: readWindow.endOffsetSeconds,
+            })
+          : analyzeFramesWithGemini(verifyPrompt, frames, PLAY_VERIFICATION_SCHEMA, {
+              model: route.model,
+            })
+
+      // Retried once, because losing this call is not a neutral outcome.
+      //
+      // Measured on real film: across six runs the charting pass got the play
+      // right once, and the verification pass got it right every time it
+      // answered — so when verification drops, what ships is the read that is
+      // usually wrong, with only "not corroborated" beside it. A 503 from an
+      // overloaded model (observed, mid-eval) is transient and a second attempt
+      // costs a few seconds against a sheet that would otherwise carry an
+      // interception the film does not contain.
+      const verifyResult = await runVerification()
+        .catch(() => runVerification())
+        .catch(() => null)
       if (verifyResult) {
         verifyJson = verifyResult.text
         await recordUsage(supabase, {
