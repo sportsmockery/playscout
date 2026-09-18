@@ -312,6 +312,19 @@ export interface TeamStatTotals {
    * hold several.
    */
   unattributedPlays: number
+  /**
+   * Distinct PLAYS whose gain could not be measured off the film.
+   *
+   * Not the same as summing the per-line `unmeasured` counters, and that
+   * distinction is why this exists: one unmeasured completed pass produces a
+   * `pass` credit for the thrower AND a `receiving` credit for the catcher, so
+   * the sum said "2 plays" on a sheet whose own header said "1 play charted".
+   * A coach reading a self-contradicting sheet has no reason to trust any of it.
+   *
+   * The per-line counters stay credit-shaped, because that is what the
+   * yards-per-carry denominator needs.
+   */
+  unmeasuredYardagePlays: number
   /** Completions ÷ attempts, null when nothing was thrown. */
   completionPct: number | null
   /** Rush yards ÷ carries, over measured carries only. */
@@ -330,6 +343,9 @@ export interface StatTally {
    */
   warnings: string[]
 }
+
+/** The stats whose credit carries a gain, so a missing measurement is real. */
+const YARDAGE_BEARING_STATS = new Set(['rush', 'sack_taken', 'pass_complete', 'reception'])
 
 export function emptyOffense(): OffensiveStats {
   return {
@@ -820,10 +836,22 @@ export function computeStatLines(rawCredits: StatCredit[], nullifiedPlays = 0): 
     ;(c.side === 'offense' ? offensePlays : defensePlays).add(c.playIndex)
   }
 
+  // Plays, not credits — see TeamStatTotals.unmeasuredYardagePlays.
+  const unmeasuredYardagePlays = new Set(
+    credits
+      .filter(
+        (c) =>
+          YARDAGE_BEARING_STATS.has(c.stat) &&
+          (c.yards == null || c.yardsBasis === 'not_determinable')
+      )
+      .map((c) => c.playIndex)
+  )
+
   const team = {
     ...totalsFrom([...lines, unattributed], offensePlays.size, defensePlays.size, nullifiedPlays),
     pendingQuestions,
     unattributedPlays: unattributedPlays.size,
+    unmeasuredYardagePlays: unmeasuredYardagePlays.size,
   }
 
   const warnings = consistencyWarnings(lines, team)
@@ -963,7 +991,7 @@ function totalsFrom(
   offensivePlays: number,
   defensivePlays: number,
   nullifiedPlays: number
-): Omit<TeamStatTotals, 'pendingQuestions' | 'unattributedPlays'> {
+): Omit<TeamStatTotals, 'pendingQuestions' | 'unattributedPlays' | 'unmeasuredYardagePlays'> {
   const offense = lines.reduce((acc, l) => addOffense(acc, l.offense), emptyOffense())
   const defense = lines.reduce((acc, l) => addDefense(acc, l.defense), emptyDefense())
   const unmeasured = lines.reduce(
@@ -1006,9 +1034,10 @@ function totalsFrom(
  */
 export function consistencyWarnings(
   lines: StatLine[],
-  team: Omit<TeamStatTotals, 'pendingQuestions' | 'unattributedPlays'> & {
+  team: Omit<TeamStatTotals, 'pendingQuestions' | 'unattributedPlays' | 'unmeasuredYardagePlays'> & {
     pendingQuestions?: number
     unattributedPlays?: number
+    unmeasuredYardagePlays?: number
   }
 ): string[] {
   const out: string[] = []
@@ -1041,7 +1070,11 @@ export function consistencyWarnings(
     out.push(`More receptions (${o.receptions}) than targets (${o.targets}).`)
   }
 
-  const unmeasured = team.unmeasured.rush + team.unmeasured.pass + team.unmeasured.receiving
+  // Plays. Summing the credit counters double-counted a completed pass and
+  // printed "2 plays" under a header reading "1 play charted".
+  const unmeasured =
+    team.unmeasuredYardagePlays ??
+    team.unmeasured.rush + team.unmeasured.pass + team.unmeasured.receiving
   if (unmeasured > 0) {
     out.push(
       `${unmeasured} play${unmeasured === 1 ? '' : 's'} had no measurable yardage on this film, so yards are counted only from the plays that did. Attach your breakdown on the film's Plays screen to fill those in.`

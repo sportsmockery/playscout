@@ -349,6 +349,16 @@ export interface PositionAnalysisResult {
   stripes are, and the camera panning with the play does not hide them (the lines pan too — each
   end is read separately). `not_determinable` is for an unlined practice field, a crop with no
   stripe in frame, or a snap that happens off camera.
+- **A yardage column reading "—" means NOT MEASURED; it never reads 0 for that.** Zero and
+  unmeasured are different facts and printing "0" for both is the sheet's worst habit — a coach
+  who watched a completed pass move the chains and then read "PASSING 0" concluded, correctly on
+  that number, that the sheet was broken. `BoxScore` shows a total only when something behind it
+  was actually measured.
+- **`unmeasuredYardagePlays` counts PLAYS, not credits.** One unmeasured completed pass makes two
+  credits (the thrower's and the catcher's), so summing the per-line counters printed "2 plays had
+  no measurable yardage" under a header reading "1 play charted". A sheet that contradicts itself
+  gives a coach no reason to trust any number on it. The per-line counters stay credit-shaped
+  because the yards-per-carry denominator needs them.
 - **The two reads' yardage tolerance is proportional, not flat** (`yardsTolerance`: the greater of
   3 yards and 12%). Both passes count the same stripes, so the rounding error scales with the gain:
   55 against 50 on a touchdown is one measurement read twice, while 1 against 5 on a short gain is

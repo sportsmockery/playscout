@@ -60,6 +60,13 @@ interface Props {
   onCorrected?: (next: { lines: StatLine[]; team: TeamStatTotals; warnings: string[] }) => void;
 }
 
+/**
+ * The stats that carry a gain. A null yardage on one of these is a hole in the
+ * sheet the coach can close from memory — they were at the game — so the field
+ * is pointed out rather than left looking like a zero they have to hunt for.
+ */
+const YARDAGE_STATS = new Set(['rush', 'sack_taken', 'pass_complete', 'reception']);
+
 function titleCase(id: string): string {
   return id.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
@@ -250,6 +257,10 @@ export default function StatCorrections({ analysisId, onCorrected }: Props) {
             const p = patches[c.id] ?? {};
             const removed = p.remove === true;
             const asking = c.resolutionStatus === 'unresolved' && !removed;
+            // Charted, but the film could not measure how far it went — or the
+            // two reads measured it so differently that neither was trusted.
+            const needsYards =
+              !removed && YARDAGE_STATS.has(c.stat) && (('yards' in p ? p.yards : c.yards) == null);
             const options = c.side === 'offense' ? OFFENSIVE_POSITIONS : DEFENSIVE_POSITIONS;
             return (
               <li
@@ -311,18 +322,24 @@ export default function StatCorrections({ analysisId, onCorrected }: Props) {
                   </label>
 
                   <label className="w-24">
-                    <span className="block text-[10px] uppercase tracking-wide text-[var(--brand-muted)] mb-1">
-                      Yards
+                    <span
+                      className={`block text-[10px] uppercase tracking-wide mb-1 ${
+                        needsYards ? 'text-amber-800 font-bold' : 'text-[var(--brand-muted)]'
+                      }`}
+                    >
+                      {needsYards ? 'Yards — add' : 'Yards'}
                     </span>
                     <input
                       type="number"
                       disabled={removed}
                       value={('yards' in p ? p.yards : c.yards) ?? ''}
-                      placeholder="—"
+                      placeholder={needsYards ? '?' : '—'}
                       onChange={(e) =>
                         patch(c.id, { yards: e.target.value === '' ? null : Number(e.target.value) })
                       }
-                      className="w-full text-sm px-2 py-1.5 rounded-lg border border-[var(--brand-border)] bg-white text-[var(--brand-ink)] disabled:opacity-50"
+                      className={`w-full text-sm px-2 py-1.5 rounded-lg border bg-white text-[var(--brand-ink)] disabled:opacity-50 ${
+                        needsYards ? 'border-amber-400' : 'border-[var(--brand-border)]'
+                      }`}
                     />
                   </label>
 

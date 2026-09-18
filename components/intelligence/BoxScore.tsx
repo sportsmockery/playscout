@@ -157,7 +157,31 @@ export default function BoxScore({ lines, team, warnings = [], subtitle, compact
 
   const o = team.offense;
   const d = team.defense;
-  const unmeasured = team.unmeasured.rush + team.unmeasured.pass + team.unmeasured.receiving;
+  // PLAYS, not credits: an unmeasured completed pass makes two credits (the
+  // thrower's and the catcher's), and summing them printed "2 plays had no
+  // measurable yardage" beneath a header that said "1 play charted".
+  const unmeasured =
+    team.unmeasuredYardagePlays ??
+    team.unmeasured.rush + team.unmeasured.pass + team.unmeasured.receiving;
+
+  /**
+   * A yardage figure of zero means one of two completely different things, and
+   * printing "0" for both is the sheet's worst habit: either the plays really
+   * gained nothing, or nothing could be measured. A coach who watched a
+   * completed pass move the chains and then reads "PASSING 0" concludes the
+   * whole sheet is broken — and on that number, they are right.
+   *
+   * So a total is only shown when something behind it was actually measured.
+   * Otherwise it reads "—", which is what we know.
+   */
+  const yardsOrDash = (yards: number, attempts: number, unmeasuredCredits: number) =>
+    yards === 0 && attempts > 0 && unmeasuredCredits >= attempts ? '—' : yards;
+
+  const rushYards = yardsOrDash(o.rush_yards, o.carries, team.unmeasured.rush);
+  const passYards = yardsOrDash(o.pass_yards, o.pass_completions, team.unmeasured.pass);
+  const recYards = yardsOrDash(o.receiving_yards, o.receptions, team.unmeasured.receiving);
+  const totalYards =
+    rushYards === '—' && passYards === '—' ? '—' : team.totalYards;
   // A sheet charted before penalties existed has no penalty totals on it, and
   // "undefined–undefined" is a worse answer than zero.
   const teamPenalties = team.penalties ?? 0;
@@ -206,9 +230,9 @@ export default function BoxScore({ lines, team, warnings = [], subtitle, compact
       {!compact && (
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-5">
           {[
-            ['Total yards', team.totalYards],
-            ['Rushing', `${o.rush_yards} (${o.carries} car)`],
-            ['Passing', `${o.pass_yards} (${o.pass_completions}/${o.pass_attempts})`],
+            ['Total yards', totalYards],
+            ['Rushing', `${rushYards} (${o.carries} car)`],
+            ['Passing', `${passYards} (${o.pass_completions}/${o.pass_attempts})`],
             ['Touchdowns', o.rush_td + o.pass_td],
             ['Penalties', `${teamPenalties}–${teamPenaltyYards}`],
           ].map(([label, value]) => (
@@ -233,7 +257,7 @@ export default function BoxScore({ lines, team, warnings = [], subtitle, compact
             l.offense.rush_td,
           ],
         }))}
-        totals={[o.carries, o.rush_yards, team.yardsPerCarry ?? '—', o.rush_td]}
+        totals={[o.carries, rushYards, team.yardsPerCarry ?? '—', o.rush_td]}
       />
 
       <Table
@@ -249,7 +273,7 @@ export default function BoxScore({ lines, team, warnings = [], subtitle, compact
             l.offense.interceptions_thrown,
           ],
         }))}
-        totals={[`${o.pass_completions}/${o.pass_attempts}`, o.pass_yards, o.pass_td, o.interceptions_thrown]}
+        totals={[`${o.pass_completions}/${o.pass_attempts}`, passYards, o.pass_td, o.interceptions_thrown]}
       />
 
       <Table
@@ -260,7 +284,7 @@ export default function BoxScore({ lines, team, warnings = [], subtitle, compact
           label: <PlayerLabel line={l} />,
           cells: [l.offense.targets, l.offense.receptions, l.offense.receiving_yards, l.offense.receiving_td],
         }))}
-        totals={[o.targets, o.receptions, o.receiving_yards, o.receiving_td]}
+        totals={[o.targets, o.receptions, recYards, o.receiving_td]}
       />
 
       <Table
@@ -318,7 +342,8 @@ export default function BoxScore({ lines, team, warnings = [], subtitle, compact
             <>
               <Info size={11} className="inline -mt-0.5 mr-0.5" />
               {unmeasured} play{unmeasured === 1 ? '' : 's'} had no measurable yardage on this film —
-              those plays are counted, their yards are not.
+              {unmeasured === 1 ? ' that play is' : ' those plays are'} counted, {unmeasured === 1 ? 'its' : 'their'} yards are
+              not. A yardage column reading &ldquo;—&rdquo; means not measured, not zero.
             </>
           )}
         </p>

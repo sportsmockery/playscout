@@ -703,3 +703,63 @@ describe('normalizeStatPosition', () => {
     expect(normalizeStatPosition('someone')).toBe('unknown')
   })
 })
+
+describe('a sheet must not contradict its own header', () => {
+  it('counts one unmeasured completed pass as ONE play, not two', () => {
+    // Straight off a coach's screenshot: "1 play charted" at the top and
+    // "2 plays had no measurable yardage" at the bottom, on a single completed
+    // pass. The old count summed per-credit counters, and a completion makes
+    // two of them — the thrower's and the catcher's. A sheet that disagrees
+    // with itself gives a coach no reason to trust any number on it.
+    const { team } = tallyStatPlays([
+      play({
+        play_type: 'pass',
+        yards: null,
+        yards_basis: 'not_determinable',
+        credits: [
+          { stat: 'pass_complete', position: 'qb', yards: null },
+          { stat: 'reception', position: 'wr_left', yards: null },
+        ],
+      }),
+    ])
+
+    expect(team.offensivePlays).toBe(1)
+    expect(team.unmeasuredYardagePlays).toBe(1)
+    // The per-credit counters are unchanged — yards-per-carry needs them.
+    expect(team.unmeasured.pass + team.unmeasured.receiving).toBe(2)
+  })
+
+  it('says one play when a run and its own credits are unmeasured', () => {
+    const { team } = tallyStatPlays([
+      play({
+        yards: null,
+        yards_basis: 'not_determinable',
+        credits: [{ stat: 'rush', position: 'qb', yards: null }],
+      }),
+    ])
+    expect(team.unmeasuredYardagePlays).toBe(1)
+  })
+
+  it('counts each unmeasured play once across several plays', () => {
+    const { team } = tallyStatPlays([
+      play({
+        play_index: 1,
+        play_type: 'pass',
+        yards: null,
+        yards_basis: 'not_determinable',
+        credits: [
+          { stat: 'pass_complete', position: 'qb', yards: null },
+          { stat: 'reception', position: 'wr_left', yards: null },
+        ],
+      }),
+      play({
+        play_index: 2,
+        yards: 8,
+        yards_basis: 'field_landmarks',
+        credits: [{ stat: 'rush', position: 'rb', yards: 8 }],
+      }),
+    ])
+    expect(team.offensivePlays).toBe(2)
+    expect(team.unmeasuredYardagePlays).toBe(1)
+  })
+})
