@@ -163,8 +163,13 @@ export default function BoxScore({ lines, team, warnings = [], subtitle, compact
   const teamPenalties = team.penalties ?? 0;
   const teamPenaltyYards = team.penaltyYards ?? 0;
   const nullifiedPlays = team.nullifiedPlays ?? 0;
+  const pending = team.pendingQuestions ?? 0;
 
-  if (!lines.length) {
+  // Empty means nothing was charted at ALL. A sheet whose every credit is
+  // waiting on the coach still has team totals and still has to render them:
+  // saying "nothing could be charted" over a charted touchdown sent a coach
+  // looking for a jersey-colour problem that did not exist.
+  if (!lines.length && pending === 0) {
     return (
       <div className="glass-card p-5 print:border print:shadow-none">
         <h3 className="font-bold text-[var(--brand-navy)] text-sm uppercase tracking-wide mb-2">Box Score</h3>
@@ -189,6 +194,13 @@ export default function BoxScore({ lines, team, warnings = [], subtitle, compact
         Every figure here is counted from the individual plays — nothing is estimated as a total.
         A row is the player when the film showed a readable jersey number, and the position when
         it did not.
+        {pending > 0 && (
+          <>
+            {' '}
+            The team totals include {pending} stat{pending === 1 ? '' : 's'} that {pending === 1 ? 'is' : 'are'} on
+            no row yet: the play was charted, the player is waiting on your call.
+          </>
+        )}
       </p>
 
       {!compact && (

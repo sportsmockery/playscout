@@ -33,6 +33,8 @@ import {
   PLAY_VERIFICATION_SCHEMA,
   parseVerification,
   reconcileReadings,
+  flagMeshPointCarries,
+  schemeHasQbMesh,
 } from '../lib/intelligence/stat-verify'
 import { tallyStatPlays } from '../lib/intelligence/stat-lines'
 
@@ -168,18 +170,32 @@ async function once(run: number) {
   const verified = parseVerification(verification.text)
   console.log('verified:', JSON.stringify(verified))
 
-  // 4. Reconcile and tally — the code a coach's sheet is actually built from.
+  // 4. Reconcile, park what corroboration cannot settle, and tally — the exact
+  //    code a coach's sheet is built from.
   const reconciled = reconcileReadings(plays, verified)
-  const tally = tallyStatPlays(reconciled.plays, { declaredSide: 'offense', allowUnverifiedNumbers: true })
+  const meshScheme = schemeHasQbMesh(input.team?.offensive_style)
+  const settled = flagMeshPointCarries(reconciled.plays, { qbMeshScheme: meshScheme })
+  const tally = tallyStatPlays(settled, { declaredSide: 'offense', allowUnverifiedNumbers: true })
 
   console.log('agreement:', reconciled.agreement)
   console.log('disputes:', reconciled.disputes)
+  console.log('mesh scheme:', meshScheme)
   console.log(
     'SHEET →',
     `rush ${tally.team.offense.carries}/${tally.team.offense.rush_yards}yd`,
     `pass ${tally.team.offense.pass_completions}/${tally.team.offense.pass_attempts} ${tally.team.offense.pass_yards}yd`,
     `TD ${tally.team.offense.rush_td + tally.team.offense.pass_td}`,
     `pending ${tally.team.pendingQuestions}`
+  )
+  // What the model charted BEFORE the mesh question parked it — the accuracy
+  // figure to track. The gate makes a wrong carrier harmless; it does not make
+  // the read right, and only this line says whether the read improved.
+  console.log(
+    'carrier as charted:',
+    (reconciled.plays[0]?.credits ?? [])
+      .filter((c) => c.stat === 'rush')
+      .map((c) => c.position)
+      .join(', ') || 'none'
   )
 }
 

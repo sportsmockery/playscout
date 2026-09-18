@@ -357,6 +357,22 @@ export interface PositionAnalysisResult {
   the player disagreeing leaves the player open as a question; the yardage disagreeing drops the
   measurement. The headline number is measured agreement, never the model's self-report — a
   self-reported 0.95 sat on top of a wrong answer.
+- **Two agreeing reads cannot settle the mesh point, so it is asked, not asserted.** A fake and a
+  real handoff are the same picture — that is what running them is for — so both reads look at the
+  same ambiguity and make the same mistake. Observed on the one clip whose truth the coach gave us
+  (a QB keeper off a fullback dive fake): charting said handoff to the back, verification said the
+  ball ended with the back, agreement scored **100**, and the answer was wrong. The prompt already
+  spends a page on the mesh and says to expect the keeper; a sixth paragraph will not fix it.
+  So `flagMeshPointCarries` parks the CARRIER of every run on a team whose coach has recorded a
+  mesh scheme (`schemeHasQbMesh` over the free-text `offensive_style`: veer, option, wing-T, zone
+  read, …) as a one-keypress question, in both directions — the measured errors all ran away from
+  the quarterback, but the only clip whose truth we know IS a keeper, so that sample cannot show
+  the bias is one-directional. A team that never option-reads never sees one of these.
+- **An unresolved credit is a question about WHO, never about WHAT.** It counts in the TEAM totals
+  and lands on no player's line. Leaving it out of both meant the more honest the module got about
+  attribution, the emptier the box score became — an option team would have read "0 carries, 0
+  yards, 12 questions" over a game it had just charted. A press box does the opposite: team rushing
+  counts every carry and an unattributed one simply has no name beside it yet.
 - **Sample rate is 6fps/medium, and that is measured, not assumed.** Raising it to 8fps/high made
   the module worse: swept against real film it read a quarterback touchdown run as an intercepted
   pass, while 6fps/medium returned "run, touchdown" every time and came within a yard of the true

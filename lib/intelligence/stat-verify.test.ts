@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { reconcileReadings, parseVerification, type VerifiedPlay } from './stat-verify'
+import {
+  reconcileReadings,
+  parseVerification,
+  flagMeshPointCarries,
+  schemeHasQbMesh,
+  type VerifiedPlay,
+} from './stat-verify'
 import { tallyStatPlays, type RawStatPlay } from './stat-lines'
 
 /** The real clip: a 50-yard touchdown that two reads described three ways. */
@@ -77,9 +83,16 @@ describe('the two reads must agree before anything is counted', () => {
     expect(rush.candidates).toEqual(expect.arrayContaining(['qb', 'rb']))
     expect(rush.question).toContain('Who carried the ball')
 
-    const { team } = tallyStatPlays(plays)
-    expect(team.offense.carries).toBe(0)
-    expect(team.pendingQuestions).toBeGreaterThan(0)
+    // The TEAM still ran the ball 55 yards for a touchdown — that much both
+    // reads agree on. Only the name waits, so the carry counts here and lands
+    // on nobody's line.
+    const { team, lines } = tallyStatPlays(plays)
+    expect(team.offense.carries).toBe(1)
+    expect(team.offense.rush_yards).toBe(55)
+    expect(team.offense.rush_td).toBe(1)
+    expect(team.pendingQuestions).toBe(1)
+    expect(team.unattributedPlays).toBe(1)
+    expect(lines).toHaveLength(0)
   })
 
   it('catches a handoff one read saw and the other did not', () => {
@@ -173,5 +186,102 @@ describe('a verification that says nothing claims nothing', () => {
   it('survives an unparseable verification rather than failing the analysis', () => {
     expect(parseVerification('not json')).toEqual([])
     expect(parseVerification('{"plays":[{"play_index":1}]}')).toHaveLength(1)
+  })
+})
+
+describe('the mesh point, which agreement cannot settle', () => {
+  it('asks the carrier on a mesh-scheme run even when both reads agreed', () => {
+    // The production failure this exists for: charting said handoff to the
+    // back, the verification said the ball ended with the back, agreement was
+    // 100, and the coach's answer was a quarterback keeper. Corroboration
+    // cannot reach a fake, because the fake is what both reads are looking at.
+    const { plays, agreement } = reconcileReadings(
+      [chartedAsRun({ yards: 55 })],
+      [verified({ ball_ended_with: 'rb', ball_changed_hands: 'yes', yards: 55 })]
+    )
+    expect(agreement).toBe(100)
+    expect(plays[0].credits![0].unresolved).toBeFalsy()
+
+    const flagged = flagMeshPointCarries(plays, { qbMeshScheme: true })
+    const rush = flagged[0].credits![0]
+    expect(rush.unresolved).toBe(true)
+    expect(rush.candidates).toEqual(['qb', 'rb'])
+    expect(rush.question).toContain('quarterback keep')
+  })
+
+  it('still counts the play, the yards and the touchdown for the team', () => {
+    // A question about who must never read as a denial that the play happened.
+    const flagged = flagMeshPointCarries(
+      [chartedAsRun({ yards: 55 })],
+      { qbMeshScheme: true }
+    )
+    const { team, lines } = tallyStatPlays(flagged)
+    expect(team.offense.carries).toBe(1)
+    expect(team.offense.rush_yards).toBe(55)
+    expect(team.offense.rush_td).toBe(1)
+    expect(team.offensivePlays).toBe(1)
+    expect(team.pendingQuestions).toBe(1)
+    // And on nobody's line, so no child's season inherits it.
+    expect(lines).toHaveLength(0)
+  })
+
+  it('asks in both directions, including when it charted the quarterback', () => {
+    // The errors we have measured all ran away from the quarterback, but the
+    // only clip whose truth we know IS a keeper — that sample cannot show the
+    // bias is one-directional, so the question is symmetric.
+    const flagged = flagMeshPointCarries(
+      [chartedAsRun({ credits: [{ stat: 'rush', position: 'qb', yards: 55, touchdown: true }] })],
+      { qbMeshScheme: true }
+    )
+    const rush = flagged[0].credits![0]
+    expect(rush.unresolved).toBe(true)
+    expect(rush.candidates).toEqual(['qb', 'rb', 'fb'])
+  })
+
+  it('leaves a team that does not run a mesh scheme alone', () => {
+    const flagged = flagMeshPointCarries([chartedAsRun()], { qbMeshScheme: false })
+    expect(flagged[0].credits![0].unresolved).toBeFalsy()
+  })
+
+  it('does not touch a pass, a catch, or a lineman', () => {
+    const flagged = flagMeshPointCarries([chartedAsPass()], { qbMeshScheme: true })
+    for (const credit of flagged[0].credits!) expect(credit.unresolved).toBeFalsy()
+
+    // A carry credited outside the backfield is a sweep or a reverse, where
+    // there is no mesh to be wrong about.
+    const sweep = flagMeshPointCarries(
+      [chartedAsRun({ credits: [{ stat: 'rush', position: 'wr_right', yards: 12 }] })],
+      { qbMeshScheme: true }
+    )
+    expect(sweep[0].credits![0].unresolved).toBeFalsy()
+  })
+
+  it('keeps a reconciliation question rather than overwriting it', () => {
+    // A disagreement between the two reads says more than "this is a mesh
+    // scheme" does, and it already carries its own candidates.
+    const { plays } = reconcileReadings(
+      [chartedAsRun({ yards: 55 })],
+      [verified({ ball_ended_with: 'qb', yards: 55 })]
+    )
+    const flagged = flagMeshPointCarries(plays, { qbMeshScheme: true })
+    expect(flagged[0].credits![0].question).toContain('Who carried the ball')
+  })
+
+  it('reads the coach\'s own words, not a dropdown', () => {
+    // The real value from the team this was found on.
+    expect(
+      schemeHasQbMesh(
+        'Veer option, QB reads DE or DT playside and options with FB to handoff up middle, QB keep or pitch (only on unblocked DE, when it is DT no pitch option)'
+      )
+    ).toBe(true)
+    expect(schemeHasQbMesh('Tight double wing')).toBe(true)
+    expect(schemeHasQbMesh('Shotgun spread, zone read')).toBe(true)
+    expect(schemeHasQbMesh('Wing-T')).toBe(true)
+
+    // A drop-back team has no mesh, and should never be asked about one.
+    expect(schemeHasQbMesh('Pro style, under center, power run and play action')).toBe(false)
+    expect(schemeHasQbMesh('Air raid — four verticals, mesh concept')).toBe(true) // passing "mesh" is a false positive we accept: a question beats a wrong name
+    expect(schemeHasQbMesh(null)).toBe(false)
+    expect(schemeHasQbMesh('')).toBe(false)
   })
 })

@@ -152,18 +152,18 @@ describe('a stat the film could not attribute', () => {
       })
     )
 
-  it('counts toward nothing until someone answers', () => {
+  it('lands on no player until someone answers, but the team still ran it', () => {
     const { lines, team } = retally([unresolved()])
     expect(lines).toHaveLength(0)
-    expect(team.offense.carries).toBe(0)
-    expect(team.offense.rush_yards).toBe(0)
+    expect(team.offense.carries).toBe(1)
+    expect(team.offense.rush_yards).toBe(55)
     expect(team.pendingQuestions).toBe(1)
   })
 
   it('says so on the sheet rather than hiding the gap', () => {
     const { warnings } = retally([unresolved()])
-    expect(warnings.join(' ')).toContain('waiting on you')
-    expect(warnings.join(' ')).toContain('not counted')
+    expect(warnings.join(' ')).toContain("on nobody's line yet")
+    expect(warnings.join(' ')).toContain('moves onto a player')
   })
 
   it('becomes a real stat the moment the coach names the player', () => {
@@ -195,13 +195,17 @@ describe('a stat the film could not attribute', () => {
   })
 
   it('keeps the rest of the sheet countable around it', () => {
-    const { team } = retally([
+    const { team, lines } = retally([
       statCreditFromRow(row({ id: 'a' })),
       unresolved(),
     ])
-    expect(team.offense.carries).toBe(1)
-    expect(team.offense.rush_yards).toBe(55)
+    // Two carries for the team; one of them on a player's line, the other
+    // waiting for a name.
+    expect(team.offense.carries).toBe(2)
+    expect(team.offense.rush_yards).toBe(110)
     expect(team.pendingQuestions).toBe(1)
+    expect(lines).toHaveLength(1)
+    expect(lines[0].offense.carries).toBe(1)
   })
 })
 

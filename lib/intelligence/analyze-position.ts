@@ -43,6 +43,8 @@ import {
   PLAY_VERIFICATION_SCHEMA,
   parseVerification,
   reconcileReadings,
+  flagMeshPointCarries,
+  schemeHasQbMesh,
 } from './stat-verify'
 import { resolveLevelTier } from './levels'
 import { isMisdirectedRun, resolveFilmSubject, subjectNameFor } from './film-subject'
@@ -531,6 +533,15 @@ export async function analyzePosition(
       statDisputes = reconciled.disputes
       chartingAgreement = reconciled.agreement
     }
+
+    // The one claim two agreeing reads cannot establish: which of the backfield
+    // players came out of the mesh with the ball. Applied after reconciliation
+    // and independently of whether it ran, because it is not a disagreement
+    // rule — both reads agreeing on the wrong back is the case it exists for.
+    // See flagMeshPointCarries.
+    statPlays = flagMeshPointCarries(statPlays, {
+      qbMeshScheme: schemeHasQbMesh(inputWithGameType.team?.offensive_style),
+    })
   }
 
   // STATSIQ: same division of labour one more time. The model charted plays;

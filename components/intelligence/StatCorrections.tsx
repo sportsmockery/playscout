@@ -37,6 +37,14 @@ export interface EditableCredit {
   yards: number | null;
   touchdown: boolean;
   note: string | null;
+  /**
+   * 'unresolved' means the film showed the play but could not name the player.
+   * It counts for the team and for nobody, so it has to be visibly different
+   * here from a credit the film actually settled — otherwise the row that most
+   * needs the coach looks exactly like the rows that need nothing.
+   */
+  resolutionStatus?: 'confirmed' | 'unresolved' | 'coach_entered';
+  question?: string | null;
 }
 
 interface Patch {
@@ -241,6 +249,7 @@ export default function StatCorrections({ analysisId, onCorrected }: Props) {
           {credits.map((c) => {
             const p = patches[c.id] ?? {};
             const removed = p.remove === true;
+            const asking = c.resolutionStatus === 'unresolved' && !removed;
             const options = c.side === 'offense' ? OFFENSIVE_POSITIONS : DEFENSIVE_POSITIONS;
             return (
               <li
@@ -248,7 +257,9 @@ export default function StatCorrections({ analysisId, onCorrected }: Props) {
                 className={`rounded-xl border p-3 ${
                   removed
                     ? 'border-red-200 bg-red-50/60 opacity-70'
-                    : 'border-[var(--brand-border)] bg-white/60'
+                    : asking
+                      ? 'border-amber-300 bg-amber-50/60'
+                      : 'border-[var(--brand-border)] bg-white/60'
                 }`}
               >
                 <div className="flex items-baseline gap-2 flex-wrap mb-2">
@@ -259,15 +270,31 @@ export default function StatCorrections({ analysisId, onCorrected }: Props) {
                     {titleCase(c.stat)}
                   </span>
                   <span className="text-xs text-[var(--brand-muted)]">{c.identifier}</span>
+                  {asking && (
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-amber-800">
+                      Needs your call
+                    </span>
+                  )}
                 </div>
+                {asking && (
+                  <p className="text-sm font-semibold text-amber-900 mb-1">
+                    {c.question ?? 'Which player should this go to?'}
+                  </p>
+                )}
                 {c.note && (
                   <p className="text-[11px] text-[var(--brand-muted)] mb-2 leading-snug">{c.note}</p>
+                )}
+                {asking && (
+                  <p className="text-[11px] text-amber-800 mb-2">
+                    Counted for the team, on nobody&apos;s line. Pick the player below and it moves
+                    onto them — here and in every season total after.
+                  </p>
                 )}
 
                 <div className="flex items-end gap-2 flex-wrap">
                   <label className="flex-1 min-w-[10rem]">
                     <span className="block text-[10px] uppercase tracking-wide text-[var(--brand-muted)] mb-1">
-                      Credit to
+                      {asking ? 'Who was it?' : 'Credit to'}
                     </span>
                     <select
                       disabled={removed}

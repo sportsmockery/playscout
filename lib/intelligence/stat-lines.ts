@@ -296,11 +296,22 @@ export interface TeamStatTotals {
    */
   nullifiedPlays: number
   /**
-   * Stats the film could not attribute, waiting on the coach. Excluded from
-   * every figure above — the sheet says what it does not know rather than
-   * filling it in.
+   * Stats the film could not attribute to a player, waiting on the coach.
+   *
+   * These DO count in the team figures above and do NOT appear on any player
+   * line, because "unresolved" is a question about WHO, never about WHAT: the
+   * snap happened, the yards happened, the touchdown happened, and only the
+   * name is missing. Leaving them out of the team totals as well meant a
+   * charted 55-yard touchdown showed up as a team with no carries — the sheet
+   * disowning a play it had just described.
    */
   pendingQuestions: number
+  /**
+   * Distinct plays carrying at least one unattributed credit. The count of
+   * plays the coach can put a name to, rather than of questions — one play can
+   * hold several.
+   */
+  unattributedPlays: number
   /** Completions ÷ attempts, null when nothing was thrown. */
   completionPct: number | null
   /** Rush yards ÷ carries, over measured carries only. */
@@ -335,6 +346,28 @@ export function emptyDefense(): DefensiveStats {
 
 function emptyUnmeasured(): UnmeasuredCounts {
   return { rush: 0, pass: 0, receiving: 0 }
+}
+
+/** An empty accumulator — a real row identifies itself, the team's does not. */
+function blankLine(): StatLine {
+  return {
+    key: 'unattributed',
+    identifier: 'Unattributed',
+    positionId: 'other_offense',
+    positionLabel: 'Unattributed',
+    positions: [],
+    side: 'offense',
+    identifiedBy: 'position',
+    numberVerified: false,
+    playerId: null,
+    jerseyNumber: null,
+    playsCredited: 0,
+    offense: emptyOffense(),
+    defense: emptyDefense(),
+    penalties: 0,
+    penaltyYards: 0,
+    unmeasured: emptyUnmeasured(),
+  }
 }
 
 function num(value: unknown): number | null {
@@ -722,11 +755,20 @@ function abandonInconsistentNumbers(credits: StatCredit[]): {
 export function computeStatLines(rawCredits: StatCredit[], nullifiedPlays = 0): StatTally {
   const { credits, abandoned } = abandonInconsistentNumbers(rawCredits)
 
-  // An unresolved credit is a question, not a statistic. It stays in `credits`
-  // so the UI can ask it, and touches no total until someone answers — which
-  // is the difference between a sheet that is incomplete and one that is wrong.
+  // An unresolved credit is a question about WHO, not about WHAT. It stays in
+  // `credits` so the UI can ask it, it never lands on a player's line — and it
+  // still counts for the TEAM, because the play it describes happened.
+  //
+  // This distinction was missing at first, and the result was perverse: the
+  // more honest the module got about attribution, the emptier the box score
+  // became. An option team whose every carry is a coin flip between the
+  // quarterback and the dive back would have read "0 carries, 0 yards, 12
+  // questions" — a sheet denying the game took place. A press box does the
+  // opposite: team rushing counts every carry, and an unattributed one simply
+  // has no name beside it yet.
   const counted = credits.filter((c) => countsTowardTotals(c.resolutionStatus))
-  const pendingQuestions = credits.length - counted.length
+  const unattributedCredits = credits.filter((c) => !countsTowardTotals(c.resolutionStatus))
+  const pendingQuestions = unattributedCredits.length
 
   const byKey = new Map<string, { line: StatLine; plays: Set<number> }>()
   const offensePlays = new Set<number>()
@@ -738,22 +780,16 @@ export function computeStatLines(rawCredits: StatCredit[], nullifiedPlays = 0): 
     if (!entry) {
       entry = {
         line: {
+          ...blankLine(),
           key,
           identifier: c.identifier,
           positionId: c.positionId,
           positionLabel: c.positionLabel,
-          positions: [],
           side: c.side,
           identifiedBy: c.identifiedBy,
           numberVerified: c.numberVerified,
           playerId: c.playerId,
           jerseyNumber: c.jerseyNumber,
-          playsCredited: 0,
-          offense: emptyOffense(),
-          defense: emptyDefense(),
-          penalties: 0,
-          penaltyYards: 0,
-          unmeasured: emptyUnmeasured(),
         },
         plays: new Set<number>(),
       }
@@ -773,9 +809,21 @@ export function computeStatLines(rawCredits: StatCredit[], nullifiedPlays = 0): 
     playsCredited: plays.size,
   }))
 
+  // One throwaway line holding everything nobody can be named for yet. It is
+  // summed into the team totals and then discarded — it is never returned, so
+  // no player row, rollup or season view can ever inherit an unattributed stat.
+  const unattributed = blankLine()
+  const unattributedPlays = new Set<number>()
+  for (const c of unattributedCredits) {
+    applyCredit(unattributed, c)
+    unattributedPlays.add(c.playIndex)
+    ;(c.side === 'offense' ? offensePlays : defensePlays).add(c.playIndex)
+  }
+
   const team = {
-    ...totalsFrom(lines, offensePlays.size, defensePlays.size, nullifiedPlays),
+    ...totalsFrom([...lines, unattributed], offensePlays.size, defensePlays.size, nullifiedPlays),
     pendingQuestions,
+    unattributedPlays: unattributedPlays.size,
   }
 
   const warnings = consistencyWarnings(lines, team)
@@ -915,7 +963,7 @@ function totalsFrom(
   offensivePlays: number,
   defensivePlays: number,
   nullifiedPlays: number
-): Omit<TeamStatTotals, 'pendingQuestions'> {
+): Omit<TeamStatTotals, 'pendingQuestions' | 'unattributedPlays'> {
   const offense = lines.reduce((acc, l) => addOffense(acc, l.offense), emptyOffense())
   const defense = lines.reduce((acc, l) => addDefense(acc, l.defense), emptyDefense())
   const unmeasured = lines.reduce(
@@ -958,14 +1006,18 @@ function totalsFrom(
  */
 export function consistencyWarnings(
   lines: StatLine[],
-  team: Omit<TeamStatTotals, 'pendingQuestions'> & { pendingQuestions?: number }
+  team: Omit<TeamStatTotals, 'pendingQuestions' | 'unattributedPlays'> & {
+    pendingQuestions?: number
+    unattributedPlays?: number
+  }
 ): string[] {
   const out: string[] = []
   const o = team.offense
 
   if (team.pendingQuestions) {
+    const n = team.pendingQuestions
     out.unshift(
-      `${team.pendingQuestions} stat${team.pendingQuestions === 1 ? '' : 's'} could not be attributed from the film and ${team.pendingQuestions === 1 ? 'is' : 'are'} waiting on you — ${team.pendingQuestions === 1 ? 'it is' : 'they are'} not counted in anything above.`
+      `${n} stat${n === 1 ? '' : 's'} ${n === 1 ? 'is' : 'are'} in the team totals but on nobody's line yet — the film showed the play, not who made it. Answer ${n === 1 ? 'it' : 'them'} below and ${n === 1 ? 'it moves' : 'they move'} onto a player.`
     )
   }
 

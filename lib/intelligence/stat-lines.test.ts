@@ -574,9 +574,16 @@ describe('the model may abstain instead of guessing', () => {
       }),
     ])
 
+    // Nobody's line — that is the point of abstaining. But the team's own
+    // rushing counts it: "unresolved" is a question about who, never a claim
+    // that the snap did not happen, and a sheet that answered it by erasing a
+    // 55-yard touchdown would be lying in the other direction.
     expect(lines).toHaveLength(0)
-    expect(team.offense.carries).toBe(0)
+    expect(team.offense.carries).toBe(1)
+    expect(team.offense.rush_yards).toBe(55)
+    expect(team.offense.rush_td).toBe(1)
     expect(team.pendingQuestions).toBe(1)
+    expect(team.unattributedPlays).toBe(1)
     // The credit survives so the question can be asked — it is parked, not lost.
     expect(credits[0].resolutionStatus).toBe('unresolved')
     expect(credits[0].candidates).toEqual(['qb', 'rb'])

@@ -296,6 +296,115 @@ export function reconcileReadings(
   }
 }
 
+/**
+ * The mesh point, which two independent reads cannot settle between them.
+ *
+ * Cross-verification works by making two reads disagree. It cannot help where
+ * both reads make the SAME mistake, and there is one place on football film
+ * where they reliably do: the moment the quarterback and a back come together
+ * on an option, veer, read or wing-T give. A fake and a real handoff are the
+ * same picture — that is the entire point of running them — so a model asked
+ * "did the ball change hands?" answers from what the play LOOKS like, and a
+ * second model asked the same question looks at the same thing and says the
+ * same.
+ *
+ * Measured on this product's own film, on one clip whose truth the coach gave
+ * us (a quarterback keeper for a touchdown off a fullback dive fake):
+ *   - charting read:      handoff, carry to the running back
+ *   - verification read:  handoff, ball ended with the running back
+ *   - agreement score:    100
+ * Two reads, full corroboration, wrong answer. Four further runs put the carry
+ * on a back three times. The prompt already spends a page on the mesh point and
+ * says outright to expect the keeper; it did not help, and a sixth paragraph
+ * will not either.
+ *
+ * So on a team whose coach has told us they run a mesh scheme, the carrier is
+ * not asserted. It is asked, in the queue built for exactly this, and answered
+ * in one keypress by the person who called the play. The play, the yardage and
+ * the touchdown all still count for the team — only the name waits.
+ *
+ * This fires on the coach's own declared scheme and nothing else: a team that
+ * never option-reads never sees one of these questions.
+ */
+const MESH_POSITIONS = new Set(['qb', 'rb', 'fb', 'wingback_left', 'wingback_right'])
+
+/**
+ * Schemes built on a quarterback/back mesh, as a coach writes them in team
+ * settings. Matched on substrings of their own words rather than a dropdown,
+ * because the field is free text and already full of real answers.
+ */
+const QB_MESH_MARKERS = [
+  'veer',
+  'option',
+  'triple',
+  'midline',
+  'wishbone',
+  'flexbone',
+  'wing-t',
+  'wing t',
+  'double wing',
+  'single wing',
+  'zone read',
+  'read option',
+  'rpo',
+  'mesh',
+  'qb keep',
+  'quarterback keep',
+  'keeper',
+  'bootleg',
+]
+
+export function schemeHasQbMesh(offensiveStyle?: string | null): boolean {
+  if (!offensiveStyle) return false
+  const text = offensiveStyle.toLowerCase()
+  return QB_MESH_MARKERS.some((marker) => text.includes(marker))
+}
+
+/**
+ * Parks the carrier of every mesh-scheme run as a question instead of asserting
+ * it. Runs whether or not the verification pass succeeded — it is not a
+ * disagreement rule, it is the one claim we already know corroboration cannot
+ * reach.
+ */
+export function flagMeshPointCarries(
+  plays: RawStatPlay[],
+  opts: { qbMeshScheme: boolean }
+): RawStatPlay[] {
+  if (!opts.qbMeshScheme) return plays
+
+  return plays.map((play) => {
+    if (chartedKind(play) !== 'run') return play
+    const credits = play.credits ?? []
+    if (!credits.length) return play
+
+    return {
+      ...play,
+      credits: credits.map((credit) => {
+        // A question already on this credit is a reconciliation finding and
+        // says more than this one does — leave it.
+        if (credit.stat !== 'rush' || credit.unresolved) return credit
+        const position = normalizeStatPosition(credit.position, 'offense')
+        if (!position || !MESH_POSITIONS.has(position)) return credit
+
+        return {
+          ...credit,
+          unresolved: true,
+          question: 'Who carried it — did the quarterback keep, or was it a handoff?',
+          // Asked in BOTH directions. The errors we have measured all ran away
+          // from the quarterback, but the only clip whose truth we know IS a
+          // keeper, so "the model under-calls keepers" is not something that
+          // sample can establish. Asking only when it charted a back would bake
+          // in the opposite bias on no evidence at all.
+          candidates:
+            position === 'qb'
+              ? ['qb', 'rb', 'fb']
+              : ['qb', position],
+        }
+      }),
+    }
+  })
+}
+
 /** Defensive parse — a failed verification must not fail the analysis. */
 export function parseVerification(raw: string): VerifiedPlay[] {
   try {
