@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { ChevronDown, ChevronUp, Layers, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { ChevronDown, ChevronUp, Layers, Loader2, CheckCircle2, AlertCircle, FileText } from 'lucide-react';
+import { useAnalysisRuns } from './AnalysisRunProvider';
 
 interface ActiveBatch {
   id: string;
@@ -37,6 +38,11 @@ function isActive(b: ActiveBatch) {
  * while they sit on the module page.
  */
 export default function AnalysisDock() {
+  // Inline single-clip runs, owned by AnalysisRunProvider so they outlive the
+  // page that started them. Without these the dock showed nothing at all while
+  // a one-clip analysis was working, and the app looked idle from every screen
+  // except the one the coach had just left.
+  const { runs, dismiss: dismissRun } = useAnalysisRuns();
   const [batches, setBatches] = useState<ActiveBatch[]>([]);
   const [collapsed, setCollapsed] = useState(false);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
@@ -93,20 +99,21 @@ export default function AnalysisDock() {
   }, [fetchActive, poke]);
 
   const visible = batches.filter((b) => !dismissed.has(b.id));
-  if (visible.length === 0) return null;
+  if (visible.length === 0 && runs.length === 0) return null;
 
   const running = visible.filter(isActive);
-  const heading = running.length
-    ? `Analyzing ${running.reduce((n, b) => n + b.total_jobs, 0)} clip${
-        running.reduce((n, b) => n + b.total_jobs, 0) === 1 ? '' : 's'
-      }`
+  const runningInline = runs.filter((r) => r.status === 'running');
+  const clipsRunning =
+    running.reduce((n, b) => n + b.total_jobs, 0) + runningInline.length;
+  const heading = clipsRunning
+    ? `Analyzing ${clipsRunning} clip${clipsRunning === 1 ? '' : 's'}`
     : 'Analysis complete';
 
   return (
     <div className="fixed bottom-4 left-4 z-40 w-[320px] max-w-[calc(100vw-2rem)] rounded-xl bg-white shadow-2xl border border-[var(--brand-border)] overflow-hidden print:hidden">
       <div className="flex items-center justify-between px-4 py-2.5 bg-[var(--brand-navy)] text-white">
         <div className="flex items-center gap-2 min-w-0">
-          {running.length ? (
+          {clipsRunning ? (
             <Loader2 size={15} className="animate-spin shrink-0" />
           ) : (
             <CheckCircle2 size={15} className="shrink-0" />
@@ -124,6 +131,51 @@ export default function AnalysisDock() {
 
       {!collapsed && (
         <ul className="max-h-64 overflow-y-auto">
+          {/* Inline runs first: they are the ones a coach just started and
+              would otherwise have no trace of anywhere in the app. */}
+          {runs.map((r) => (
+            <li key={r.id} className="px-4 py-2.5 border-t border-[var(--brand-border)] first:border-t-0">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold text-[var(--brand-ink)] truncate">
+                  {r.moduleKey}
+                  {r.teamName ? <span className="text-[var(--brand-muted)]"> · {r.teamName}</span> : null}
+                </p>
+                {r.status === 'running' ? (
+                  <Loader2 size={12} className="animate-spin shrink-0 text-[var(--brand-muted)]" />
+                ) : (
+                  <button
+                    onClick={() => dismissRun(r.id)}
+                    className="text-[10px] text-[var(--brand-muted)] hover:text-[var(--brand-ink)] shrink-0"
+                  >
+                    Dismiss
+                  </button>
+                )}
+              </div>
+
+              {r.status === 'running' && (
+                <div className="mt-1.5 w-full h-1 bg-[var(--brand-border)] rounded-full overflow-hidden">
+                  <div className="h-full w-1/3 bg-[var(--brand-gold,#d2c600)] animate-pulse" />
+                </div>
+              )}
+
+              <p className="text-[10px] text-[var(--brand-muted)] mt-1">
+                {r.status === 'running' && `Reading ${r.label} — keep working, this finishes on its own`}
+                {r.status === 'complete' && 'Complete'}
+                {r.status === 'failed' && (r.error || 'Failed')}
+              </p>
+
+              {r.status === 'complete' && r.analysisId && (
+                <Link
+                  href={`/analysis/${r.analysisId}`}
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--brand-navy)] hover:underline mt-1"
+                >
+                  <FileText size={11} />
+                  Open report
+                </Link>
+              )}
+            </li>
+          ))}
+
           {visible.map((b) => {
             const done = b.completed_jobs + b.failed_jobs;
             const pct = b.total_jobs ? Math.round((done / b.total_jobs) * 100) : 0;

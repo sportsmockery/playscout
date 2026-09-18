@@ -11,6 +11,10 @@ import AnalysisQueue from '@/components/intelligence/AnalysisQueue';
 import PrintButton from '@/components/intelligence/PrintButton';
 import { queueAnalysisBatch, batchTitle } from '@/components/intelligence/queue-batch';
 import { isUnanalyzable } from '@/components/intelligence/FilmPicker';
+import {
+  useAnalysisRuns,
+  useBeforeUnloadWhileRunning,
+} from '@/components/intelligence/AnalysisRunProvider';
 
 interface Props {
   teamId: string;
@@ -127,6 +131,10 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
     );
   }
   const [clipResults, setClipResults] = useState<Record<string, ScoutIQClipResult>>({});
+  // Analysis is owned by the app shell, not by this page, so a coach can go
+  // look at their roster or another clip while it runs. See AnalysisRunProvider.
+  const { startRun } = useAnalysisRuns();
+  useBeforeUnloadWhileRunning();
   const [clipLoading, setClipLoading] = useState<string | null>(null);
   const [clipError, setClipError] = useState('');
   const [reportLoading, setReportLoading] = useState(false);
@@ -165,21 +173,25 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
     setClipLoading(video.id);
     setClipError('');
     try {
-      const res = await fetch('/api/intelligence/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      // What the dock says it is reading, so a coach on another page knows
+      // which clip is in flight rather than just "something is running".
+      const runLabel = video.title ?? 'opponent film';
+      const run = await startRun({
+        moduleKey: 'SCOUTIQ',
+        teamId,
+        teamName,
+        label: runLabel,
+        payload: {
           moduleKey: 'SCOUTIQ',
           teamId,
           videoId: video.id,
           opponentId: selectedOpponentId,
           team: { name: teamName, age_group: ageGroup },
           opponent: { name: selectedOpponent.name, age_group: selectedOpponent.age_group ?? undefined, jersey_color: jerseyColor || undefined },
-        }),
+        },
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'ScoutIQ analysis failed');
-      setClipResults((prev) => ({ ...prev, [video.id]: data.result }));
+      if (run.status === 'failed') throw new Error(run.error || 'ScoutIQ analysis failed');
+      setClipResults((prev) => ({ ...prev, [video.id]: run.result as ScoutIQClipResult }));
     } catch (err) {
       setClipError(err instanceof Error ? err.message : 'ScoutIQ analysis failed');
     } finally {

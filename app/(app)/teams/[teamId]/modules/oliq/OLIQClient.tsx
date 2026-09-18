@@ -11,6 +11,10 @@ import AnalysisCorrections from '@/components/intelligence/AnalysisCorrections';
 import FilmPicker, { isReadyNow, type FilmPickerFolder } from '@/components/intelligence/FilmPicker';
 import AnalysisQueue from '@/components/intelligence/AnalysisQueue';
 import { queueAnalysisBatch, batchTitle } from '@/components/intelligence/queue-batch';
+import {
+  useAnalysisRuns,
+  useBeforeUnloadWhileRunning,
+} from '@/components/intelligence/AnalysisRunProvider';
 
 interface Props {
   teamId: string;
@@ -57,8 +61,24 @@ export default function OLIQClient({ teamId, teamName, ageGroup, olPlayers, vide
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
   const [context, setContext] = useState('');
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<OLResult | null>(null);
-  const [analysisId, setAnalysisId] = useState<string | null>(null);
+  const [ownResult, setResult] = useState<OLResult | null>(null);
+  const [ownAnalysisId, setAnalysisId] = useState<string | null>(null);
+  // Analysis is owned by the app shell, not by this page, so a coach can go
+  // look at their roster or another clip while it runs. See AnalysisRunProvider.
+  const { startRun, latestFor } = useAnalysisRuns();
+  useBeforeUnloadWhileRunning();
+
+  // What this screen shows, DERIVED rather than copied into state.
+  //
+  // A run started here and a run adopted from the shell are the same thing to
+  // the reader, and deriving means there is no moment where the two disagree:
+  // clearing `ownResult` for a new run cannot resurrect the previous report,
+  // because by then the newest run for this module is the one now reading.
+  const adopted = latestFor('OLIQ', teamId);
+  const fromShell = adopted?.status === 'complete' ? adopted : null;
+  const result = ownResult ?? ((fromShell?.result as OLResult | undefined) ?? null);
+  const analysisId = ownAnalysisId ?? fromShell?.analysisId ?? null;
+
   const [queued, setQueued] = useState('');
   const [queueVersion, setQueueVersion] = useState(0);
   const [error, setError] = useState('');
@@ -123,20 +143,23 @@ export default function OLIQClient({ teamId, teamName, ageGroup, olPlayers, vide
 
       setResult(null);
       setAnalysisId(null);
-      const res = await fetch('/api/intelligence/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      // What the dock says it is reading, so a coach on another page knows
+      // which clip is in flight rather than just "something is running".
+      const runLabel = selectedVideo?.title ?? 'your quick clip';
+      const run = await startRun({
+        moduleKey: 'OLIQ',
+        teamId,
+        teamName,
+        label: runLabel,
+        payload: {
           ...payload,
           videoId: selectedVideo?.id,
           frames: quickClipFrames ?? undefined,
-        }),
+        },
       });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Analysis failed');
-      setResult(data.result);
-      setAnalysisId(data.analysisId ?? null);
+      if (run.status === 'failed') throw new Error(run.error || 'Analysis failed');
+      setResult(run.result as OLResult);
+      setAnalysisId(run.analysisId ?? null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Analysis failed');
     } finally {

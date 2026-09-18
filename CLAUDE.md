@@ -612,6 +612,20 @@ repeated sign-ins are how a coach's Hudl account gets flagged.
   coach's teams from any page, and pokes `/api/analysis/run` per team so a batch keeps draining
   while they're elsewhere in the app. Backed by `GET /api/analysis/active`, which needs no
   teamId — RLS already scopes batches to teams the user can reach.
+- **An INLINE single-clip run is owned by `AnalysisRunProvider` in the app shell, not by the
+  module screen.** It used to be a bare `fetch` inside the page component, and changing pages had
+  two consequences: the request kept running and the result was saved, but `setResult` landed on an
+  unmounted component so the report the coach had just paid for never appeared — and nothing
+  anywhere said a run was happening, so from any other page the app looked idle. Same move
+  `UploadDockProvider` already makes for uploads: the work outlives the page, the page subscribes,
+  the dock reports it (with an "Open report" link when it lands).
+- A module screen **derives** what it shows — `ownResult ?? the shell's completed run` — rather
+  than copying the adopted result into state. Copying via an effect meant the `setResult(null)`
+  that clears the screen for a NEW run could put the PREVIOUS report back up while the new one was
+  still reading, which is a stale report presented as the current one.
+- What this does NOT survive is a full page RELOAD or a closed tab: the request dies with the
+  document, and a quick-clip run can never be resumed because its frames only ever existed in the
+  browser. `useBeforeUnloadWhileRunning` warns instead of pretending.
 - The team Intelligence hub renders `AnalysisQueue` for ALL modules above Analysis History, so
   "history" covers queued and running work rather than only the finished half.
 
