@@ -304,3 +304,70 @@ describe('the mesh point, which agreement cannot settle', () => {
     expect(schemeHasQbMesh('')).toBe(false)
   })
 })
+
+describe('a turnover the second read contradicts', () => {
+  it('refuses to charge an interception the other read says we caught', () => {
+    // Measured on real film, three runs out of three: charting called a
+    // completed 23-yard pass an INTERCEPTION twice and a sack-fumble once,
+    // while verification said every time that the quarterback threw it and OUR
+    // receiver finished with it — within a yard of the same answer each run.
+    // The play-type check could not catch it, because a completion and an
+    // interception are both "pass". So an interception the film did not
+    // contain went onto a quarterback's season with nothing objecting.
+    const { plays, disputes } = reconcileReadings(
+      [
+        chartedAsRun({
+          play_type: 'pass',
+          result: 'interception',
+          yards: null,
+          credits: [
+            { stat: 'pass_intercepted', position: 'qb' },
+            { stat: 'target', position: 'slot_right' },
+          ],
+        }),
+      ],
+      [verified({ play_type: 'pass', ball_ended_with: 'wr_left', thrown_by: 'qb', yards: 23 })]
+    )
+
+    expect(plays[0].credits).toEqual([])
+    expect(disputes.join(' ')).toContain('charted a turnover')
+
+    const { team } = tallyStatPlays(plays)
+    expect(team.offense.interceptions_thrown).toBe(0)
+    expect(team.offense.pass_attempts).toBe(0)
+  })
+
+  it('does the same for a fumble the other read says we kept', () => {
+    const { plays, disputes } = reconcileReadings(
+      [
+        chartedAsRun({
+          credits: [
+            { stat: 'rush', position: 'rb', yards: 4 },
+            { stat: 'fumble_lost', position: 'rb' },
+          ],
+        }),
+      ],
+      [verified({ play_type: 'run', ball_ended_with: 'rb', ball_changed_hands: 'yes', yards: 4 })]
+    )
+    expect(plays[0].credits).toEqual([])
+    expect(disputes).toHaveLength(1)
+  })
+
+  it('leaves a turnover alone when the check cannot say who finished with it', () => {
+    // The verifier has no vocabulary for "a defender took it", so it can only
+    // ever contradict a turnover, never confirm one. Silence is not a veto.
+    const { plays, disputes } = reconcileReadings(
+      [
+        chartedAsRun({
+          play_type: 'pass',
+          result: 'interception',
+          yards: null,
+          credits: [{ stat: 'pass_intercepted', position: 'qb' }],
+        }),
+      ],
+      [verified({ play_type: 'pass', ball_ended_with: null, thrown_by: 'qb', yards: null })]
+    )
+    expect(plays[0].credits).toHaveLength(1)
+    expect(disputes).toHaveLength(0)
+  })
+})

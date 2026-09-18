@@ -66,6 +66,11 @@ const input: ModulePromptInput = {
     name: 'Eval Team',
     side_of_ball: 'offense',
     game_type: 'tackle',
+    // Which team is ours. Measured to matter enormously: with no colour, the
+    // charting prompt falls to its "work out which side is ours from the play"
+    // branch, and on a deep ball caught among defenders it called a completion
+    // an INTERCEPTION on two runs out of three.
+    jersey_color: process.env.EVAL_JERSEY || undefined,
     // Set EVAL_OFFENSE to measure what a coach's standing scheme note buys.
     offensive_style: process.env.EVAL_OFFENSE || undefined,
   },

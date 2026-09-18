@@ -1,7 +1,7 @@
 import { Type } from '@google/genai'
 import { buildFootballBrain } from './football-brain'
 import { resolveLevelTier } from './levels'
-import { normalizeStatPosition } from './positions'
+import { normalizeStatPosition, isOffensivePosition } from './positions'
 import type { ModulePromptInput } from './schemas'
 import type { RawStatPlay, RawStatCredit } from './stat-lines'
 
@@ -229,6 +229,37 @@ export function reconcileReadings(
         return { ...play, credits: [] }
       }
       agreed += 1
+    }
+
+    // 1b. Did WE still have the ball at the end?
+    //
+    // Measured on real film, three runs out of three: the charting pass called
+    // a completed 23-yard pass an INTERCEPTION (twice) and a sack-fumble
+    // (once), while the verification pass said every time that the quarterback
+    // threw it and one of OUR receivers finished with it. The play-type check
+    // above could not catch the interceptions, because a completion and an
+    // interception are both "pass" — so a turnover the film did not contain
+    // went onto a quarterback's season with nothing objecting.
+    //
+    // The verifier's position vocabulary is our own unit's, so naming an
+    // offensive position as the player who finished with the ball is a direct
+    // statement that we kept it. That contradicts a charted turnover, and a
+    // turnover is far too expensive a claim to keep on a coin flip.
+    //
+    // Only checkable in this direction: the verifier has no vocabulary for
+    // "a defender took it", so it cannot confirm a turnover, only contradict one.
+    const turnover = credits.find(
+      (c) => c.stat === 'pass_intercepted' || c.stat === 'fumble_lost'
+    )
+    const finishedWith = check.ball_ended_with
+      ? normalizeStatPosition(check.ball_ended_with, 'offense')
+      : null
+    if (turnover && finishedWith && isOffensivePosition(finishedWith) && check.play_type !== 'cannot_tell') {
+      checks += 1
+      disputes.push(
+        `Play ${index}: one read of the film charted a turnover, the other saw our own ${finishedWith.replace(/_/g, ' ')} finish with the ball. Nothing was counted from it — a turnover is too costly to record on a disagreement.`
+      )
+      return { ...play, credits: [] }
     }
 
     // 2. Who had the ball? A disagreement here is a question, not a discard —
