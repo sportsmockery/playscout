@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resolvePlayerIdentity, rankPlayerGrades, MIN_NUMBER_CONFIDENCE } from './player-grades'
+import { resolvePlayerIdentity, rankPlayerGrades, scrubUnverifiedNumbers, MIN_NUMBER_CONFIDENCE } from './player-grades'
 import { normalizeRoleLabel, aggregateBatch, type BatchClipResult } from './aggregate-batch'
 import type { PlayerGrade } from './schemas'
 
@@ -161,5 +161,44 @@ describe('aggregateBatch — rollup identity after hardening', () => {
       clip([{ ...legible(), grade: 80, player_id: 'p-54', jersey_number: '54' }]),
     ])
     expect(agg.playerRollup[0].identifiedBy).toBe('roster')
+  })
+})
+
+describe('a jersey number in prose that no roster can vouch for', () => {
+  const noRoster = new Set<string>()
+
+  it('replaces a number nobody verified, so no child is named as the culprit', () => {
+    // Measured on real film with no roster on file: MISTAKEIQ wrote "#6" and
+    // "#18" into its report. A mistake pinned on an unverified number tells a
+    // coach which specific child blew the play, and that is worse than a wrong
+    // grade because a parent hears about it.
+    expect(scrubUnverifiedNumbers('#6 missed the contain on the edge.', noRoster)).toBe(
+      'An unidentified player missed the contain on the edge.'
+    )
+  })
+
+  it('absorbs the article rather than mangling the sentence', () => {
+    expect(scrubUnverifiedNumbers('The #18 defender took a bad angle.', noRoster)).toBe(
+      'An unidentified player defender took a bad angle.'
+    )
+  })
+
+  it('handles more than one, and re-capitalises mid-paragraph', () => {
+    expect(
+      scrubUnverifiedNumbers('Pressure came free because #6 released early. Then #18 over-pursued.', noRoster)
+    ).toBe(
+      'Pressure came free because an unidentified player released early. Then an unidentified player over-pursued.'
+    )
+  })
+
+  it('keeps a number the roster vouches for — that is a real identification', () => {
+    expect(scrubUnverifiedNumbers('#6 lost his gap', new Set(['6']))).toBe('#6 lost his gap')
+    // Leading zeros are the same player.
+    expect(scrubUnverifiedNumbers('a #07 blocked well', new Set(['7']))).toBe('a #07 blocked well')
+  })
+
+  it('leaves prose with no numbers in it exactly as written', () => {
+    expect(scrubUnverifiedNumbers('no numbers here at all', noRoster)).toBe('no numbers here at all')
+    expect(scrubUnverifiedNumbers('', noRoster)).toBe('')
   })
 })

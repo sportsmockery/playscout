@@ -29,7 +29,7 @@ import { writeReport } from './write-report'
 import { deriveConfidence, type ConfidenceSignals, type SubjectIdentification, type ViewQuality } from './confidence'
 import type { EvidenceMode } from './football-brain'
 import { applyDrillSafetyFilter, scrubProhibitedDrillMentions } from './safety'
-import { rankPlayerGrades } from './player-grades'
+import { rankPlayerGrades, scrubUnverifiedNumbers } from './player-grades'
 import { tallyStatPlays } from './stat-lines'
 import {
   buildPlayLocatorPrompt,
@@ -92,10 +92,16 @@ export const MODULE_MAP: Record<string, ModuleConfig> = {
 
 /**
  * Modules that may report a jersey number, and therefore need the roster as a
- * closed set to check one against. Both of them attribute something to a
- * specific child — a grade, a carry — so both go through the same gates.
+ * closed set to check one against. Each attributes something to a specific
+ * child — a grade, a carry, a blown assignment — so all of them go through the
+ * same gates.
+ *
+ * MISTAKEIQ was added after the module sweep caught it writing "#6" and "#18"
+ * into a report on film with no roster on file. It had no roster and no scrub
+ * because it reports mistakes as PROSE rather than as numbered claims, so the
+ * structured identity gates never saw them — and prose reaches the same coach.
  */
-const NUMBER_VERIFYING_MODULES = ['RANKERIQ', 'STATSIQ']
+const NUMBER_VERIFYING_MODULES = ['RANKERIQ', 'STATSIQ', 'MISTAKEIQ']
 
 /**
  * `frames` is the wire contract with the browser (bare base64 strings, no
@@ -415,12 +421,35 @@ export async function analyzePosition(
     gameType,
     tier
   )
+  // Jersey numbers the roster cannot vouch for, stripped out of free prose.
+  //
+  // The structured identity gates only ever saw structured claims. MISTAKEIQ
+  // states its findings as sentences, so its numbers went straight past them —
+  // measured on real film with no roster, it named "#6" and "#18" as the players
+  // who blew the play. With no roster there is nothing to check against and
+  // every number goes; with one, a number ON it survives, because that is a real
+  // identification and "#6 lost his gap" is what a coach wants to read.
+  const verifiedNumbers = new Set(
+    roster.map((p) => p.jersey_number).filter((n): n is string => !!n).map((n) => String(Number(n)))
+  )
+  const deident = NUMBER_VERIFYING_MODULES.includes(input.moduleKey)
+    ? (text: string | undefined) => (text ? scrubUnverifiedNumbers(text, verifiedNumbers) : text)
+    : (text: string | undefined) => text
+
   const safeMistakes = parsed.mistakes?.map((m) => {
     const correction = scrubProhibitedDrillMentions(m.correction)
     const drill = m.drill
       ? applyDrillSafetyFilter([m.drill], gameType, tier).drills[0]
       : m.drill
-    return { ...m, correction, drill, evidence_frames: keepCited(m.evidence_frames) }
+    return {
+      ...m,
+      title: deident(m.title) ?? m.title,
+      description: deident(m.description) ?? m.description,
+      likely_impact: deident(m.likely_impact) ?? m.likely_impact,
+      correction: deident(correction) ?? correction,
+      drill,
+      evidence_frames: keepCited(m.evidence_frames),
+    }
   })
 
   // The video-mode equivalent: a cited second must fall inside the clip the
@@ -582,14 +611,20 @@ export async function analyzePosition(
     // wrong answer; measured corroboration cannot.
     overall_score: chartingAgreement ?? overall.value ?? 0,
     position_scores: parsed.position_scores,
-    reasoning: written?.reasoning && Object.keys(written.reasoning).length
-      ? written.reasoning
-      : parsed.reasoning,
-    strengths: written?.strengths ?? parsed.strengths,
-    weaknesses: written?.weaknesses ?? parsed.weaknesses,
+    // `deident` runs LAST, over whichever text actually reaches the coach — the
+    // Claude write-up when there is one, pass one's own prose when the write-up
+    // failed. Scrubbing only the raw read would have left the second pass free
+    // to carry a number forward into the version that is displayed.
+    reasoning: Object.fromEntries(
+      Object.entries(
+        written?.reasoning && Object.keys(written.reasoning).length ? written.reasoning : parsed.reasoning
+      ).map(([k, v]) => [k, deident(v) ?? v])
+    ),
+    strengths: (written?.strengths ?? parsed.strengths).map((s) => deident(s) ?? s),
+    weaknesses: (written?.weaknesses ?? parsed.weaknesses).map((s) => deident(s) ?? s),
     drills: safeDrills,
     prescriptions,
-    summary: written?.summary ?? parsed.summary,
+    summary: deident(written?.summary ?? parsed.summary) ?? parsed.summary,
     // No silent 0.7 default: an unexplained number is what made confidence
     // decoration in the first place.
     confidence: derived?.value ?? parsed.confidence ?? 0.5,

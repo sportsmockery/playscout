@@ -1,0 +1,94 @@
+import { describe, it, expect } from 'vitest'
+import { MODULE_MAP } from './analyze-position'
+import { PositionAnalysisOutputSchema } from './schemas'
+
+/**
+ * Every module's Gemini response schema must promise a shape the result schema
+ * accepts.
+ *
+ * TEAMIQ failed this for an unknown length of time and nothing caught it. When
+ * `attack_points` became `{point, category}` objects for SCOUTIQ's rollup,
+ * TEAMIQ's emitter was left declaring an array of bare STRINGS — and since
+ * `attack_points` sits in TEAMIQ's required list, the model returned strings on
+ * every single run. `PositionAnalysisOutputSchema` then rejected all of them and
+ * `analyze-position` threw "Malformed TEAMIQ output", AFTER paying for the
+ * whole Gemini video call. The module was dead in production. No unit test
+ * covered it because the two schemas are declared in different files in
+ * different notations, and nothing had ever compared them.
+ *
+ * This is that comparison. It builds a synthetic response from each module's own
+ * Gemini schema — every declared property, filled with a value that schema says
+ * is legal — and requires the result schema to accept it. It needs no API key,
+ * no film and no model, so it runs on every commit; a mismatch like the above
+ * fails here in milliseconds instead of in a coach's browser after a paid call.
+ */
+
+type GeminiSchema = {
+  type?: unknown
+  properties?: Record<string, GeminiSchema>
+  items?: GeminiSchema
+  enum?: string[]
+  nullable?: boolean
+}
+
+/** The @google/genai Type enum is a plain string union at runtime. */
+function typeName(node: GeminiSchema): string {
+  return String(node.type ?? '').toLowerCase()
+}
+
+/**
+ * A value this schema node declares to be legal. Fills EVERY property, not only
+ * the required ones — an optional field with the wrong type is the same bug,
+ * it just takes longer to show up.
+ */
+function sample(node: GeminiSchema, depth = 0): unknown {
+  if (depth > 8) return null
+  switch (typeName(node)) {
+    case 'object': {
+      const out: Record<string, unknown> = {}
+      for (const [key, child] of Object.entries(node.properties ?? {})) {
+        out[key] = sample(child, depth + 1)
+      }
+      return out
+    }
+    case 'array':
+      return node.items ? [sample(node.items, depth + 1)] : []
+    case 'string':
+      return node.enum?.length ? node.enum[0] : 'x'
+    case 'integer':
+    case 'number':
+      return 1
+    case 'boolean':
+      return true
+    default:
+      return 'x'
+  }
+}
+
+describe('every module promises a shape the result schema accepts', () => {
+  for (const [moduleKey, config] of Object.entries(MODULE_MAP)) {
+    it(`${moduleKey}`, () => {
+      const response = sample(config.schema as GeminiSchema)
+      const parsed = PositionAnalysisOutputSchema.safeParse(response)
+
+      if (!parsed.success) {
+        // Name the field, both shapes, and which file to fix — the failure this
+        // test exists for took a model run and a stack trace to diagnose.
+        const detail = parsed.error.issues
+          .map((i) => `  ${i.path.join('.') || '(root)'}: ${i.message}`)
+          .join('\n')
+        throw new Error(
+          `${moduleKey}'s Gemini response schema declares a shape PositionAnalysisOutputSchema rejects.\n` +
+            `Fix the emitter in lib/intelligence/modules/${moduleKey.toLowerCase()}.ts, or the contract in schemas.ts:\n${detail}`
+        )
+      }
+      expect(parsed.success).toBe(true)
+    })
+  }
+
+  it('covers every module that can be analyzed, so none can be added untested', () => {
+    // A module added to MODULE_MAP is automatically covered by the loop above;
+    // this guards against MODULE_MAP itself being emptied or renamed away.
+    expect(Object.keys(MODULE_MAP).length).toBeGreaterThanOrEqual(8)
+  })
+})

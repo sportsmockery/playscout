@@ -42,7 +42,8 @@ import {
   playWindow,
 } from '../lib/intelligence/locate-play'
 import { measureDepth, measureSpecificity } from '../lib/intelligence/report-quality'
-import { QBIQ_CUES, OLIQ_CUES, RBIQ_CUES } from '../lib/intelligence/rubrics'
+import { QBIQ_CUES, OLIQ_CUES, RBIQ_CUES, RUBRICS } from '../lib/intelligence/rubrics'
+import { computeOverall, weightsFor } from '../lib/intelligence/scoring'
 import { contentWords, jaccard } from '../lib/intelligence/aggregate-batch'
 import type { CueCatalog } from '../lib/intelligence/breakdown'
 
@@ -260,12 +261,22 @@ async function runOnce(moduleKey: string, window: { start?: number; end?: number
   const depth = catalog ? measureDepth(data, catalog) : null
   const spec = measureSpecificity(data)
 
+  // The number a coach actually sees. For the three rubric modules the model is
+  // told NOT to do the arithmetic — scoring.ts derives it from the dimension
+  // scores and reweights for dimensions with no evidence — so reading
+  // overall_score straight off the response reported "no score" and hid the one
+  // figure whose run-to-run variance matters most.
+  const rubric = RUBRICS[moduleKey]
+  const score = rubric
+    ? computeOverall(data.position_scores, weightsFor(rubric)).value
+    : (data.overall_score ?? null)
+
   return {
     ok: true,
     ms: res.ms,
     inputTokens: res.inputTokens,
     outputTokens: res.outputTokens,
-    score: data.overall_score ?? null,
+    score,
     claims: (data.strengths?.length ?? 0) + (data.weaknesses?.length ?? 0) + Object.keys(data.reasoning ?? {}).length,
     anchoredProse: spec.anchoredProse,
     anchoredCues: spec.anchoredCues,
@@ -356,7 +367,8 @@ async function main() {
         spread == null ? '  — ' : `±${spread}`.padStart(4),
         pct(selfConsistency(results)),
         pct(avg((r) => r.anchoredProse)),
-        pct(ok.length ? avg((r) => r.catalogCoverage ?? NaN) : null),
+        // Only the three rubric modules have a cue catalog to cover.
+        pct(CATALOGS[moduleKey] && ok.length ? avg((r) => r.catalogCoverage ?? 0) : null),
         String(violations.length).padStart(4),
         `${(avg((r) => r.ms) / 1000).toFixed(0)}s`.padStart(5),
         `${Math.round(avg((r) => r.inputTokens) / 1000)}k`.padStart(5),

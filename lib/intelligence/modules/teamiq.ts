@@ -1,5 +1,5 @@
 import { buildFootballBrain, buildGameTypeContext } from '../football-brain'
-import { buildTaxonomyPrompt, EXPLOSIVE_PLAY_YARDS, TENDENCY_TYPES, OFFENSIVE_FORMATIONS, DEFENSIVE_FRONTS, SITUATION_BUCKETS, EXPLOSIVE_CAUSES } from '../taxonomy'
+import { buildTaxonomyPrompt, EXPLOSIVE_PLAY_YARDS, TENDENCY_TYPES, OFFENSIVE_FORMATIONS, DEFENSIVE_FRONTS, SITUATION_BUCKETS, EXPLOSIVE_CAUSES, ATTACK_CATEGORIES } from '../taxonomy'
 import { resolveLevelTier } from '../levels'
 import { Type } from '@google/genai'
 import type { ModulePromptInput } from '../schemas'
@@ -76,8 +76,10 @@ explosive_plays: every gain of ${EXPLOSIVE_PLAY_YARDS}+ yards, with which failur
 (force_failure, gap_failure or pursuit_failure) and evidence.
 situational_tells: use a SITUATIONS id above for "situation", and say what ${teamLabel} tends
 to do in it.
-attack_points: concrete, evidence-based things an opponent could exploit — only include
-what the frames actually support.
+attack_points: concrete, evidence-based things an opponent could exploit about ${teamLabel} —
+only include what the frames actually support. Each one is an object: "point" is the weakness
+you saw, and "category" is the part of a game plan it belongs to
+(${ATTACK_CATEGORIES.join(', ')}).
 
 SAMPLE SIZE — plays_observed = the number of DISTINCT snaps/plays visible across these
 frames (a single continuous play from snap to whistle counts as 1). This caps confidence:
@@ -158,7 +160,24 @@ export const TEAMIQ_RESPONSE_SCHEMA = {
         required: ['situation', 'tell'],
       },
     },
-    attack_points: { type: Type.ARRAY, items: { type: Type.STRING } },
+    // Objects, matching SCOUTIQ and the shared result schema. This was left as
+    // an array of bare strings when attack points became {point, category} for
+    // SCOUTIQ's rollup, and since `attack_points` is in TEAMIQ's required list
+    // the model returned strings on EVERY run — so PositionAnalysisOutputSchema
+    // rejected every TEAMIQ analysis and analyze-position threw
+    // "Malformed TEAMIQ output" after paying for the whole vision call. The
+    // module was dead in production and nothing noticed, because no eval ran it.
+    attack_points: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          point: { type: Type.STRING },
+          category: { type: Type.STRING, enum: [...ATTACK_CATEGORIES] },
+        },
+        required: ['point', 'category'],
+      },
+    },
     strengths: { type: Type.ARRAY, items: { type: Type.STRING } },
     weaknesses: { type: Type.ARRAY, items: { type: Type.STRING } },
     drills: { type: Type.ARRAY, items: { type: Type.STRING } },

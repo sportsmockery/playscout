@@ -1,4 +1,4 @@
-import type { PlayerGrade } from './schemas'
+import { MISTAKE_SEVERITIES, type PlayerGrade } from './schemas'
 import { letterFor } from './player-grades'
 import { aggregateStatCredits, type StatCredit, type StatTally } from './stat-lines'
 
@@ -94,7 +94,8 @@ export interface BatchAggregate {
   statTally: StatTally | null
 }
 
-const SEVERITY_ORDER = ['minor', 'moderate', 'major', 'game_changing']
+/** Ascending, from the one constant every side of this contract reads. */
+const SEVERITY_ORDER: readonly string[] = MISTAKE_SEVERITIES
 
 const STOPWORDS = new Set([
   'the', 'a', 'an', 'and', 'or', 'of', 'to', 'in', 'on', 'at', 'is', 'are', 'was', 'were',

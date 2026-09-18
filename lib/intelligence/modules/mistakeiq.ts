@@ -1,7 +1,8 @@
 import { buildFootballBrain, buildGameTypeContext } from '../football-brain'
 import { resolveLevelTier } from '../levels'
 import { Type } from '@google/genai'
-import type { ModulePromptInput } from '../schemas'
+import { MISTAKE_CATEGORIES, MISTAKE_SEVERITIES, type ModulePromptInput } from '../schemas'
+import { buildRosterContext } from '../roster-context'
 import { buildPlayContext } from '../play-context'
 
 export function buildMISTAKEIQSystemPrompt(input: ModulePromptInput): string {
@@ -27,15 +28,15 @@ ${coachNote ? `COACH NOTE: ${coachNote}` : ''}
 HEAD CONTACT / CONCUSSION CHECK — mandatory for every clip:
 Review every frame for a player's head making contact with another player, the ground, or equipment, or a player who appears dazed, slow to get up, or holding their head. Set head_contact_flag.flagged to true if you observe this for ANY player (either team), and describe what was observed (not a diagnosis) in head_contact_flag.note, including which frame(s). If nothing like this is visible, set flagged to false and note "No visible head-contact indicators in this clip."
 
+${buildRosterContext(input.roster, input.filmConditions)}
+
 MISTAKEIQ RUBRIC — Identify game-changing mistakes visible in frames.
 
-Categories: missed_assignment, missed_block, missed_contain, wrong_gap_fit,
-bad_pursuit_angle, poor_tackling_leverage, turnover_risk, snap_mesh_issue,
-alignment_error, coverage_bust, penalty_risk, poor_effort, clock_situation_error
+Categories: ${MISTAKE_CATEGORIES.join(', ')}
 
 Return each mistake you identify as an entry in the "mistakes" array with:
 - title: short name
-- severity: minor | moderate | major | game_changing
+- severity: ${MISTAKE_SEVERITIES.join(' | ')}
 - category: one of the categories above
 - description: what happened, evidence-based
 - likely_impact: what this mistake likely cost or could cost
@@ -98,8 +99,14 @@ export const MISTAKEIQ_RESPONSE_SCHEMA = {
         type: Type.OBJECT,
         properties: {
           title: { type: Type.STRING },
-          severity: { type: Type.STRING },
-          category: { type: Type.STRING },
+          // Constrained to the closed sets the result schema demands. Both were
+          // bare strings, so the model was free to answer "critical" or
+          // "blown assignment" and PositionAnalysisOutputSchema would throw out
+          // the whole analysis after the vision call was paid for. StatsIQ
+          // already enumerated mistake_category from this same constant; the
+          // module that OWNS mistakes did not.
+          severity: { type: Type.STRING, enum: [...MISTAKE_SEVERITIES] },
+          category: { type: Type.STRING, enum: [...MISTAKE_CATEGORIES] },
           description: { type: Type.STRING },
           likely_impact: { type: Type.STRING },
           correction: { type: Type.STRING },

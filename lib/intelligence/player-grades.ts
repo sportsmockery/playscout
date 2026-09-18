@@ -288,6 +288,36 @@ export function scrubNumberFromNote(note: string, rejected: string, replacement:
 }
 
 /**
+ * Strips every jersey number a roster cannot vouch for out of free prose.
+ *
+ * The number-reporting modules resolve identity per structured claim, but prose
+ * is a second, unguarded channel to the same coach, and MISTAKEIQ was found
+ * using it: measured on real film with no roster on file, it wrote "#6" and
+ * "#18" into its report. A mistake pinned on a number nobody verified names a
+ * specific child as the one who blew the play, which is the most damaging thing
+ * this product can get wrong — worse than a wrong grade, because a parent hears
+ * about it.
+ *
+ * With no roster there is nothing to check against, so every number goes. With a
+ * roster, a number ON it survives — that is a real identification, and "#6 lost
+ * his gap" is exactly what a coach wants to read.
+ *
+ * The replacement absorbs a preceding article so "the #6 defender" does not
+ * become "the a player defender", and it re-capitalises at a sentence start.
+ */
+export function scrubUnverifiedNumbers(text: string, allowed: Set<string>): string {
+  if (!text) return text
+  return text
+    .replace(/(^|[.!?]\s+|\s+|\b)(?:(the|a|an)\s+)?#\s*0*(\d{1,2})\b/gi, (match, lead, _article, digits) => {
+      if (allowed.has(String(Number(digits)))) return match
+      const sentenceStart = lead === '' || /[.!?]\s+$/.test(lead)
+      return `${lead}${sentenceStart ? 'An' : 'an'} unidentified player`
+    })
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+}
+
+/**
  * Normalizes every graded rep in a clip: resolves identity, recomputes the
  * grade from the observed factors, assigns the letter, and ranks best-first.
  * Ties break toward the harder assignment, since two players who executed

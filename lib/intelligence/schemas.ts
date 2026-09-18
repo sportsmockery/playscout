@@ -130,9 +130,23 @@ export const MISTAKE_CATEGORIES = [
   'alignment_error', 'coverage_bust', 'penalty_risk', 'poor_effort', 'clock_situation_error',
 ] as const
 
+/**
+ * Ascending, and the order is load-bearing: aggregate-batch ranks a batch's
+ * mistakes by index into this list.
+ *
+ * It exists as a constant because these four words were written out separately
+ * in MISTAKEIQ's prompt, MISTAKEIQ's Gemini schema (as an unconstrained string),
+ * this Zod enum, and aggregate-batch's own copy — so the emitter was free to
+ * return "critical" or "high" and the result schema would reject the entire
+ * analysis after the vision call was already paid for. Same drift that made one
+ * real tendency into several rows.
+ */
+export const MISTAKE_SEVERITIES = ['minor', 'moderate', 'major', 'game_changing'] as const
+export type MistakeSeverity = (typeof MISTAKE_SEVERITIES)[number]
+
 export const MistakeItemSchema = z.object({
   title: z.string(),
-  severity: z.enum(['minor', 'moderate', 'major', 'game_changing']),
+  severity: z.enum(MISTAKE_SEVERITIES),
   category: z.string(),
   description: z.string(),
   likely_impact: z.string(),
