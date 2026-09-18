@@ -65,7 +65,12 @@ type ModuleConfig = {
   resolution: ClipResolution
 }
 
-const MODULE_MAP: Record<string, ModuleConfig> = {
+/**
+ * Exported so the eval harness drives the SAME prompt, schema, frame rate and
+ * resolution production does. A harness with its own copy of this table
+ * measures a configuration nobody ships.
+ */
+export const MODULE_MAP: Record<string, ModuleConfig> = {
   QBIQ:      { buildPrompt: buildQBIQSystemPrompt,      schema: QBIQ_RESPONSE_SCHEMA,      fps: 8, resolution: 'medium' },
   OLIQ:      { buildPrompt: buildOLIQSystemPrompt,      schema: OLIQ_RESPONSE_SCHEMA,      fps: 8, resolution: 'medium' },
   RBIQ:      { buildPrompt: buildRBIQSystemPrompt,      schema: RBIQ_RESPONSE_SCHEMA,      fps: 8, resolution: 'medium' },
