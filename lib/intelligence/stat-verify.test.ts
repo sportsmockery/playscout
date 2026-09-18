@@ -329,12 +329,48 @@ describe('a turnover the second read contradicts', () => {
       [verified({ play_type: 'pass', ball_ended_with: 'wr_left', thrown_by: 'qb', yards: 23 })]
     )
 
-    expect(plays[0].credits).toEqual([])
-    expect(disputes.join(' ')).toContain('charted a turnover')
+    // Not merely discarded — rebuilt from the read that measures right. With
+    // the team's real jersey colour set, charting called this an interception
+    // 3 times out of 3 while verification returned the identical completion
+    // (qb → wr_left, 14 yards) 3 times out of 3. Discarding left the coach an
+    // empty sheet over a play both reads plainly saw.
+    expect(disputes.join(' ')).toContain("second read's account is what is counted")
 
-    const { team } = tallyStatPlays(plays)
+    const { team, lines } = tallyStatPlays(plays)
     expect(team.offense.interceptions_thrown).toBe(0)
-    expect(team.offense.pass_attempts).toBe(0)
+    expect(team.offense.pass_completions).toBe(1)
+    // The completion counts; the GAIN does not. The same read's yardage was
+    // observed swinging 13 → 14 → 23 on this clip, and the charting read's
+    // measurement is the account we just rejected, so there is nothing to
+    // corroborate it against. The coach adds it.
+    expect(team.offense.pass_yards).toBe(0)
+    expect(team.unmeasuredYardagePlays).toBe(1)
+    expect(lines.find((l) => l.positionId === 'wr_left')!.offense.receptions).toBe(1)
+  })
+
+  it('still discards when the checking read cannot supply the play itself', () => {
+    // Narrow on purpose: a rebuild needs a confident pass with both a named
+    // thrower and a named catcher. Anything less and we are guessing twice.
+    const charted = () =>
+      chartedAsRun({
+        play_type: 'pass',
+        result: 'interception',
+        yards: null,
+        credits: [{ stat: 'pass_intercepted', position: 'qb' }],
+      })
+
+    const noThrower = reconcileReadings(
+      [charted()],
+      [verified({ play_type: 'pass', ball_ended_with: 'wr_left', thrown_by: null, yards: 12 })]
+    )
+    expect(noThrower.plays[0].credits).toEqual([])
+    expect(noThrower.disputes.join(' ')).toContain('Nothing was counted')
+
+    const unsure = reconcileReadings(
+      [charted()],
+      [verified({ play_type: 'pass', ball_ended_with: 'wr_left', thrown_by: 'qb', yards: 12, confidence: 0.4 })]
+    )
+    expect(unsure.plays[0].credits).toEqual([])
   })
 
   it('does the same for a fumble the other read says we kept', () => {

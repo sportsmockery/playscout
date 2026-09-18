@@ -417,6 +417,19 @@ export interface PositionAnalysisResult {
   quarterback's season. `ball_ended_with` names one of OUR positions, so it is a statement that we
   kept the ball. One-directional: the verifier has no vocabulary for "a defender took it", so
   silence is never a veto.
+- **The jersey colour was NOT the cause, and that was measured.** With the team's real away colour
+  ("White", exactly what the app sends) the charting pass called a completed pass an INTERCEPTION
+  three times out of three, while the verification pass returned the identical answer three times
+  out of three (pass, qb → wr_left). Across nine runs on two ground-truth clips charting was right
+  **once**; verification was right **every time it answered**. Set the colour anyway — it is a
+  variable worth removing — but do not expect it to fix a read.
+- **A contradicted turnover is REBUILT from the checking read, not discarded.** Discarding was the
+  first answer and it handed the coach an empty sheet over a play both reads plainly saw. Narrow
+  on purpose: only a contradicted turnover, only a pass, only when the check named a thrower and a
+  catcher at confidence >= 0.8. The completion counts; **the GAIN does not** — the same read's
+  yardage was observed swinging 13 → 14 → 23 on one clip, and the charting read's measurement is
+  the account just rejected, so nothing corroborates it. The coach adds the gain, highlighted in
+  "Fix a stat". This is a workaround for a charting prompt that needs fixing, not a replacement.
 - **Set the team's jersey colour, and NEVER default it when a team wears two.** `teams` carries
   `home_jersey_color` and `away_jersey_color` (team settings), and the module screen asks which was
   worn in this film. That picker used to default to HOME whenever a home colour existed, and the
