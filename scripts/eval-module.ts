@@ -52,6 +52,13 @@ const MODEL = 'gemini-2.5-pro'
 /** Cue catalogs exist only for the three modules that grade one player's rep. */
 const CATALOGS: Record<string, CueCatalog> = { QBIQ: QBIQ_CUES, OLIQ: OLIQ_CUES, RBIQ: RBIQ_CUES }
 
+/**
+ * Modules whose prose passes through `scrubUnverifiedNumbers` in
+ * analyze-position before a coach sees it. Kept in step with
+ * NUMBER_VERIFYING_MODULES there.
+ */
+const SCRUBBED_MODULES = ['RANKERIQ', 'STATSIQ', 'MISTAKEIQ']
+
 /** PlaybookIQ parses documents, not film — it has no place in a film harness. */
 const FILM_MODULES = ['QBIQ', 'OLIQ', 'RBIQ', 'TEAMIQ', 'MISTAKEIQ', 'SCOUTIQ', 'RANKERIQ', 'STATSIQ']
 
@@ -196,7 +203,23 @@ function findViolations(moduleKey: string, parsed: Record<string, unknown>, raw:
     .filter((t): t is string => typeof t === 'string')
     .join(' ')
   const numbers = prose.match(/#\s?\d{1,2}\b/g)
-  if (numbers) out.push(`jersey number in prose with no roster on file: ${[...new Set(numbers)].join(', ')}`)
+  if (numbers) {
+    // Raw model output versus what a coach would actually be shown.
+    //
+    // This harness calls Gemini directly, so it sees the read BEFORE
+    // analyze-position's post-processing. When the module is one that
+    // de-identifies, an invented number here never reaches a screen — it is a
+    // prompt-quality signal, not a shipped defect, and reporting it as the
+    // latter would be crying wolf. Getting this wrong once already cost an
+    // incorrect all-clear: a run with no number emitted was read as proof the
+    // scrub worked, when the harness had simply never exercised the scrub.
+    const list = [...new Set(numbers)].join(', ')
+    out.push(
+      SCRUBBED_MODULES.includes(moduleKey)
+        ? `model emitted ${list} with no roster — scrubbed before display, but the prompt still invites it`
+        : `jersey number in prose with no roster on file, and NOTHING strips it: ${list}`
+    )
+  }
 
   // Citations have to land inside the film that was actually shown.
   const stamps = (parsed.evidence_timestamps as number[]) ?? []
