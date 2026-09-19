@@ -408,9 +408,24 @@ export interface PositionAnalysisResult {
   coach supplied — a completed 4th-down pass on lined high-school film — six runs of the real
   pipeline: charting called it right **once**, and produced an interception (×3), a sack-fumble
   (×2) and a completion (×1). The verification pass answered `pass, thrown by qb` **every time it
-  completed**. The short closed-question prompt beats the 25k-token charting prompt on the
+  completed**. The short closed-question prompt beats the 25,700-character charting prompt on the
   load-bearing facts, and any future work on this module should start there rather than adding
   more instructions to the big one.
+- **A closed-question charting prompt exists and is NOT the default yet** — `modules/statsiq-facts.ts`
+  plus `stat-facts.ts`, behind `STATSIQ_CHARTING=facts`. It asks the same kind of closed questions
+  the verification pass asks (run or pass, did the ball change hands, who finished with it, how
+  far, was there a flag) and **assembles the credits in code**, which is the point: the pairing
+  rules, the carry deduction and the solo-vs-assisted constraint stop being instructions a model
+  has to follow and become things the output cannot express. A completion emits its thrower and
+  its catcher together or parks one as a question; a stop is solo or shared, never both; a hidden
+  mesh yields no carrier rather than a guess. 25 unit tests cover the derivation, and the module
+  contract test now runs schema → conversion → `PositionAnalysisOutputSchema`.
+  It renders to ~12,100 characters against the narrative prompt's ~25,700 (the reliable
+  verification prompt is ~8,500). **It is unmeasured against film.** Run
+  `EVAL_CHARTING=facts npx tsx scripts/eval-statsiq.ts <clip> 4` on BOTH ground-truth clips and
+  beat the recorded baseline before flipping the default — this module has already killed four
+  hypotheses that were sound on paper (8fps/high, the jersey colour, two-position yardage, and
+  discarding a contradicted read).
 - **Where the two reads disagree, the CHECK supplies the play** (`rebuildFromCheck`). Discarding
   both was the first answer and it was retired by measurement: the charting read has been right
   once in nine runs, the closed-question read right every time it answered, so discarding threw

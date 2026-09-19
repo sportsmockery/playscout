@@ -14,6 +14,8 @@ import { buildMISTAKEIQSystemPrompt, MISTAKEIQ_RESPONSE_SCHEMA } from './modules
 import { buildSCOUTIQSystemPrompt, SCOUTIQ_RESPONSE_SCHEMA } from './modules/scoutiq'
 import { buildRANKERIQSystemPrompt, RANKERIQ_RESPONSE_SCHEMA } from './modules/rankeriq'
 import { buildSTATSIQSystemPrompt, STATSIQ_RESPONSE_SCHEMA } from './modules/statsiq'
+import { buildSTATSIQFactsPrompt, STATSIQ_FACTS_RESPONSE_SCHEMA } from './modules/statsiq-facts'
+import { factsOutputToAnalysisOutput } from './stat-facts'
 import {
   PositionAnalysisOutputSchema,
   type PositionAnalysisInput,
@@ -91,6 +93,31 @@ export const MODULE_MAP: Record<string, ModuleConfig> = {
 }
 
 /**
+ * Which StatsIQ charting prompt runs: the narrative one above, or the
+ * closed-question rebuild in modules/statsiq-facts.ts.
+ *
+ * `narrative` is the default and stays the default until a measurement says
+ * otherwise. The rebuild exists because the charting pass is the module's
+ * unreliable component — right once in nine runs on the two clips whose truth
+ * we have, against a short closed-question prompt that was right every time it
+ * answered — but "this ought to be better" is exactly the reasoning that
+ * shipped four StatsIQ fixes of which two were wrong. Nothing about the sample
+ * rate, the resolution or the jersey colour survived contact with the eval
+ * either.
+ *
+ * Flip it with `STATSIQ_CHARTING=facts`, and only flip the default after
+ * `EVAL_CHARTING=facts npx tsx scripts/eval-statsiq.ts <clip> 4` beats the
+ * recorded baseline on BOTH ground-truth clips. The two paths converge on
+ * RawStatPlay, so reconciliation, the mesh gate, the identity gates and the
+ * tally are identical either way — the only variable is the ask.
+ */
+export type ChartingStrategy = 'narrative' | 'facts'
+
+export function statsIQChartingStrategy(): ChartingStrategy {
+  return process.env.STATSIQ_CHARTING === 'facts' ? 'facts' : 'narrative'
+}
+
+/**
  * Modules that may report a jersey number, and therefore need the roster as a
  * closed set to check one against. Each attributes something to a specific
  * child — a grade, a carry, a blown assignment — so all of them go through the
@@ -152,8 +179,20 @@ export async function analyzePosition(
   userId: string | null,
   supabase: SupabaseClient
 ): Promise<PositionAnalysisResult> {
-  const config = MODULE_MAP[input.moduleKey]
-  if (!config) throw new Error(`Unknown module: ${input.moduleKey}`)
+  const baseConfig = MODULE_MAP[input.moduleKey]
+  if (!baseConfig) throw new Error(`Unknown module: ${input.moduleKey}`)
+
+  // The sample rate and resolution are MEASURED for this module and belong to
+  // the film, not to the prompt — only the ask changes.
+  const charting = input.moduleKey === 'STATSIQ' ? statsIQChartingStrategy() : 'narrative'
+  const config: ModuleConfig =
+    charting === 'facts'
+      ? {
+          ...baseConfig,
+          buildPrompt: buildSTATSIQFactsPrompt,
+          schema: STATSIQ_FACTS_RESPONSE_SCHEMA,
+        }
+      : baseConfig
 
   const { mode: evidenceMode, clip, frames } = await resolveEvidence(input, supabase)
   if (!clip && !frames.length) {
@@ -349,6 +388,13 @@ export async function analyzePosition(
     parsedJson = JSON.parse(rawJson)
   } catch {
     throw new Error(`Invalid JSON from ${input.moduleKey}: ${rawJson.slice(0, 200)}`)
+  }
+
+  // The closed-question read answers questions; the credits are assembled from
+  // those answers here, before anything downstream sees them. This is the only
+  // place in the pipeline that knows which charting prompt ran.
+  if (charting === 'facts') {
+    parsedJson = factsOutputToAnalysisOutput(parsedJson)
   }
 
   // Syntactically valid JSON can still be the wrong shape (missing field, a

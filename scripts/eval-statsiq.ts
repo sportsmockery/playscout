@@ -21,6 +21,11 @@
 import { readFileSync } from 'node:fs'
 import { GoogleGenAI, MediaResolution } from '@google/genai'
 import { buildSTATSIQSystemPrompt, STATSIQ_RESPONSE_SCHEMA } from '../lib/intelligence/modules/statsiq'
+import {
+  buildSTATSIQFactsPrompt,
+  STATSIQ_FACTS_RESPONSE_SCHEMA,
+} from '../lib/intelligence/modules/statsiq-facts'
+import { factsOutputToAnalysisOutput } from '../lib/intelligence/stat-facts'
 import { PositionAnalysisOutputSchema, type ModulePromptInput } from '../lib/intelligence/schemas'
 import {
   buildPlayLocatorPrompt,
@@ -42,6 +47,20 @@ const MODEL = 'gemini-2.5-pro'
 
 const clipPath = process.argv[2]
 const runs = Number(process.argv[3] ?? 1)
+
+/**
+ * Which charting prompt is under test: `narrative` (the shipped default) or
+ * `facts` (the closed-question rebuild). Everything downstream of the charting
+ * call is identical, so a difference in the scorecard is a difference in the
+ * ask and nothing else.
+ *
+ * Recorded baseline for `narrative`, 4 runs per clip:
+ *   clip A (4th-down pass, right WR) — play 4/4, TD 4/4, player withheld 4/4
+ *   clip B (55yd QB keeper TD)       — play 4/4, TD 4/4, yards 4/4, carrier withheld 4/4
+ * Nothing measured is wrong on either; the gap is that neither names the player.
+ * `facts` replaces the default only if it beats that on BOTH clips.
+ */
+const CHARTING = process.env.EVAL_CHARTING === 'facts' ? 'facts' : 'narrative'
 if (!clipPath) {
   console.error('usage: GOOGLE_API_KEY=... npx tsx scripts/eval-statsiq.ts <clip> [runs]')
   process.exit(1)
@@ -207,7 +226,7 @@ const MARK_ICON: Record<Mark, string> = { pass: '✓', fail: '✗', withheld: '�
 function printScorecard() {
   if (!scorecards.length) return
   const dims: (keyof Scorecard)[] = ['play', 'player', 'touchdown', 'yards']
-  console.log('\n══════════ SCORECARD ══════════')
+  console.log(`\n══════════ SCORECARD — ${CHARTING} charting ══════════`)
   console.log('            ' + scorecards.map((_, i) => `r${i + 1}`).join('  '))
   for (const d of dims) {
     const marks = scorecards.map((c) => ` ${MARK_ICON[c[d]]}`)
@@ -237,14 +256,21 @@ async function once(run: number) {
   const window = playWindow(located, duration)
   console.log('window:', window ? `${window.startOffsetSeconds}s – ${window.endOffsetSeconds}s` : 'whole clip')
 
-  // 2. Chart it.
-  const charting = await call(buildSTATSIQSystemPrompt(input), STATSIQ_RESPONSE_SCHEMA, {
-    fps: 6,
-    resolution: 'medium',
-    start: window?.startOffsetSeconds,
-    end: window?.endOffsetSeconds,
-  })
-  console.log(`charting input tokens: ${charting.inputTokens}`)
+  // 2. Chart it — with whichever charting prompt is under test.
+  //
+  // The two paths converge on stat_plays, so everything after this point is
+  // byte-identical between them and the only variable measured is the ask.
+  const charting = await call(
+    CHARTING === 'facts' ? buildSTATSIQFactsPrompt(input) : buildSTATSIQSystemPrompt(input),
+    CHARTING === 'facts' ? STATSIQ_FACTS_RESPONSE_SCHEMA : STATSIQ_RESPONSE_SCHEMA,
+    {
+      fps: 6,
+      resolution: 'medium',
+      start: window?.startOffsetSeconds,
+      end: window?.endOffsetSeconds,
+    }
+  )
+  console.log(`charting (${CHARTING}) input tokens: ${charting.inputTokens}`)
 
   let parsedJson: unknown
   try {
@@ -253,6 +279,7 @@ async function once(run: number) {
     console.log('✗ CHARTING RETURNED INVALID JSON:', charting.text.slice(0, 400))
     return
   }
+  if (CHARTING === 'facts') parsedJson = factsOutputToAnalysisOutput(parsedJson)
 
   const parsed = PositionAnalysisOutputSchema.safeParse(parsedJson)
   if (!parsed.success) {

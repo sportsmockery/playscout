@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { MODULE_MAP } from './analyze-position'
 import { PositionAnalysisOutputSchema } from './schemas'
+import { STATSIQ_FACTS_RESPONSE_SCHEMA } from './modules/statsiq-facts'
+import { factsOutputToAnalysisOutput } from './stat-facts'
 
 /**
  * Every module's Gemini response schema must promise a shape the result schema
@@ -85,6 +87,26 @@ describe('every module promises a shape the result schema accepts', () => {
       expect(parsed.success).toBe(true)
     })
   }
+
+  // The closed-question charting path does not go straight into the result
+  // schema — its answers are assembled into credits first — so the contract it
+  // has to satisfy is "schema, then conversion, then the result schema". Same
+  // failure mode as TEAMIQ's, one step further along the pipe.
+  it('STATSIQ (closed-question charting)', () => {
+    const response = sample(STATSIQ_FACTS_RESPONSE_SCHEMA as GeminiSchema)
+    const parsed = PositionAnalysisOutputSchema.safeParse(factsOutputToAnalysisOutput(response))
+
+    if (!parsed.success) {
+      const detail = parsed.error.issues
+        .map((i) => `  ${i.path.join('.') || '(root)'}: ${i.message}`)
+        .join('\n')
+      throw new Error(
+        `The facts charting schema, once converted, is a shape PositionAnalysisOutputSchema rejects.\n` +
+          `Fix modules/statsiq-facts.ts or the conversion in stat-facts.ts:\n${detail}`
+      )
+    }
+    expect(parsed.success).toBe(true)
+  })
 
   it('covers every module that can be analyzed, so none can be added untested', () => {
     // A module added to MODULE_MAP is automatically covered by the loop above;
