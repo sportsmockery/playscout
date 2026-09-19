@@ -116,6 +116,110 @@ async function call(
   }
 }
 
+/**
+ * What the coach says actually happened, so a run can be SCORED rather than
+ * eyeballed.
+ *
+ * Reading run lines by hand is how two wrong "fixes" got shipped earlier in
+ * this module's history: a change looks better because the one line you happen
+ * to read looks better. A per-dimension pass/fail over N runs is the only thing
+ * that can say whether a prompt change helped, and it is the difference between
+ * "seems right" and "4 of 4".
+ *
+ *   EVAL_TRUTH_PLAY=run|pass     EVAL_TRUTH_PLAYER=qb
+ *   EVAL_TRUTH_TD=1|0            EVAL_TRUTH_YARDS=55
+ *
+ * Every field is optional — a dimension with no declared truth is not scored,
+ * because inventing a expected value is worse than measuring one thing fewer.
+ */
+interface Truth {
+  play?: 'run' | 'pass'
+  /** The principal actor: the carrier on a run, the receiver on a pass. */
+  player?: string
+  touchdown?: boolean
+  yards?: number
+}
+
+const truth: Truth = {
+  play: (process.env.EVAL_TRUTH_PLAY as 'run' | 'pass' | undefined) || undefined,
+  player: process.env.EVAL_TRUTH_PLAYER || undefined,
+  touchdown: process.env.EVAL_TRUTH_TD ? process.env.EVAL_TRUTH_TD === '1' : undefined,
+  yards: process.env.EVAL_TRUTH_YARDS ? Number(process.env.EVAL_TRUTH_YARDS) : undefined,
+}
+
+type Mark = 'pass' | 'fail' | 'withheld' | 'n/a'
+interface Scorecard {
+  play: Mark
+  player: Mark
+  touchdown: Mark
+  yards: Mark
+}
+
+const scorecards: Scorecard[] = []
+
+/** Yardage is right if it lands inside the same tolerance the pipeline uses. */
+function yardsMark(counted: number, unmeasured: number, expected?: number): Mark {
+  if (expected == null) return 'n/a'
+  // Withheld is not wrong — it is the module declining to guess, which is a
+  // different outcome from a wrong number and has to be counted separately or
+  // "never answer" would score as well as "always right".
+  if (unmeasured > 0 && counted === 0) return 'withheld'
+  const tolerance = Math.max(3, Math.abs(expected) * 0.12)
+  return Math.abs(counted - expected) <= tolerance ? 'pass' : 'fail'
+}
+
+function score(tally: ReturnType<typeof tallyStatPlays>): Scorecard {
+  const o = tally.team.offense
+  const chartedPlay = o.carries > 0 ? 'run' : o.pass_attempts > 0 ? 'pass' : null
+
+  // The principal actor as the SHEET has it — a line with the carry or the
+  // catch. An unattributed credit has no line, which is a real answer ("we
+  // know what, not who") and scores as withheld rather than wrong.
+  const principal =
+    tally.lines.find((l) => l.offense.carries > 0 || l.offense.receptions > 0)?.positionId ?? null
+
+  return {
+    play: truth.play == null ? 'n/a' : chartedPlay == null ? 'withheld' : chartedPlay === truth.play ? 'pass' : 'fail',
+    player:
+      truth.player == null
+        ? 'n/a'
+        : principal == null
+          ? 'withheld'
+          : principal === truth.player
+            ? 'pass'
+            : 'fail',
+    touchdown:
+      truth.touchdown == null
+        ? 'n/a'
+        : o.rush_td + o.pass_td + o.receiving_td > 0 === truth.touchdown
+          ? 'pass'
+          : 'fail',
+    yards: yardsMark(
+      o.rush_yards + o.pass_yards,
+      tally.team.unmeasuredYardagePlays ?? 0,
+      truth.yards
+    ),
+  }
+}
+
+const MARK_ICON: Record<Mark, string> = { pass: '✓', fail: '✗', withheld: '·', 'n/a': ' ' }
+
+function printScorecard() {
+  if (!scorecards.length) return
+  const dims: (keyof Scorecard)[] = ['play', 'player', 'touchdown', 'yards']
+  console.log('\n══════════ SCORECARD ══════════')
+  console.log('            ' + scorecards.map((_, i) => `r${i + 1}`).join('  '))
+  for (const d of dims) {
+    const marks = scorecards.map((c) => ` ${MARK_ICON[c[d]]}`)
+    const hits = scorecards.filter((c) => c[d] === 'pass').length
+    const scored = scorecards.filter((c) => c[d] !== 'n/a').length
+    console.log(
+      `${d.padEnd(11)} ${marks.join('  ')}   ${scored ? `${hits}/${scored}` : '— not declared'}`
+    )
+  }
+  console.log('\n  ✓ right   ✗ wrong   · withheld (declined to answer, not wrong)')
+}
+
 async function once(run: number) {
   console.log(`\n═══ RUN ${run} ═══`)
 
@@ -195,6 +299,12 @@ async function once(run: number) {
   // What the model charted BEFORE the mesh question parked it — the accuracy
   // figure to track. The gate makes a wrong carrier harmless; it does not make
   // the read right, and only this line says whether the read improved.
+  const card = score(tally)
+  scorecards.push(card)
+  console.log(
+    'SCORE →',
+    `play ${MARK_ICON[card.play]}  player ${MARK_ICON[card.player]}  td ${MARK_ICON[card.touchdown]}  yards ${MARK_ICON[card.yards]}`
+  )
   console.log(
     'carrier as charted:',
     (reconciled.plays[0]?.credits ?? [])
@@ -265,6 +375,7 @@ async function main() {
       console.log('✗ RUN THREW:', err instanceof Error ? err.message : err)
     }
   }
+  printScorecard()
 }
 
 main()
