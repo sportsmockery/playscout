@@ -185,7 +185,10 @@ interface Scorecard {
   yards: Mark
 }
 
+/** One per veto policy — see the three sheets printed per run. */
 const scorecards: Scorecard[] = []
+const scorecardsB: Scorecard[] = []
+const scorecardsC: Scorecard[] = []
 
 /** Yardage is right if it lands inside the same tolerance the pipeline uses. */
 function yardsMark(counted: number, unmeasured: number, expected?: number): Mark {
@@ -234,19 +237,29 @@ function score(tally: ReturnType<typeof tallyStatPlays>): Scorecard {
 
 const MARK_ICON: Record<Mark, string> = { pass: '✓', fail: '✗', withheld: '·', 'n/a': ' ' }
 
-function printScorecard() {
-  if (!scorecards.length) return
+function printOne(label: string, cards: Scorecard[]) {
+  if (!cards.length) return
   const dims: (keyof Scorecard)[] = ['play', 'player', 'touchdown', 'yards']
-  console.log(`\n══════════ SCORECARD — ${CHARTING} charting ══════════`)
-  console.log('            ' + scorecards.map((_, i) => `r${i + 1}`).join('  '))
+  console.log(`\n══════════ ${CHARTING} charting · ${label} ══════════`)
+  console.log('            ' + cards.map((_, i) => `r${i + 1}`).join('  '))
   for (const d of dims) {
-    const marks = scorecards.map((c) => ` ${MARK_ICON[c[d]]}`)
-    const hits = scorecards.filter((c) => c[d] === 'pass').length
-    const scored = scorecards.filter((c) => c[d] !== 'n/a').length
+    const marks = cards.map((c) => ` ${MARK_ICON[c[d]]}`)
+    const hits = cards.filter((c) => c[d] === 'pass').length
+    const wrong = cards.filter((c) => c[d] === 'fail').length
+    const scored = cards.filter((c) => c[d] !== 'n/a').length
     console.log(
-      `${d.padEnd(11)} ${marks.join('  ')}   ${scored ? `${hits}/${scored}` : '— not declared'}`
+      `${d.padEnd(11)} ${marks.join('  ')}   ${scored ? `${hits}/${scored}${wrong ? ` (${wrong} wrong)` : ''}` : '— not declared'}`
     )
   }
+}
+
+function printScorecard() {
+  if (!scorecards.length) return
+  // Wrong is tracked apart from withheld on purpose: if they scored alike,
+  // never answering would look as good as always being right.
+  printOne('A  check may override charting  (shipped)', scorecards)
+  printOne('B  charting keeps the play, player parked', scorecardsB)
+  printOne('C  check may override only if both checks agree', scorecardsC)
   console.log('\n  ✓ right   ✗ wrong   · withheld (declined to answer, not wrong)')
 }
 
@@ -311,42 +324,90 @@ async function once(run: number) {
     plays.map((p) => `[${p.possession}] ${p.play_type}/${p.result} ${p.yards ?? '?'}yd [${(p.credits ?? []).map((c) => `${c.stat}:${c.position}`).join(', ')}]`)
   )
 
-  // 3. Verify.
-  const verification = await call(buildPlayVerificationPrompt(input), PLAY_VERIFICATION_SCHEMA, {
-    fps: 6,
-    resolution: 'medium',
-    start: window?.startOffsetSeconds,
-    end: window?.endOffsetSeconds,
-  })
-  const verified = parseVerification(verification.text)
-  console.log('verified:', JSON.stringify(verified))
+  // 3. Verify — TWICE.
+  //
+  // The second check is not belt-and-braces, it is the variable under test.
+  // The check's answer currently overrides the charting read's play type, and
+  // measurement found it answering "pass" on 3 of 8 runs of a clip that is a
+  // RUN — destroying a correct read each time. A single confident read being
+  // wrong is the exact problem this module already solved once by reading the
+  // film twice; the check itself was never held to that standard.
+  //
+  // Both checks come from the same prompt on the same window, so the only
+  // thing a disagreement between them measures is the check's own noise.
+  const runCheck = async () =>
+    parseVerification(
+      (
+        await call(buildPlayVerificationPrompt(input), PLAY_VERIFICATION_SCHEMA, {
+          fps: 6,
+          resolution: 'medium',
+          start: window?.startOffsetSeconds,
+          end: window?.endOffsetSeconds,
+        })
+      ).text
+    )
+  const verified = await runCheck()
+  const verified2 = await runCheck()
+  console.log('verified  :', JSON.stringify(verified))
+  console.log('verified 2:', JSON.stringify(verified2))
+
+  // Do the two checks agree about what kind of play it was? That, and nothing
+  // else, is what policy C gates the veto on.
+  const checksAgree =
+    verified.length === verified2.length &&
+    verified.every((v, j) => v.play_type === verified2[j]?.play_type)
+  console.log('checks agree on play type:', checksAgree)
 
   // 4. Reconcile, park what corroboration cannot settle, and tally — the exact
-  //    code a coach's sheet is built from.
-  const reconciled = reconcileReadings(plays, verified)
+  //    code a coach's sheet is built from. Three policies, one set of reads:
+  //      A  the check may override the charting read        (shipped)
+  //      B  the charting read keeps the play, player parked
+  //      C  the check may override only if BOTH checks agree
   const meshScheme = schemeHasQbMesh(input.team?.offensive_style)
-  const settled = flagMeshPointCarries(reconciled.plays, { qbMeshScheme: meshScheme })
-  const tally = tallyStatPlays(settled, { declaredSide: 'offense', allowUnverifiedNumbers: true })
+  const sheetFor = (veto: 'check' | 'charting') => {
+    const reconciled = reconcileReadings(plays, verified, { playTypeVeto: veto })
+    const settled = flagMeshPointCarries(reconciled.plays, { qbMeshScheme: meshScheme })
+    return {
+      reconciled,
+      tally: tallyStatPlays(settled, { declaredSide: 'offense', allowUnverifiedNumbers: true }),
+    }
+  }
+  const A = sheetFor('check')
+  const B = sheetFor('charting')
+  const C = checksAgree ? A : B
+
+  const reconciled = A.reconciled
 
   console.log('agreement:', reconciled.agreement)
   console.log('disputes:', reconciled.disputes)
   console.log('mesh scheme:', meshScheme)
-  console.log(
-    'SHEET →',
-    `rush ${tally.team.offense.carries}/${tally.team.offense.rush_yards}yd`,
-    `pass ${tally.team.offense.pass_completions}/${tally.team.offense.pass_attempts} ${tally.team.offense.pass_yards}yd`,
-    `TD ${tally.team.offense.rush_td + tally.team.offense.pass_td}`,
-    `pending ${tally.team.pendingQuestions}`
-  )
+  for (const [label, s] of [['A check-wins', A], ['B charting-wins', B], ['C corroborated', C]] as const) {
+    console.log(
+      `SHEET ${label.padEnd(15)} →`,
+      `rush ${s.tally.team.offense.carries}/${s.tally.team.offense.rush_yards}yd`,
+      `pass ${s.tally.team.offense.pass_completions}/${s.tally.team.offense.pass_attempts} ${s.tally.team.offense.pass_yards}yd`,
+      `TD ${s.tally.team.offense.rush_td + s.tally.team.offense.pass_td}`,
+      `pending ${s.tally.team.pendingQuestions}`
+    )
+  }
+
   // What the model charted BEFORE the mesh question parked it — the accuracy
   // figure to track. The gate makes a wrong carrier harmless; it does not make
   // the read right, and only this line says whether the read improved.
-  const card = score(tally)
+  const card = score(A.tally)
   scorecards.push(card)
-  console.log(
-    'SCORE →',
-    `play ${MARK_ICON[card.play]}  player ${MARK_ICON[card.player]}  td ${MARK_ICON[card.touchdown]}  yards ${MARK_ICON[card.yards]}`
-  )
+  scorecardsB.push(score(B.tally))
+  scorecardsC.push(score(C.tally))
+  for (const [label, c] of [
+    ['A check-wins', card],
+    ['B charting-wins', scorecardsB[scorecardsB.length - 1]],
+    ['C corroborated', scorecardsC[scorecardsC.length - 1]],
+  ] as const) {
+    console.log(
+      `SCORE ${label.padEnd(15)} →`,
+      `play ${MARK_ICON[c.play]}  player ${MARK_ICON[c.player]}  td ${MARK_ICON[c.touchdown]}  yards ${MARK_ICON[c.yards]}`
+    )
+  }
   console.log(
     'carrier as charted:',
     (reconciled.plays[0]?.credits ?? [])

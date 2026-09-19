@@ -288,10 +288,32 @@ export interface Reconciliation {
  * a few yards are two guesses, so the play keeps its credits and loses its
  * measurement rather than asserting a number neither read supports.
  */
+export interface ReconcileOptions {
+  /**
+   * Who wins when the two reads disagree about run versus pass.
+   *
+   * `check` is the shipped behaviour: the closed-question read supplies the
+   * play. It was justified by measurement on film where the charting read was
+   * wrong and the check was right.
+   *
+   * `charting` keeps the charted play and its yardage and parks only the
+   * PLAYER, on the grounds that a disagreement is evidence about the person
+   * rather than about the event. It exists because the same measurement, run
+   * again, found the opposite failure: on a clip that is a run, the check
+   * answered `pass` on 3 of 8 runs and this rule overwrote a correct charting
+   * read every time, turning `rush 1/50yd` into `pass 1/1, 0yd`.
+   *
+   * Neither is right everywhere, which is the point — see the eval.
+   */
+  playTypeVeto?: 'check' | 'charting'
+}
+
 export function reconcileReadings(
   charted: RawStatPlay[],
-  verified: VerifiedPlay[]
+  verified: VerifiedPlay[],
+  opts: ReconcileOptions = {}
 ): Reconciliation {
+  const playTypeVeto = opts.playTypeVeto ?? 'check'
   const byIndex = new Map(verified.map((v) => [v.play_index, v]))
   const disputes: string[] = []
   let checks = 0
@@ -317,6 +339,38 @@ export function reconcileReadings(
     if (check.play_type !== 'cannot_tell' && kind !== 'other') {
       checks += 1
       if (check.play_type !== kind) {
+        // The charting read keeps the play; only the player is parked.
+        //
+        // A disagreement about run-versus-pass is still evidence that somebody
+        // misread this snap, so the principal actor is a question either way.
+        // What differs is whether the EVENT is taken from the read that lost:
+        // here it is not, so the gain survives too.
+        if (playTypeVeto === 'charting') {
+          disputes.push(
+            `Play ${index}: the charting read called this a ${kind} and the check read a ${check.play_type}. The charting account is what is counted — check the player.`
+          )
+          const contested = principalCredit(credits)
+          return {
+            ...play,
+            credits: credits.map((c) =>
+              c === contested
+                ? {
+                    ...c,
+                    unresolved: true,
+                    question:
+                      kind === 'pass' ? 'Who caught this pass?' : 'Who carried the ball on this play?',
+                    candidates: [
+                      normalizeStatPosition(c.position, 'offense'),
+                      check.ball_ended_with
+                        ? normalizeStatPosition(check.ball_ended_with, 'offense')
+                        : null,
+                    ].filter((p, j, all) => !!p && all.indexOf(p) === j) as string[],
+                  }
+                : c
+            ),
+          }
+        }
+
         // Discarding was the first answer, and the measurements retired it.
         // Across nine runs on two clips with known answers the charting read
         // was right ONCE; the closed-question read was right every time it
