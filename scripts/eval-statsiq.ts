@@ -293,7 +293,11 @@ async function once(run: number) {
   const plays = parsed.data.stat_plays ?? []
   console.log(
     'charted:',
-    plays.map((p) => `${p.play_type}/${p.result} ${p.yards ?? '?'}yd [${(p.credits ?? []).map((c) => `${c.stat}:${c.position}`).join(', ')}]`)
+    // Possession is printed because a read that gets the PLAY right and the
+    // UNIT wrong produces an empty sheet that looks like a charting failure:
+    // the facts path once returned "run, touchdown, 50 yards" and charted it
+    // as the opponent's, so the only visible symptom was rush 0/0.
+    plays.map((p) => `[${p.possession}] ${p.play_type}/${p.result} ${p.yards ?? '?'}yd [${(p.credits ?? []).map((c) => `${c.stat}:${c.position}`).join(', ')}]`)
   )
 
   // 3. Verify.

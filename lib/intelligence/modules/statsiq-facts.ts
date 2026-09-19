@@ -56,14 +56,23 @@ export function buildSTATSIQFactsPrompt(input: ModulePromptInput): string {
     ? `${teamLabel} wears ${team.jersey_color} in this film. Answer only about them — a stat belonging to the other team is worse than a missing stat.`
     : `No jersey colour was given for ${teamLabel}. Work out which team is ours from the play itself, and answer "unclear" for possession rather than guessing.`
 
+  // The coach has told us which unit is on this film, and that answer beats
+  // anything the model infers from the picture.
+  //
+  // MEASURED: the first version of this said "possession is 'ours' on a normal
+  // play", and on the 55-yard keeper the model answered "theirs" — deciding
+  // from the film that the scoring team must be the opponent — and then charted
+  // three of OUR defenders for mistakes on a touchdown our own offense scored.
+  // The play itself was read correctly (run, touchdown, 50 yards) and the sheet
+  // still came out empty. A hedge is not an instruction.
   const side = (() => {
     switch (team?.side_of_ball) {
       case 'offense':
-        return `${teamLabel} is on OFFENSE in these clips, so possession is "ours" on a normal play.`
+        return `${teamLabel} IS ON OFFENSE IN THIS FILM. Answer possession "ours" on every play unless you can actually see the other team snap the ball. The team advancing the ball is OURS even if that surprises you, and the tackles on these plays were made by the OPPONENT — leave tacklers empty and answer no mistakes.`
       case 'defense':
-        return `${teamLabel} is on DEFENSE in these clips, so possession is "theirs" on a normal play.`
+        return `${teamLabel} IS ON DEFENSE IN THIS FILM. Answer possession "theirs" on every play unless you can actually see our team snap the ball. The carries and catches on these plays belong to the OPPONENT and must not be answered — answer only the tacklers, the takeaways and the mistakes.`
       default:
-        return `Decide per play whether ${teamLabel} has the ball.`
+        return `Decide per play whether ${teamLabel} has the ball, and answer "unclear" rather than guessing.`
     }
   })()
 
@@ -90,6 +99,12 @@ ${coachNote ? `COACH NOTE: ${coachNote}` : ''}
 Answer every question for every play, in order. A question you cannot answer from the film has
 an answer for that — null, or "cannot_tell". Use it. A null answer becomes a one-tap question
 for the coach; a wrong answer becomes a statistic on the wrong child's season.
+
+=== 0. possession — WHO HAS THE BALL ===
+"ours" means ${teamLabel} is the unit with the ball on this play and you answer the offensive
+questions. "theirs" means the other team has it and you answer the defensive ones. Read the
+statement above about which unit is on this film before you answer: it comes from the coach who
+filmed it, and it outranks what the picture suggests to you.
 
 === 1. play_type — RUN or PASS? ===
 THE TEST IS THE BALL IN FLIGHT. A pass happened only if you can see the ball leave a hand and
