@@ -431,14 +431,28 @@ export interface PositionAnalysisResult {
   plus clip B's *carrier*, and got restated as a property of the charting pass in general. It is
   not one: charting is unreliable on the PASS clip and reliable on the RUN clip, and both prompts
   share that shape.
-- **The VERIFICATION pass has a pass-bias, and it is now the biggest single source of wrong
-  answers.** Across the 8 clip-B runs it answered `pass` on 3 of them — on a clip that is a run —
-  and `rebuildFromCheck` then overwrote a CORRECT charting read each time, turning
-  `rush 1/50yd` into `pass 1/1, 0yd`. On clip A (a real pass) it answered `pass` 8/8. Every wrong
-  play type recorded in this session came from that rule firing on a good read, in both arms.
-  The check's veto was justified when charting was assumed unreliable everywhere; that assumption
-  is the one the bullet above just retired. **Measure this before touching either charting
-  prompt again** — it is upstream of both.
+- **The check may overrule the charting read only when a SECOND run of the check agrees with the
+  first.** The check's veto (`rebuildFromCheck`) was justified when charting was assumed
+  unreliable everywhere, and the bullet above retired that assumption. Measured: on the clip that
+  IS a run it answered `pass` on 3 of 8 runs and overwrote a correct charting read every time,
+  turning `rush 1/50yd` into `pass 1/1, 0yd`; on the clip that is a pass it answered `pass` 7/7
+  and was the read that was RIGHT, rescuing a sheet whose charting was right once in four.
+  Three policies scored off identical reads, 11 scored runs:
+
+  | | clip A (pass) | clip B (run) |
+  |---|---|---|
+  | check always wins (was shipped) | 7/7 | 3/4 |
+  | charting always wins | 1/7 | 4/4 |
+  | **check wins only if corroborated** | **7/7** | **4/4** |
+
+  Neither single policy is right on both clips. What separates the two cases is not the check's
+  verdict but its CONSISTENCY, and a second run is what exposes it — the module's own founding
+  argument (one confident read cannot be trusted) finally applied to the checking read too.
+  `hasPlayTypeDispute` means the extra call is paid for ONLY on a film where the veto would fire,
+  which is a small minority of plays, and the second call is cached under its own key — reusing
+  the first key would hand back the first answer and the test would pass against itself. A second
+  read that cannot be obtained leaves the old behaviour in place, because failing the other way
+  scored 1/7 on the pass clip.
 - **Where the two reads disagree, the CHECK supplies the play** (`rebuildFromCheck`). Discarding
   both was the first answer and it was retired by measurement: the charting read has been right
   once in nine runs, the closed-question read right every time it answered, so discarding threw

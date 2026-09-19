@@ -45,6 +45,8 @@ import {
   PLAY_VERIFICATION_SCHEMA,
   parseVerification,
   reconcileReadings,
+  hasPlayTypeDispute,
+  verificationsAgreeOnPlayType,
   flagMeshPointCarries,
   schemeHasQbMesh,
 } from './stat-verify'
@@ -579,21 +581,23 @@ export async function analyzePosition(
     const verifyHash = hashCacheKey('frame_observation', `STATSIQ:verify:${verifyPrompt}`, evidenceKey)
     const cachedVerify = await getCachedResponse<string>(supabase, verifyHash)
 
+    // One read of the film by the checking prompt. Called again below, on a
+    // disputed play, to find out whether the check is consistent with itself.
+    const runVerification = () =>
+      clip
+        ? analyzeClipWithGemini(verifyPrompt, clip.source, PLAY_VERIFICATION_SCHEMA, {
+            model: route.model,
+            fps: config.fps,
+            mediaResolution: config.resolution,
+            startOffsetSeconds: readWindow.startOffsetSeconds,
+            endOffsetSeconds: readWindow.endOffsetSeconds,
+          })
+        : analyzeFramesWithGemini(verifyPrompt, frames, PLAY_VERIFICATION_SCHEMA, {
+            model: route.model,
+          })
+
     let verifyJson = cachedVerify
     if (verifyJson == null) {
-      const runVerification = () =>
-        clip
-          ? analyzeClipWithGemini(verifyPrompt, clip.source, PLAY_VERIFICATION_SCHEMA, {
-              model: route.model,
-              fps: config.fps,
-              mediaResolution: config.resolution,
-              startOffsetSeconds: readWindow.startOffsetSeconds,
-              endOffsetSeconds: readWindow.endOffsetSeconds,
-            })
-          : analyzeFramesWithGemini(verifyPrompt, frames, PLAY_VERIFICATION_SCHEMA, {
-              model: route.model,
-            })
-
       // Retried once, because losing this call is not a neutral outcome.
       //
       // Measured on real film: across six runs the charting pass got the play
@@ -621,7 +625,50 @@ export async function analyzePosition(
     // must not silently pass it either, so agreement stays null and the sheet
     // says it was not corroborated.
     if (verifyJson != null) {
-      const reconciled = reconcileReadings(statPlays, parseVerification(verifyJson))
+      const verified = parseVerification(verifyJson)
+
+      // The check may overrule the charting read only when a SECOND run of the
+      // check tells the same story. See verificationsAgreeOnPlayType for the
+      // measurement: neither "the check always wins" nor "charting always wins"
+      // is right on both ground-truth clips, and requiring corroboration scores
+      // the best of each (11/11 against 10/11 and 5/11).
+      //
+      // Paid for only when the veto would actually fire — on a film where the
+      // two reads already agree there is nothing to corroborate, which is the
+      // overwhelming majority of plays.
+      let playTypeVeto: 'check' | 'charting' = 'check'
+      if (hasPlayTypeDispute(statPlays, verified)) {
+        // A DIFFERENT cache key, or the store hands back the first call's own
+        // answer and the corroboration test passes vacuously against itself.
+        const verify2Hash = hashCacheKey(
+          'frame_observation',
+          `STATSIQ:verify2:${verifyPrompt}`,
+          evidenceKey
+        )
+        let verify2Json = await getCachedResponse<string>(supabase, verify2Hash)
+        if (verify2Json == null) {
+          const second = await runVerification().catch(() => null)
+          if (second) {
+            verify2Json = second.text
+            await recordUsage(supabase, {
+              teamId: input.teamId, userId, jobType: 'frame_observation',
+              provider: route.provider, model: route.model,
+              inputTokens: second.usage.inputTokens, outputTokens: second.usage.outputTokens,
+            })
+            await setCachedResponse(supabase, verify2Hash, 'frame_observation', verify2Json)
+          }
+        }
+        // A second read we could not get leaves the shipped behaviour in place.
+        // Falling the other way would be worse: "charting always wins" scored
+        // 1/7 on the pass clip, where the check is the read that is right.
+        if (verify2Json != null) {
+          playTypeVeto = verificationsAgreeOnPlayType(verified, parseVerification(verify2Json))
+            ? 'check'
+            : 'charting'
+        }
+      }
+
+      const reconciled = reconcileReadings(statPlays, verified, { playTypeVeto })
       statPlays = reconciled.plays
       statDisputes = reconciled.disputes
       chartingAgreement = reconciled.agreement

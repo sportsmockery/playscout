@@ -4,6 +4,8 @@ import {
   parseVerification,
   flagMeshPointCarries,
   schemeHasQbMesh,
+  hasPlayTypeDispute,
+  verificationsAgreeOnPlayType,
   type VerifiedPlay,
 } from './stat-verify'
 import { tallyStatPlays, type RawStatPlay } from './stat-lines'
@@ -514,5 +516,64 @@ describe('a turnover the second read contradicts', () => {
     )
     expect(plays[0].credits).toHaveLength(1)
     expect(disputes).toHaveLength(0)
+  })
+})
+
+describe('the check must corroborate itself before it may overrule charting', () => {
+  // MEASURED, 11 scored runs over two ground-truth clips: "the check always
+  // wins" scored 7/7 on the pass clip and 3/4 on the run clip; "charting always
+  // wins" scored 1/7 and 4/4. Requiring the check to agree with a second run of
+  // itself scored 7/7 and 4/4 — the best of both, losing to neither.
+  it('spots a play-type dispute, so a second read is only paid for when it matters', () => {
+    expect(hasPlayTypeDispute([chartedAsRun()], [verified({ play_type: 'pass' })])).toBe(true)
+    expect(hasPlayTypeDispute([chartedAsRun()], [verified({ play_type: 'run' })])).toBe(false)
+  })
+
+  it('treats "cannot tell" as no dispute — an abstention overrules nothing', () => {
+    expect(hasPlayTypeDispute([chartedAsRun()], [verified({ play_type: 'cannot_tell' })])).toBe(false)
+  })
+
+  it('finds no dispute when the check never saw that play', () => {
+    expect(hasPlayTypeDispute([chartedAsRun({ play_index: 2 })], [verified()])).toBe(false)
+  })
+
+  it('agrees only when both reads tell the same story', () => {
+    expect(
+      verificationsAgreeOnPlayType([verified({ play_type: 'pass' })], [verified({ play_type: 'pass' })])
+    ).toBe(true)
+    expect(
+      verificationsAgreeOnPlayType([verified({ play_type: 'pass' })], [verified({ play_type: 'run' })])
+    ).toBe(false)
+  })
+
+  it('does not call two reads of different lengths an agreement', () => {
+    expect(verificationsAgreeOnPlayType([verified()], [])).toBe(false)
+  })
+
+  // The clip-B failure: charting read the keeper correctly and one noisy check
+  // turned `rush 1/50yd` into `pass 1/1, 0yd`.
+  it('keeps the charted play and its yardage when the check is not corroborated', () => {
+    const { plays } = reconcileReadings([chartedAsRun()], [verified({ play_type: 'pass' })], {
+      playTypeVeto: 'charting',
+    })
+    const tally = tallyStatPlays(plays, { declaredSide: 'offense', allowUnverifiedNumbers: true })
+    expect(tally.team.offense.carries).toBe(1)
+    expect(tally.team.offense.rush_yards).toBe(55)
+    expect(tally.team.offense.pass_attempts).toBe(0)
+  })
+
+  it('still parks the player, because a disagreement is doubt about who', () => {
+    const { plays } = reconcileReadings([chartedAsRun()], [verified({ play_type: 'pass' })], {
+      playTypeVeto: 'charting',
+    })
+    const rush = (plays[0].credits ?? []).find((c) => c.stat === 'rush')
+    expect(rush?.unresolved).toBe(true)
+    expect(rush?.candidates).toContain('qb')
+  })
+
+  it('leaves the shipped behaviour in place by default', () => {
+    const { plays } = reconcileReadings([chartedAsRun()], [verified({ play_type: 'pass' })])
+    const tally = tallyStatPlays(plays, { declaredSide: 'offense', allowUnverifiedNumbers: true })
+    expect(tally.team.offense.carries).toBe(0)
   })
 })

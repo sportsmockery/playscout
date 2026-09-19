@@ -161,6 +161,47 @@ function chartedKind(play: RawStatPlay): 'run' | 'pass' | 'other' {
   return 'other'
 }
 
+/**
+ * Would the check's play-type veto fire anywhere in this film?
+ *
+ * Asked BEFORE paying for a second verification: on a film where both reads
+ * already agree there is nothing to corroborate, and the overwhelming majority
+ * of plays agree. Only a disputed play is worth another look at the video.
+ */
+export function hasPlayTypeDispute(charted: RawStatPlay[], verified: VerifiedPlay[]): boolean {
+  const byIndex = new Map(verified.map((v) => [v.play_index, v]))
+  return charted.some((play, i) => {
+    const check = byIndex.get(play.play_index ?? i + 1)
+    if (!check || check.play_type === 'cannot_tell') return false
+    const kind = chartedKind(play)
+    return kind !== 'other' && check.play_type !== kind
+  })
+}
+
+/**
+ * Do two independent runs of the verification prompt tell the same story about
+ * what kind of plays these were?
+ *
+ * This is the whole of policy C. MEASURED, 11 scored runs over two clips whose
+ * truth the coach supplied, scoring three policies off identical reads:
+ *
+ *                                     clip A (pass)   clip B (run)
+ *   check always wins (shipped)          7/7              3/4
+ *   charting always wins                 1/7              4/4
+ *   check wins only if corroborated      7/7              4/4
+ *
+ * Neither single policy is right on both clips: the check answered "pass" 7/7
+ * on the clip that IS a pass, rescuing a sheet whose charting read was right
+ * once in four — and answered "pass" on 3 of 8 runs of the clip that is a RUN,
+ * destroying a correct read each time. What separates those two cases is not
+ * the check's verdict but its CONSISTENCY, and a second run is what exposes it.
+ */
+export function verificationsAgreeOnPlayType(a: VerifiedPlay[], b: VerifiedPlay[]): boolean {
+  if (a.length !== b.length) return false
+  const byIndex = new Map(b.map((v) => [v.play_index, v]))
+  return a.every((v) => byIndex.get(v.play_index)?.play_type === v.play_type)
+}
+
 /** The credit that carries the play — the one whose attribution actually matters. */
 function principalCredit(credits: RawStatCredit[]): RawStatCredit | undefined {
   return (
