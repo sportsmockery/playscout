@@ -467,6 +467,21 @@ export interface PositionAnalysisResult {
   in one field or exactly with a Plays-screen breakdown; ball carrier **qb 3 / rb 2 /
   wingback_right 1** — a genuine coin flip, parked as a question **6/6** so a wrong name never
   reaches a player's line. Re-measure before changing any of this.
+- **Do NOT re-try "ask for two field positions and subtract them".** It is a good idea and it is
+  wrong here. The premise — that reading a painted stripe is an observation while a gain is a
+  calculation, so the model should report start and end and let the code subtract — fails because
+  the model does not read the two ends independently. Across eight runs on two clips the derived
+  figure equalled its own stated gain EVERY time (`model said 24 | positions 48 → 72 = 24`): it
+  decides the gain and back-fills two positions that produce it. It also cost accuracy — clip B's
+  yardage went 4/4 to 2/4 — and was reverted. Third hypothesis killed by measurement today after
+  8fps/high and the jersey colour.
+- **Scored baseline, 4 runs per clip** (`EVAL_TRUTH_PLAY` / `_PLAYER` / `_TD` / `_YARDS`):
+  play type **8/8**, touchdown **8/8**, yardage **4/4** on the clip whose gain is known. Nothing
+  measured is WRONG. The whole remaining gap is that the module does not name the PLAYER — clip
+  B's carrier is withheld 4/4 by the mesh gate (charting said wingback_left ×3 and rb ×1 against a
+  true qb, so the gate is earning its place), and clip A's receiver is withheld because the two
+  reads disagree. "Withheld" is tracked separately from "wrong" in the harness for exactly this
+  reason: if they scored alike, never answering would look as good as always being right.
 - **Sample rate is 6fps/medium, and that is measured, not assumed.** Raising it to 8fps/high made
   the module worse: swept against real film it read a quarterback touchdown run as an intercepted
   pass, while 6fps/medium returned "run, touchdown" every time and came within a yard of the true
