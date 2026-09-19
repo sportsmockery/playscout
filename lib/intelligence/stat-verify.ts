@@ -1,7 +1,7 @@
 import { Type } from '@google/genai'
 import { buildFootballBrain } from './football-brain'
 import { resolveLevelTier } from './levels'
-import { normalizeStatPosition, isOffensivePosition } from './positions'
+import { normalizeStatPosition, isOffensivePosition, LEFT_RIGHT_RULE } from './positions'
 import type { ModulePromptInput } from './schemas'
 import type { RawStatPlay, RawStatCredit } from './stat-lines'
 
@@ -81,9 +81,15 @@ For EVERY play in this clip, in order, answer these questions from what you can 
    mesh-point reasoning; this one only has to corroborate.
 
 3. ball_ended_with — the position of the player who finished the play with the ball (the runner,
-   or the receiver who caught it). Use the position vocabulary ids: qb, rb, fb, wingback_left,
-   wingback_right, te_left, te_right, wr_left, wr_right, slot_left, slot_right. Null if you
-   cannot tell.
+   or the receiver who caught it). Use these ids: qb, rb, fb, wingback_left, wingback_right,
+   te_left, te_right, wr_left, wr_right, slot_left, slot_right. Null if you cannot tell.
+
+   ${LEFT_RIGHT_RULE}
+
+   Work it out deliberately before you answer: which way is this offence moving, and is the
+   player on their left hand or their right? A receiver on the near sideline is on their RIGHT
+   when they attack to your right, and on their LEFT when they attack to your left. Getting this
+   backwards names a different child.
 
 4. thrown_by — on a pass, the position of the thrower. Null on a run or if you cannot tell.
 

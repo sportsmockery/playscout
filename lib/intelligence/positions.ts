@@ -319,6 +319,21 @@ function sideFallback(side?: 'offense' | 'defense' | null): StatPosition {
  * Renders the vocabulary into the prompt, so what the model is told matches
  * what the schema enforces and what the tally counts — one source, three uses.
  */
+/**
+ * Whose left is "left". Exported because EVERY prompt that names a side has to
+ * say this, and one that does not will silently answer from the camera.
+ *
+ * Measured: the verification prompt listed the position ids without this
+ * paragraph, and on a completed pass to the RIGHT receiver it answered
+ * `wr_left` on essentially every run — a clean mirror flip. That answer had
+ * been harmless while the check could only veto, and stopped being harmless the
+ * moment `rebuildFromCheck` started crediting the catch to it, which is how a
+ * missing sentence in one prompt became a wrong name on a player's line.
+ */
+export const LEFT_RIGHT_RULE = `LEFT and RIGHT are always from the perspective of the unit you are grading, facing the way they
+are going. Never from the camera: the same snap shot from the other sideline would flip every
+label, and then no two plays could be added together.`
+
 export function buildPositionVocabularyPrompt(side: 'offense' | 'defense' | 'both'): string {
   const blocks: string[] = []
   if (side !== 'defense') {
@@ -334,9 +349,7 @@ export function buildPositionVocabularyPrompt(side: 'offense' | 'defense' | 'bot
 
   return `POSITION VOCABULARY — use these exact ids and nothing else.
 
-LEFT and RIGHT are always from the perspective of the unit you are grading, facing the way they
-are going. Never from the camera: the same snap shot from the other sideline would flip every
-label, and then no two plays could be added together.
+${LEFT_RIGHT_RULE}
 
 ${blocks.join('\n\n')}
 
