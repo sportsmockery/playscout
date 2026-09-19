@@ -185,6 +185,28 @@ body {
   border-color: rgba(255, 255, 255, 0.06);
 }
 
+/* ─── Report masthead ────────────────────────────────────────────────
+   The top of a report, which is a glass card with two differences. The
+   gold accent above is permanent rather than a hover reveal — it is the
+   sheet's letterhead, and a coach reading a printout never hovers. And it
+   does not lift: a header that jumps when the cursor crosses it reads as a
+   button, and this one is not clickable.
+
+   A Tailwind `border-t-*` utility cannot do this. `.glass-card` is
+   unlayered CSS, so its `border` shorthand beats any layered utility
+   regardless of where the class sits in the markup — which is exactly how
+   the first attempt at this silently rendered no rule at all. */
+.report-masthead::before {
+  transform: scaleX(1);
+}
+
+.report-masthead:hover {
+  transform: none;
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 1px 3px rgba(15, 23, 42, 0.06);
+}
+
 /* ─── Gold glow ──────────────────────────────────────────────────── */
 .gold-glow {
   box-shadow: 0 0 20px rgba(201, 162, 39, 0.3), 0 0 44px rgba(201, 162, 39, 0.14);
@@ -449,6 +471,18 @@ body {
 
   .gold-glow {
     box-shadow: none !important;
+  }
+
+  /* The flattening rule above resets `border` wholesale, which takes the
+     masthead's gold rule with it — and that rule is the one border on these
+     sheets carrying brand rather than structure. A border, not a background,
+     precisely so it survives a print with background graphics switched off.
+     A report identifies itself on the first page or nowhere, so it does not
+     get separated from what follows it either. */
+  .report-masthead {
+    border-top: 3px solid var(--brand-gold) !important;
+    break-after: avoid;
+    page-break-after: avoid;
   }
 
   /* Keep a card, a finding, or a player's row from splitting across a

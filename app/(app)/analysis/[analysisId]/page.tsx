@@ -8,6 +8,8 @@ import { createClient } from '@/lib/supabase/server';
 import PrintButton from './PrintButton';
 import NextSteps from '@/components/intelligence/NextSteps';
 import StatSheet from '@/components/intelligence/StatSheet';
+import ReportMasthead from '@/components/intelligence/ReportMasthead';
+import { formatReportDate, moduleReportKind } from '@/lib/intelligence/report-labels';
 import type { StatLine, TeamStatTotals } from '@/lib/intelligence/stat-lines';
 
 export async function generateMetadata({ params }: { params: Promise<{ analysisId: string }> }) {
@@ -141,53 +143,50 @@ export default async function SavedAnalysisPage({
         <PrintButton />
       </div>
 
-      <div className="glass-card p-6 mb-5 print:border print:shadow-none">
-        <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div>
-            <p className="text-xs font-bold text-[var(--brand-navy)] uppercase tracking-wide">{analysis.module_key}</p>
-            <h1 className="text-xl font-bold text-[var(--brand-navy)] mt-1">
-              {record.teams?.name ?? 'Team Report'}
-              {record.players && ` — ${record.players.first_name} ${record.players.last_name}`}
-            </h1>
-            <p className="text-sm text-[var(--brand-muted)] mt-1">
-              {new Date(analysis.created_at).toLocaleDateString()}
-              {analysis.edited_at && ' · edited by coach'}
-              {/* On paper the surrounding app is gone, so the sheet has to say
-                  how much film is behind it. */}
-              <span className="print-only">
-                {evidence.plays_observed
-                  ? ` · ${evidence.plays_observed} play${evidence.plays_observed === 1 ? '' : 's'} observed`
-                  : ''}
-                {analysis.frames_analyzed ? ` · ${analysis.frames_analyzed} frames read` : ''}
-              </span>
-            </p>
-          </div>
-          {analysis.overall_score != null && (
-            <div className="text-center">
-              <p className="text-3xl font-bold text-[var(--brand-navy)]">{analysis.overall_score}</p>
-              {/* StatsIQ's number rates the FILM, not the team — how much of it
-                  could be charted. Shown as "/ 100" it reads as a grade, and a
-                  coach would take a 62 as a verdict on their players. */}
-              <p className="text-xs text-[var(--brand-muted)]">
-                {charting ? 'charting coverage' : '/ 100'}
-              </p>
-            </div>
-          )}
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 mt-3">
-          {typeof evidence.plays_observed === 'number' && (
-            <span className="inline-flex items-center rounded-full bg-[var(--brand-bg)] border border-[var(--brand-border)] px-2 py-0.5 text-xs font-medium text-[var(--brand-ink)]">
-              Sample: {evidence.plays_observed} {evidence.plays_observed === 1 ? 'play' : 'plays'}
-            </span>
-          )}
-          {typeof evidence.confidence === 'number' && (
-            <span className="inline-flex items-center rounded-full bg-[var(--brand-bg)] border border-[var(--brand-border)] px-2 py-0.5 text-xs font-medium text-[var(--brand-ink)]">
-              Confidence: {Math.round(evidence.confidence * 100)}%
-            </span>
-          )}
-        </div>
-      </div>
+      <ReportMasthead
+        moduleKey={analysis.module_key ?? 'PLAYSCOUT'}
+        kind={moduleReportKind(analysis.module_key)}
+        subject={record.teams?.name ?? null}
+        title={
+          record.players
+            ? `${record.players.first_name} ${record.players.last_name}${record.players.primary_position ? ` — ${record.players.primary_position}` : ''}`
+            : (record.teams?.name ?? 'Team Report')
+        }
+        facts={[
+          ...(analysis.overall_score != null
+            ? [
+                {
+                  // StatsIQ's number rates the FILM, not the team — how much of
+                  // it could be charted. Labelled "overall" it reads as a grade,
+                  // and a coach would take a 62 as a verdict on their players.
+                  label: charting ? 'Charting coverage' : 'Overall',
+                  value: charting ? `${analysis.overall_score}%` : `${analysis.overall_score} / 100`,
+                  tone: gradeColor(analysis.overall_score),
+                },
+              ]
+            : []),
+          ...(typeof evidence.plays_observed === 'number'
+            ? [
+                {
+                  label: 'Sample',
+                  value: `${evidence.plays_observed} ${evidence.plays_observed === 1 ? 'play' : 'plays'}`,
+                },
+              ]
+            : []),
+          ...(typeof evidence.confidence === 'number'
+            ? [{ label: 'Confidence', value: `${Math.round(evidence.confidence * 100)}%` }]
+            : []),
+          {
+            label: analysis.edited_at ? 'Date · edited by coach' : 'Report date',
+            value: formatReportDate(analysis.created_at),
+          },
+        ]}
+        printNote={
+          analysis.frames_analyzed
+            ? `playscout.ai · ${analysis.frames_analyzed} frames read.`
+            : 'playscout.ai'
+        }
+      />
 
       {evidence.head_contact_flag?.flagged && (
         <div className="rounded-lg border-2 border-red-500 bg-red-50 p-4 mb-5">

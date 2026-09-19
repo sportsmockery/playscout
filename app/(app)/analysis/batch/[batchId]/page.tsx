@@ -1,7 +1,7 @@
 import { getAnalysisBatchById } from '@/lib/db/queries';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { AlertCircle, ArrowLeft, CheckCircle2, Clock, Film, Layers, TrendingDown, TrendingUp } from 'lucide-react';
+import { AlertCircle, ArrowLeft, CheckCircle2, Clock, Film, TrendingDown, TrendingUp } from 'lucide-react';
 import type { BatchAggregate } from '@/lib/intelligence/aggregate-batch';
 import type { BatchSummary } from '@/lib/intelligence/batch-summary';
 import ClipBreakdown from './ClipBreakdown';
@@ -10,6 +10,8 @@ import AwaitSummary from './AwaitSummary';
 import NextSteps from '@/components/intelligence/NextSteps';
 import PrintButton from '@/components/intelligence/PrintButton';
 import BoxScore from '@/components/intelligence/BoxScore';
+import ReportMasthead from '@/components/intelligence/ReportMasthead';
+import { formatReportDate, moduleReportKind } from '@/lib/intelligence/report-labels';
 
 export async function generateMetadata({ params }: { params: Promise<{ batchId: string }> }) {
   const { batchId } = await params;
@@ -63,6 +65,12 @@ export default async function BatchReportPage({
   // flip. "Consistent Strengths" over a team you are preparing to play reads
   // as praise for them rather than as the thing that will beat you.
   const scouting = batch.module_key === 'SCOUTIQ';
+  const charting = batch.module_key === 'STATSIQ';
+
+  // Joined by getAnalysisBatchById. On paper the surrounding app is gone, so
+  // the sheet has to say which team it belongs to.
+  const joinedTeam = (batch as { teams?: { name?: string } | { name?: string }[] }).teams;
+  const teamName = (Array.isArray(joinedTeam) ? joinedTeam[0] : joinedTeam)?.name ?? null;
 
   return (
     <div className="p-6 max-w-4xl mx-auto print:p-0">
@@ -77,34 +85,34 @@ export default async function BatchReportPage({
         <PrintButton label={scouting ? 'Print scouting sheet' : 'Print practice sheet'} />
       </div>
 
-      {/* Header */}
-      <div className="glass-card p-6 mb-5">
-        <div className="flex items-start gap-4 flex-wrap">
-          <div className="w-12 h-12 rounded-xl bg-[var(--brand-navy)]/10 flex items-center justify-center shrink-0">
-            <Layers size={22} className="text-[var(--brand-navy)]" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-xs font-bold uppercase tracking-wide text-[var(--brand-muted)]">
-              {batch.module_key} · Combined Report
-            </p>
-            <h1 className="text-2xl font-bold text-[var(--brand-navy)] leading-tight mt-0.5">
-              {summary?.headline ?? batch.title ?? `${clips.length} clips analyzed`}
-            </h1>
-            <p className="text-sm text-[var(--brand-muted)] mt-1">
-              {completed} of {clips.length} clip{clips.length === 1 ? '' : 's'} analyzed
-              {aggregate?.averageScore != null && (
-                <>
-                  {' · '}
-                  average <span className={`font-bold ${scoreColor(aggregate.averageScore)}`}>{aggregate.averageScore}</span>
-                </>
-              )}
-              {aggregate?.playsObserved ? ` · ${aggregate.playsObserved} plays observed` : ''}
-              {' · '}
-              {new Date(batch.created_at as string).toLocaleDateString()}
-            </p>
-          </div>
-        </div>
-      </div>
+      <ReportMasthead
+        moduleKey={batch.module_key as string}
+        kind={`${moduleReportKind(batch.module_key as string)} · Combined`}
+        subject={teamName}
+        title={(summary?.headline ?? batch.title ?? `${clips.length} clips analyzed`) as string}
+        facts={[
+          {
+            label: 'Clips analyzed',
+            value: `${completed} of ${clips.length}`,
+          },
+          // StatsIQ's number rates the FILM — how much of it could be charted —
+          // not the team, so it cannot be labelled as a score here either.
+          ...(aggregate?.averageScore != null
+            ? [
+                {
+                  label: charting ? 'Avg charting coverage' : 'Average score',
+                  value: aggregate.averageScore,
+                  tone: scoreColor(aggregate.averageScore),
+                },
+              ]
+            : []),
+          ...(aggregate?.playsObserved
+            ? [{ label: 'Plays observed', value: aggregate.playsObserved }]
+            : []),
+          { label: 'Report date', value: formatReportDate(batch.created_at as string) },
+        ]}
+        printNote={`playscout.ai · ${moduleReportKind(batch.module_key as string)} built from ${completed} clip${completed === 1 ? '' : 's'} of film.`}
+      />
 
       {/* For a StatsIQ batch the box score IS the report, so it leads — and it
           is computed rather than written, so it is here even when the
