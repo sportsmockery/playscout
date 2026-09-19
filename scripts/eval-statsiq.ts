@@ -54,11 +54,22 @@ const runs = Number(process.argv[3] ?? 1)
  * call is identical, so a difference in the scorecard is a difference in the
  * ask and nothing else.
  *
- * Recorded baseline for `narrative`, 4 runs per clip:
- *   clip A (4th-down pass, right WR) — play 4/4, TD 4/4, player withheld 4/4
- *   clip B (55yd QB keeper TD)       — play 4/4, TD 4/4, yards 4/4, carrier withheld 4/4
- * Nothing measured is wrong on either; the gap is that neither names the player.
- * `facts` replaces the default only if it beats that on BOTH clips.
+ * MEASURED HEAD-TO-HEAD, 4 runs per arm per clip, one session:
+ *   clip A (4th-down pass, right WR)  narrative play 4/4 | facts play 4/4   — identical
+ *   clip B (55yd QB keeper TD)        narrative play 3/4, TD 4/4, yards 3/4
+ *                                     facts     play 1/3, TD 3/4, yards 1/2 — worse
+ * `facts` did not earn the default and does not have it.
+ *
+ * Two things that measurement corrected, both worth more than the rebuild:
+ *  - Charting is not uniformly unreliable. On clip B the narrative pass read
+ *    `run/touchdown/50yd` 4/4; on clip A it was right 1/4. Same for facts.
+ *  - The VERIFICATION pass answered `pass` on 3 of 8 clip-B runs — a clip that
+ *    is a run — and rebuildFromCheck overwrote a correct charting read every
+ *    time. That is where every wrong play type in the session came from.
+ *
+ * NOTE ON TRUTH DECLARATIONS: clip A is NOT a touchdown. Running it with
+ * EVAL_TRUTH_TD=1 scores 0/4 on both arms and the failure is the declaration,
+ * not the module. Get the truth right before reading the scorecard.
  */
 const CHARTING = process.env.EVAL_CHARTING === 'facts' ? 'facts' : 'narrative'
 if (!clipPath) {

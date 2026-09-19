@@ -411,21 +411,34 @@ export interface PositionAnalysisResult {
   completed**. The short closed-question prompt beats the 25,700-character charting prompt on the
   load-bearing facts, and any future work on this module should start there rather than adding
   more instructions to the big one.
-- **A closed-question charting prompt exists and is NOT the default yet** — `modules/statsiq-facts.ts`
-  plus `stat-facts.ts`, behind `STATSIQ_CHARTING=facts`. It asks the same kind of closed questions
-  the verification pass asks (run or pass, did the ball change hands, who finished with it, how
-  far, was there a flag) and **assembles the credits in code**, which is the point: the pairing
+- **A closed-question charting prompt exists, was measured, and LOST** — `modules/statsiq-facts.ts`
+  plus `stat-facts.ts`, behind `STATSIQ_CHARTING=facts`, default OFF. It asks the same kind of
+  closed questions the verification pass asks and **assembles the credits in code**: the pairing
   rules, the carry deduction and the solo-vs-assisted constraint stop being instructions a model
-  has to follow and become things the output cannot express. A completion emits its thrower and
-  its catcher together or parks one as a question; a stop is solo or shared, never both; a hidden
-  mesh yields no carrier rather than a guess. 25 unit tests cover the derivation, and the module
-  contract test now runs schema → conversion → `PositionAnalysisOutputSchema`.
-  It renders to ~12,100 characters against the narrative prompt's ~25,700 (the reliable
-  verification prompt is ~8,500). **It is unmeasured against film.** Run
-  `EVAL_CHARTING=facts npx tsx scripts/eval-statsiq.ts <clip> 4` on BOTH ground-truth clips and
-  beat the recorded baseline before flipping the default — this module has already killed four
-  hypotheses that were sound on paper (8fps/high, the jersey colour, two-position yardage, and
-  discarding a contradicted read).
+  has to follow and become things the output cannot express. 25 unit tests cover the derivation
+  and the contract test runs schema → conversion → `PositionAnalysisOutputSchema`. All of that is
+  sound and none of it helped. Head-to-head, 4 runs per arm per clip, same session, same window,
+  same verification, same tally:
+  - *Clip A (completed 4th-down pass)*: **identical** — play 4/4 both, player withheld 4/4 both.
+    Raw charting read the play right 1 of 4 in BOTH arms.
+  - *Clip B (55-yard QB keeper)*: narrative **better** — play 3/4 vs 1/3, TD 4/4 vs 3/4, yards
+    3/4 vs 1/2. Facts lost on a possession regression in its own prompt (it charted our touchdown
+    as the opponent's on 1 of 4 runs).
+  Fifth hypothesis killed by measurement. Do not flip the default on the strength of the design.
+- **"The charting pass is right once in nine runs" does NOT generalise, and re-measuring showed
+  it.** On clip B (a run) the narrative charting pass read `run/touchdown/50yd` **4 times out of
+  4**; on clip A (a pass) it was right **1 of 4**. The old figure came from clip A's play type
+  plus clip B's *carrier*, and got restated as a property of the charting pass in general. It is
+  not one: charting is unreliable on the PASS clip and reliable on the RUN clip, and both prompts
+  share that shape.
+- **The VERIFICATION pass has a pass-bias, and it is now the biggest single source of wrong
+  answers.** Across the 8 clip-B runs it answered `pass` on 3 of them — on a clip that is a run —
+  and `rebuildFromCheck` then overwrote a CORRECT charting read each time, turning
+  `rush 1/50yd` into `pass 1/1, 0yd`. On clip A (a real pass) it answered `pass` 8/8. Every wrong
+  play type recorded in this session came from that rule firing on a good read, in both arms.
+  The check's veto was justified when charting was assumed unreliable everywhere; that assumption
+  is the one the bullet above just retired. **Measure this before touching either charting
+  prompt again** — it is upstream of both.
 - **Where the two reads disagree, the CHECK supplies the play** (`rebuildFromCheck`). Discarding
   both was the first answer and it was retired by measurement: the charting read has been right
   once in nine runs, the closed-question read right every time it answered, so discarding threw
