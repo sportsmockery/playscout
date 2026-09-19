@@ -423,17 +423,36 @@ export interface PositionAnalysisResult {
     measurement caught it — the concept is "we lost it", not "it was a turnover".
   One-directional: the check has no vocabulary for "a defender took it", so silence is never a
   veto, and a turnover neither read contradicts still stands.
+  **The check supplies WHAT happened and never WHO.** Measured on the clip whose receiver the coach
+  named: play type 4/4, the player 1/4 — the check answered `wr_left` three times in four for a
+  ball the RIGHT receiver caught, even after its prompt was given the left/right rule. Crediting
+  the catch to it named the wrong child 75% of the time, which is strictly worse than the question
+  it replaced: a question costs a keypress, a wrong name costs a season. A rebuilt play therefore
+  counts for the team and PARKS its player, offering both readings as candidates. The rationale
+  generalises — a rebuild fires only because the two reads disagreed, which is already evidence the
+  play was read badly, so trusting that read's player was never justified. The THROWER is the one
+  exception, asserted because it was `qb` on every run of both clips and a non-quarterback passer
+  is rare enough to chart when two reads agree.
   The GAIN is never rebuilt (nothing corroborates it), the TOUCHDOWN is (two reads disagreeing
   about run versus pass are not disagreeing about the goal line), and nothing is counted at all
   when the check cannot name a player or is under 0.8 confidence.
-- **Measured state, both ground-truth clips, three runs each** (after the rebuild):
-  - *Completed 4th-down pass*: charting said sack / sack / interception — wrong 3/3. Sheet read
-    **pass 1/1 on all three**, against 0/3 before this work. The gain stays blank; the check's
-    figure was 12–14 on this clip but ~10 short of truth on the other, so precision there is not
-    accuracy.
-  - *55-yard QB keeper touchdown*: unchanged, which is the point — run + touchdown **3/3**, carrier
-    charted rb / wingback_right / qb and parked as a one-keypress question **3/3**, so the coin
-    flip still never reaches a player's line. No regression.
+- **`LEFT_RIGHT_RULE` is exported from `positions.ts` and every prompt that names a side must use
+  it.** The verification prompt listed the position ids with no definition, so it answered from the
+  CAMERA — a clean mirror flip. Harmless while the check could only veto; not harmless once
+  `rebuildFromCheck` credited a catch to it. Adding the rule moved the receiver from 0-of-8 to
+  1-of-4 and did NOT fix it, which is why the ask-don't-assert rule above exists. Keep the rule
+  anyway: it is true, and a prompt naming a side without it is a bug waiting.
+- **Measured state, scored, 4 runs per clip.** Re-measure with `EVAL_TRUTH_*` before changing any
+  of it.
+  - *Completed 4th-down pass to the right WR*: play type **4/4**, touchdown **4/4**, player
+    **withheld 4/4** with one question per run. Charting called it a sack or an interception on
+    most runs and the sheet still read `pass 1/1` every time. **No wrong names.**
+  - *55-yard QB keeper touchdown*: play type **4/4**, touchdown **4/4**, yardage **4/4**, carrier
+    withheld **4/4** by the mesh gate — charting said `wingback_left` ×3 and `rb` ×1 against a true
+    `qb`, so a forced answer would have been a wrong name three times in four.
+  - Nothing measured is WRONG on either clip. The whole remaining gap is that the module does not
+    NAME the player, which on this film is not available from the read — it is available from the
+    coach, in one keypress, which is what the question queue is for.
 - **The jersey colour was NOT the cause, and that was measured.** With the team's real away colour
   ("White", exactly what the app sends) the charting pass called a completed pass an INTERCEPTION
   three times out of three, while the verification pass returned the identical answer three times
