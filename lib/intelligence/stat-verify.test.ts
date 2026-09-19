@@ -370,6 +370,29 @@ describe('the mesh point, which agreement cannot settle', () => {
 })
 
 describe('a turnover the second read contradicts', () => {
+  it('rebuilds a charted INCOMPLETION the check says was caught', () => {
+    // Measured on the 4th-down clip: charting called the same completion
+    // "incomplete" while the check named the receiver who caught it. An
+    // incompletion is not a turnover, so the turnover guard did not fire and
+    // a completed pass was charted 0-for-1. Same evidence, same contradiction.
+    const { plays, disputes } = reconcileReadings(
+      [
+        chartedAsRun({
+          play_type: 'pass',
+          result: 'incomplete',
+          yards: 0,
+          credits: [{ stat: 'pass_incomplete', position: 'qb' }],
+        }),
+      ],
+      [verified({ play_type: 'pass', thrown_by: 'qb', ball_ended_with: 'wr_left', yards: 14 })]
+    )
+
+    expect(disputes.join(' ')).toContain('pass incomplete')
+    const { team } = tallyStatPlays(plays)
+    expect(team.offense.pass_completions).toBe(1)
+    expect(team.offense.pass_attempts).toBe(1)
+  })
+
   it('refuses to charge an interception the other read says we caught', () => {
     // Measured on real film, three runs out of three: charting called a
     // completed 23-yard pass an INTERCEPTION twice and a sack-fumble once,
@@ -398,7 +421,7 @@ describe('a turnover the second read contradicts', () => {
     // 3 times out of 3 while verification returned the identical completion
     // (qb → wr_left, 14 yards) 3 times out of 3. Discarding left the coach an
     // empty sheet over a play both reads plainly saw.
-    expect(disputes.join(' ')).toContain("second read's account is what is counted")
+    expect(disputes.join(' ')).toContain("check's account is what is counted")
 
     const { team, lines } = tallyStatPlays(plays)
     expect(team.offense.interceptions_thrown).toBe(0)

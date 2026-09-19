@@ -327,24 +327,36 @@ export function reconcileReadings(
     //
     // Only checkable in this direction: the verifier has no vocabulary for
     // "a defender took it", so it cannot confirm a turnover, only contradict one.
-    const turnover = credits.find(
-      (c) => c.stat === 'pass_intercepted' || c.stat === 'fumble_lost'
+    // Every charted outcome that says the ball did NOT finish in our hands.
+    //
+    // It started as turnovers only, and measurement widened it: on the third
+    // run of the 4th-down clip the charting read called the same completion
+    // INCOMPLETE while the check named the receiver who caught it. An
+    // incompletion is not a turnover, so nothing objected, and a completed
+    // pass was charted 0-for-1. All three claims are contradicted by the same
+    // evidence — the check naming one of OUR players as finishing with the
+    // ball — so all three belong to the same check.
+    const lostIt = credits.find(
+      (c) =>
+        c.stat === 'pass_intercepted' ||
+        c.stat === 'fumble_lost' ||
+        c.stat === 'pass_incomplete'
     )
     const finishedWith = check.ball_ended_with
       ? normalizeStatPosition(check.ball_ended_with, 'offense')
       : null
-    if (turnover && finishedWith && isOffensivePosition(finishedWith) && check.play_type !== 'cannot_tell') {
+    if (lostIt && finishedWith && isOffensivePosition(finishedWith) && check.play_type !== 'cannot_tell') {
       checks += 1
       const rebuilt = rebuildFromCheck(check, play)
       if (rebuilt.length) {
         disputes.push(
-          `Play ${index}: the charting read called this a turnover; the second read saw the ${check.thrown_by === 'qb' ? 'quarterback' : 'passer'} complete it to our own ${finishedWith.replace(/_/g, ' ')}. The second read's account is what is counted here — check it, and add the gain, which nothing corroborated.`
+          `Play ${index}: the charting read said we did not finish with the ball (${(lostIt.stat ?? '').replace(/_/g, ' ')}); the check saw it completed to our own ${finishedWith.replace(/_/g, ' ')}. The check's account is what is counted here — confirm it, and add the gain, which nothing corroborated.`
         )
         return { ...play, play_type: 'pass', result: 'gain', yards: null,
           yards_basis: 'not_determinable', credits: rebuilt }
       }
       disputes.push(
-        `Play ${index}: one read of the film charted a turnover, the other saw our own ${finishedWith.replace(/_/g, ' ')} finish with the ball. Nothing was counted from it — a turnover is too costly to record on a disagreement.`
+        `Play ${index}: one read charted the ball as lost (${(lostIt.stat ?? '').replace(/_/g, ' ')}), the other saw our own ${finishedWith.replace(/_/g, ' ')} finish with it. Nothing was counted — that claim is too costly to record on a disagreement.`
       )
       return { ...play, credits: [] }
     }
