@@ -35,7 +35,6 @@ import {
   reconcileReadings,
   flagMeshPointCarries,
   schemeHasQbMesh,
-  derivedYards,
 } from '../lib/intelligence/stat-verify'
 import { tallyStatPlays } from '../lib/intelligence/stat-lines'
 
@@ -279,14 +278,6 @@ async function once(run: number) {
   })
   const verified = parseVerification(verification.text)
   console.log('verified:', JSON.stringify(verified))
-  // The A/B that decides whether asking for two readings beats asking for the
-  // subtraction: what the model SAID the gain was, against what its own two
-  // field positions imply.
-  for (const v of verified) {
-    console.log(
-      `  yardage: model said ${v.yards ?? 'null'} | positions ${v.start_field_position ?? '?'} → ${v.end_field_position ?? '?'} = ${derivedYards(v) ?? 'null'}`
-    )
-  }
 
   // 4. Reconcile, park what corroboration cannot settle, and tally — the exact
   //    code a coach's sheet is built from.

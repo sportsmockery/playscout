@@ -36,14 +36,6 @@ export interface VerifiedPlay {
   ball_ended_with: string | null
   /** Who threw it, on a pass. */
   thrown_by: string | null
-  /**
-   * Where the ball sat, on a 0–100 axis with OUR goal line at 0 and the one we
-   * are attacking at 100. Two readings the code subtracts — see
-   * `derivedYards`.
-   */
-  start_field_position: number | null
-  end_field_position: number | null
-  /** The model's own answer to "how many yards", kept for comparison. */
   yards: number | null
   confidence: number
 }
@@ -95,30 +87,14 @@ For EVERY play in this clip, in order, answer these questions from what you can 
 
 4. thrown_by — on a pass, the position of the thrower. Null on a run or if you cannot tell.
 
-5. WHERE THE BALL WAS, twice — not how far it went.
+5. yards — how far the ball advanced, measured off the field. This was shot on a MARKED field:
+   a stripe every 5 yards, hash marks, sidelines, two goal lines. Find the yard line the ball was
+   on at the snap, find the line where the play ended (the goal line, if it scored), and count.
+   The camera panning does not stop you — the lines pan with it, so read each end separately.
+   Null ONLY if no line is readable in this clip at all. Do not estimate without lines, and do not
+   refuse a line you can see.
 
-   This was shot on a MARKED field: a stripe every 5 yards, hash marks, sidelines, two goal
-   lines. Read the ball's position on a single 0-to-100 scale:
-
-       0   = the goal line OUR team is defending (behind us)
-       50  = midfield
-       100 = the goal line OUR team is attacking (a touchdown for us)
-
-   start_field_position — where the ball sat at the snap, on that scale.
-   end_field_position   — where the play ended: where he was stopped, went out of bounds, or
-                          crossed the goal line (then it is 100).
-
-   Read each one on its own, from the stripe nearest the ball at that moment. The camera panning
-   does not stop you — the lines pan with it, so the two readings are two separate looks, not one.
-   Set either to null if no stripe is readable at that end.
-
-   Do NOT subtract them. The app does the arithmetic. Reading "the ball is on the 45" off a
-   painted stripe is something you can see; "that gain was 23 yards" is a calculation, and asking
-   for the calculation instead of the observation is how a 55-yard touchdown came back as 45.
-
-6. yards — your own estimate of the gain, for comparison only. Null if you cannot measure it.
-
-7. confidence — 0.0 to 1.0, honestly.
+6. confidence — 0.0 to 1.0, honestly.
 
 You are NOT charting statistics and you are NOT writing a report. Do not describe technique, do
 not praise anyone, do not invent a narrative. Answer the six questions per play.
@@ -144,9 +120,6 @@ export const PLAY_VERIFICATION_SCHEMA = {
           ball_changed_hands: { type: Type.STRING, enum: ['yes', 'no', 'cannot_tell'] },
           ball_ended_with: { type: Type.STRING, nullable: true },
           thrown_by: { type: Type.STRING, nullable: true },
-          // Two READINGS, not a difference. See DERIVED YARDAGE below.
-          start_field_position: { type: Type.NUMBER, nullable: true },
-          end_field_position: { type: Type.NUMBER, nullable: true },
           yards: { type: Type.NUMBER, nullable: true },
           confidence: { type: Type.NUMBER },
         },
@@ -155,41 +128,6 @@ export const PLAY_VERIFICATION_SCHEMA = {
     },
   },
   required: ['plays'],
-}
-
-/**
- * The gain, computed from two field-position readings rather than asked for.
- *
- * This is the same argument `stat-lines.ts` makes about totals and
- * `player-grades.ts` makes about grades, applied to the one number that kept
- * coming back wrong. "Where is the ball?" is an observation — a stripe with a
- * number painted on it, in frame, at one moment. "How far did it go?" is a
- * subtraction across two moments the camera showed separately, and the model
- * was being asked for the subtraction. Measured, it answered 45 on a
- * touchdown that travelled 55, and 13/14/23 on one 12-second completion.
- *
- * So it reads the two ends and the code subtracts them. A reading that lands
- * outside the field, or a "gain" longer than the field is deep, is a misread
- * rather than a measurement and is dropped.
- */
-export function derivedYards(check: VerifiedPlay): number | null {
-  const start = check.start_field_position
-  const end = check.end_field_position
-  if (start == null || end == null) return null
-  if (!Number.isFinite(start) || !Number.isFinite(end)) return null
-  if (start < 0 || start > 100 || end < 0 || end > 100) return null
-  return Math.round(end - start)
-}
-
-/**
- * The gain this check supports, preferring the computed one.
- *
- * Falls back to the model's own figure when it could not place one end of the
- * play, because a self-reported number is still better than nothing — it is
- * only worse than a computed one.
- */
-export function checkYards(check: VerifiedPlay): number | null {
-  return derivedYards(check) ?? check.yards ?? null
 }
 
 /**
@@ -477,12 +415,11 @@ export function reconcileReadings(
 
     // 4. Two measurements that disagree are two estimates.
     let nextPlay: RawStatPlay = { ...play, credits: nextCredits }
-    const checkedYards = checkYards(check)
-    if (play.yards != null && checkedYards != null) {
+    if (play.yards != null && check.yards != null) {
       checks += 1
-      if (Math.abs(play.yards - checkedYards) > yardsTolerance(play.yards, checkedYards)) {
+      if (Math.abs(play.yards - check.yards) > yardsTolerance(play.yards, check.yards)) {
         disputes.push(
-          `Play ${index}: the two reads measured this as ${play.yards} and ${checkedYards} yards, so no yardage was counted. Type the real number in if you know it.`
+          `Play ${index}: the two reads measured this as ${play.yards} and ${check.yards} yards, so no yardage was counted. Type the real number in if you know it.`
         )
         nextPlay = {
           ...nextPlay,
