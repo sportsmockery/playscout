@@ -4,6 +4,8 @@ import {
   parseVerification,
   flagMeshPointCarries,
   schemeHasQbMesh,
+  derivedYards,
+  checkYards,
   type VerifiedPlay,
 } from './stat-verify'
 import { tallyStatPlays, type RawStatPlay } from './stat-lines'
@@ -42,6 +44,8 @@ const verified = (over: Partial<VerifiedPlay> = {}): VerifiedPlay => ({
   ball_changed_hands: 'no',
   ball_ended_with: 'qb',
   thrown_by: null,
+  start_field_position: null,
+  end_field_position: null,
   yards: 50,
   confidence: 0.8,
   ...over,
@@ -497,5 +501,37 @@ describe('a turnover the second read contradicts', () => {
     )
     expect(plays[0].credits).toHaveLength(1)
     expect(disputes).toHaveLength(0)
+  })
+})
+
+describe('the gain is computed from two readings, not asked for', () => {
+  it('subtracts the two field positions', () => {
+    // The 55-yard touchdown: snapped on our own 45, crossed the goal line.
+    expect(derivedYards(verified({ start_field_position: 45, end_field_position: 100 }))).toBe(55)
+  })
+
+  it('handles a loss without special-casing it', () => {
+    expect(derivedYards(verified({ start_field_position: 60, end_field_position: 52 }))).toBe(-8)
+  })
+
+  it('prefers the computed gain over the model’s own estimate', () => {
+    // Exactly the observed failure: asked for the subtraction the model said
+    // 45 on a play that travelled 55, while the two positions it can actually
+    // SEE give the right answer.
+    const check = verified({ start_field_position: 45, end_field_position: 100, yards: 45 })
+    expect(checkYards(check)).toBe(55)
+  })
+
+  it('falls back to the estimate when an end could not be placed', () => {
+    // A self-reported number is worse than a computed one and better than none.
+    expect(checkYards(verified({ start_field_position: 30, end_field_position: null, yards: 12 }))).toBe(12)
+    expect(checkYards(verified({ start_field_position: null, end_field_position: null, yards: null }))).toBeNull()
+  })
+
+  it('refuses a reading that is not on the field', () => {
+    // Off-scale numbers are a misread of the instruction, not a measurement,
+    // and a 140-yard gain would sail through any tolerance check downstream.
+    expect(derivedYards(verified({ start_field_position: -10, end_field_position: 40 }))).toBeNull()
+    expect(derivedYards(verified({ start_field_position: 20, end_field_position: 160 }))).toBeNull()
   })
 })
