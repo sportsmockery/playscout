@@ -48,22 +48,27 @@ const verified = (over: Partial<VerifiedPlay> = {}): VerifiedPlay => ({
 })
 
 describe('the two reads must agree before anything is counted', () => {
-  it('counts nothing when they disagree about run versus pass', () => {
-    // This is the exact production failure: one read said a rushing
-    // touchdown, the next said a passing touchdown, both at high confidence.
+  it('resolves the original production failure to the answer the coach gave', () => {
+    // The failure this whole file exists for: one read said a rushing
+    // touchdown by a back, the next a passing touchdown to a receiver, both at
+    // high confidence, and the truth was a quarterback keeper. Discarding both
+    // was the first answer — safe, and useless. Now the closed-question read
+    // supplies the play, and on this input it lands exactly on the truth.
     const { plays, disputes, agreement } = reconcileReadings(
       [chartedAsPass()],
-      [verified({ play_type: 'run' })]
+      [verified({ play_type: 'run', ball_ended_with: 'qb', ball_changed_hands: 'no' })]
     )
 
-    expect(plays[0].credits).toEqual([])
-    expect(disputes[0]).toContain('one read of the film says this was a pass')
     expect(agreement).toBeLessThan(100)
+    expect(disputes[0]).toContain("check's account is what is counted")
 
-    // And nothing reaches the box score.
-    const { team } = tallyStatPlays(plays)
+    const { team, lines } = tallyStatPlays(plays)
+    expect(team.offense.carries).toBe(1)
+    expect(team.offense.rush_td).toBe(1)
     expect(team.offense.pass_attempts).toBe(0)
-    expect(team.offense.carries).toBe(0)
+    expect(lines[0].positionId).toBe('qb')
+    // The gain never survives a disagreement — nothing corroborates it.
+    expect(team.offense.rush_yards).toBe(0)
   })
 
   it('asks who carried it when they agree on a run but not on the runner', () => {
@@ -124,6 +129,65 @@ describe('the two reads must agree before anything is counted', () => {
     expect(team.offense.carries).toBe(1)
     expect(team.offense.rush_yards).toBe(50)
     expect(team.offense.rush_td).toBe(1)
+  })
+})
+
+describe('a play-type disagreement is rebuilt from the read that measures right', () => {
+  it('turns a charted sack into the completion the check actually saw', () => {
+    // Measured: charting called this clip a sack for -8 while the check said
+    // pass, qb → slot_left. Discarding both left the coach nothing over a play
+    // they had just watched, and threw away the read that has been right every
+    // time it answered.
+    const { plays, disputes } = reconcileReadings(
+      [
+        chartedAsRun({
+          play_type: 'sack',
+          result: 'loss',
+          yards: -8,
+          credits: [{ stat: 'sack_taken', position: 'qb', yards: -8 }],
+        }),
+      ],
+      [verified({ play_type: 'pass', thrown_by: 'qb', ball_ended_with: 'slot_left', yards: 20 })]
+    )
+
+    expect(disputes.join(' ')).toContain("check's account is what is counted")
+    const { team, lines } = tallyStatPlays(plays)
+    expect(team.offense.pass_completions).toBe(1)
+    expect(team.offense.carries).toBe(0)
+    expect(lines.find((l) => l.positionId === 'slot_left')!.offense.receptions).toBe(1)
+    // The gain is never carried across — nothing corroborates it.
+    expect(team.offense.pass_yards).toBe(0)
+  })
+
+  it('turns a charted pass into the run the check saw, carrier and all', () => {
+    const { plays } = reconcileReadings(
+      [chartedAsPass()],
+      [verified({ play_type: 'run', ball_ended_with: 'qb', ball_changed_hands: 'no', yards: 50 })]
+    )
+    const { team, lines } = tallyStatPlays(plays)
+    expect(team.offense.carries).toBe(1)
+    expect(team.offense.pass_attempts).toBe(0)
+    expect(lines[0].positionId).toBe('qb')
+  })
+
+  it('keeps a touchdown the rejected read saw, because the two never disputed it', () => {
+    // Two reads disagreeing about run-versus-pass are not disagreeing about
+    // whether the ball crossed the goal line, and a touchdown is the most
+    // consequential thing on a sheet to lose in silence.
+    const { plays } = reconcileReadings(
+      [chartedAsPass({ result: 'touchdown' })],
+      [verified({ play_type: 'run', ball_ended_with: 'qb', ball_changed_hands: 'no', yards: 50 })]
+    )
+    expect(tallyStatPlays(plays).team.offense.rush_td).toBe(1)
+  })
+
+  it('still counts nothing when the check cannot name anyone either', () => {
+    const { plays, disputes } = reconcileReadings(
+      [chartedAsPass()],
+      [verified({ play_type: 'run', ball_ended_with: null, yards: null })]
+    )
+    expect(plays[0].credits).toEqual([])
+    expect(disputes.join(' ')).toContain('could not name the players either')
   })
 })
 
@@ -373,7 +437,10 @@ describe('a turnover the second read contradicts', () => {
     expect(unsure.plays[0].credits).toEqual([])
   })
 
-  it('does the same for a fumble the other read says we kept', () => {
+  it('keeps the carry but drops a fumble the other read says we kept', () => {
+    // Both reads agree it was a run by the back; only the turnover is in
+    // dispute. Discarding the carry along with the fumble punished the back
+    // twice for the charting read's error.
     const { plays, disputes } = reconcileReadings(
       [
         chartedAsRun({
@@ -385,8 +452,10 @@ describe('a turnover the second read contradicts', () => {
       ],
       [verified({ play_type: 'run', ball_ended_with: 'rb', ball_changed_hands: 'yes', yards: 4 })]
     )
-    expect(plays[0].credits).toEqual([])
     expect(disputes).toHaveLength(1)
+    const { team } = tallyStatPlays(plays)
+    expect(team.offense.carries).toBe(1)
+    expect(team.offense.fumbles_lost).toBe(0)
   })
 
   it('leaves a turnover alone when the check cannot say who finished with it', () => {

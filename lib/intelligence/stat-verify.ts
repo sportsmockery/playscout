@@ -191,25 +191,44 @@ function principalCredit(credits: RawStatCredit[]): RawStatCredit | undefined {
  */
 const MIN_REBUILD_CONFIDENCE = 0.8
 
-function rebuildFromCheck(check: VerifiedPlay, finishedWith: string): RawStatCredit[] {
-  if (check.play_type !== 'pass') return []
+function rebuildFromCheck(check: VerifiedPlay, charted: RawStatPlay): RawStatCredit[] {
   if ((check.confidence ?? 0) < MIN_REBUILD_CONFIDENCE) return []
-  const thrower = check.thrown_by ? normalizeStatPosition(check.thrown_by, 'offense') : null
-  if (!thrower || !isOffensivePosition(thrower)) return []
+  const finishedWith = check.ball_ended_with
+    ? normalizeStatPosition(check.ball_ended_with, 'offense')
+    : null
+  if (!finishedWith || !isOffensivePosition(finishedWith)) return []
 
   // WHO is rebuilt; HOW FAR is not. Play type, thrower and catcher came back
-  // identical on every run of this clip, but the same read's yardage swung
-  // 13 → 14 → 23 across five of them, and here there is no second measurement
-  // to check it against — the charting read's account of this play is the one
-  // we just rejected. Counting a single uncorroborated figure that has been
-  // observed to move ten yards is the exact habit the yards_basis field exists
-  // to break, so the completion is counted and the gain is left for the coach,
-  // who sees it highlighted in "Fix a stat".
-  const note = 'Read from the verification pass, which disagreed with the charting pass about who finished with the ball. Its yardage was not corroborated, so add the gain yourself.'
-  return [
-    { stat: 'pass_complete', position: thrower, yards: null, note },
-    { stat: 'reception', position: finishedWith, yards: null, note },
-  ]
+  // identical on every run of both clips, but the same read's yardage swung
+  // 13 → 14 → 23 on one of them, and here there is no second measurement to
+  // check it against — the charting read's account of this play is the one just
+  // rejected. Counting a single uncorroborated figure observed to move ten
+  // yards is the exact habit `yards_basis` exists to break, so the play counts
+  // and the gain is left for the coach, highlighted in "Fix a stat".
+  const note =
+    'Read from the verification pass, which disagreed with the charting pass about what happened. Its yardage was not corroborated, so add the gain yourself.'
+
+  // The one fact carried across from the rejected read. Two reads disagreeing
+  // about run-versus-pass are not disagreeing about whether the ball crossed
+  // the goal line, and a touchdown is the most consequential thing on a sheet
+  // to lose silently. The dispute line tells the coach it came from the other
+  // read so they can strike it.
+  const touchdown = (charted.result ?? '').toLowerCase() === 'touchdown'
+
+  if (check.play_type === 'pass') {
+    const thrower = check.thrown_by ? normalizeStatPosition(check.thrown_by, 'offense') : null
+    if (!thrower || !isOffensivePosition(thrower)) return []
+    return [
+      { stat: 'pass_complete', position: thrower, yards: null, touchdown, note },
+      { stat: 'reception', position: finishedWith, yards: null, touchdown, note },
+    ]
+  }
+
+  if (check.play_type === 'run') {
+    return [{ stat: 'rush', position: finishedWith, yards: null, touchdown, note }]
+  }
+
+  return []
 }
 
 export interface Reconciliation {
@@ -264,8 +283,27 @@ export function reconcileReadings(
     if (check.play_type !== 'cannot_tell' && kind !== 'other') {
       checks += 1
       if (check.play_type !== kind) {
+        // Discarding was the first answer, and the measurements retired it.
+        // Across nine runs on two clips with known answers the charting read
+        // was right ONCE; the closed-question read was right every time it
+        // answered. Throwing both away over a disagreement between them threw
+        // away the reliable one too, and handed the coach an empty sheet over a
+        // play they had just watched.
+        const rebuilt = rebuildFromCheck(check, play)
+        if (rebuilt.length) {
+          disputes.push(
+            `Play ${index}: the charting read called this a ${kind}; the check read a ${check.play_type} and named the players. The check's account is what is counted — confirm it, and add the gain.`
+          )
+          return {
+            ...play,
+            play_type: check.play_type,
+            yards: null,
+            yards_basis: 'not_determinable',
+            credits: rebuilt,
+          }
+        }
         disputes.push(
-          `Play ${index}: one read of the film says this was a ${kind}, the other says a ${check.play_type}. Nothing was counted from it — enter it yourself below.`
+          `Play ${index}: one read of the film says this was a ${kind}, the other says a ${check.play_type}, and the check could not name the players either. Nothing was counted — enter it yourself below.`
         )
         return { ...play, credits: [] }
       }
@@ -297,7 +335,7 @@ export function reconcileReadings(
       : null
     if (turnover && finishedWith && isOffensivePosition(finishedWith) && check.play_type !== 'cannot_tell') {
       checks += 1
-      const rebuilt = rebuildFromCheck(check, finishedWith)
+      const rebuilt = rebuildFromCheck(check, play)
       if (rebuilt.length) {
         disputes.push(
           `Play ${index}: the charting read called this a turnover; the second read saw the ${check.thrown_by === 'qb' ? 'quarterback' : 'passer'} complete it to our own ${finishedWith.replace(/_/g, ' ')}. The second read's account is what is counted here — check it, and add the gain, which nothing corroborated.`
