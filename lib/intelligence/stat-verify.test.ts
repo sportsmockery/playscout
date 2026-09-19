@@ -66,7 +66,13 @@ describe('the two reads must agree before anything is counted', () => {
     expect(team.offense.carries).toBe(1)
     expect(team.offense.rush_td).toBe(1)
     expect(team.offense.pass_attempts).toBe(0)
-    expect(lines[0].positionId).toBe('qb')
+    // The PLAY is rebuilt; the PLAYER is asked. Measured: the check answers the
+    // event reliably (play type 8/8) and the person unreliably (1/4 on the clip
+    // whose receiver the coach named), so asserting its player named the wrong
+    // child three times in four.
+    expect(lines).toHaveLength(0)
+    expect(team.pendingQuestions).toBe(1)
+    expect(plays[0].credits![0].candidates).toContain('qb')
     // The gain never survives a disagreement — nothing corroborates it.
     expect(team.offense.rush_yards).toBe(0)
   })
@@ -154,12 +160,17 @@ describe('a play-type disagreement is rebuilt from the read that measures right'
     const { team, lines } = tallyStatPlays(plays)
     expect(team.offense.pass_completions).toBe(1)
     expect(team.offense.carries).toBe(0)
-    expect(lines.find((l) => l.positionId === 'slot_left')!.offense.receptions).toBe(1)
+    // The THROWER is named — qb on every measured run, and a non-quarterback
+    // passer is rare enough to chart when both reads agree. The CATCHER is not.
+    expect(lines.find((l) => l.positionId === 'qb')!.offense.pass_completions).toBe(1)
+    expect(lines.find((l) => l.positionId === 'slot_left')).toBeUndefined()
+    expect(team.offense.receptions).toBe(1)
+    expect(team.pendingQuestions).toBe(1)
     // The gain is never carried across — nothing corroborates it.
     expect(team.offense.pass_yards).toBe(0)
   })
 
-  it('turns a charted pass into the run the check saw, carrier and all', () => {
+  it('turns a charted pass into the run the check saw, and asks who ran it', () => {
     const { plays } = reconcileReadings(
       [chartedAsPass()],
       [verified({ play_type: 'run', ball_ended_with: 'qb', ball_changed_hands: 'no', yards: 50 })]
@@ -167,7 +178,11 @@ describe('a play-type disagreement is rebuilt from the read that measures right'
     const { team, lines } = tallyStatPlays(plays)
     expect(team.offense.carries).toBe(1)
     expect(team.offense.pass_attempts).toBe(0)
-    expect(lines[0].positionId).toBe('qb')
+    expect(lines).toHaveLength(0)
+    const rush = plays[0].credits![0]
+    expect(rush.unresolved).toBe(true)
+    // Both readings are offered, so the coach picks rather than types.
+    expect(rush.candidates).toEqual(expect.arrayContaining(['qb', 'wr_left']))
   })
 
   it('keeps a touchdown the rejected read saw, because the two never disputed it', () => {
@@ -432,7 +447,9 @@ describe('a turnover the second read contradicts', () => {
     // corroborate it against. The coach adds it.
     expect(team.offense.pass_yards).toBe(0)
     expect(team.unmeasuredYardagePlays).toBe(1)
-    expect(lines.find((l) => l.positionId === 'wr_left')!.offense.receptions).toBe(1)
+    // Counted for the team, on nobody's line until the coach names the catcher.
+    expect(team.offense.receptions).toBe(1)
+    expect(lines.find((l) => l.positionId === 'wr_left')).toBeUndefined()
   })
 
   it('still discards when the checking read cannot supply the play itself', () => {

@@ -221,17 +221,45 @@ function rebuildFromCheck(check: VerifiedPlay, charted: RawStatPlay): RawStatCre
   // read so they can strike it.
   const touchdown = (charted.result ?? '').toLowerCase() === 'touchdown'
 
+  // A rebuild happens BECAUSE the two reads disagreed, which is already
+  // evidence that this play was read badly. So the check supplies WHAT
+  // happened and never WHO the ball ended with.
+  //
+  // Measured, on the clip whose receiver the coach named (the RIGHT wide
+  // receiver): the check answered wr_left on three runs out of four even after
+  // its prompt was given the left/right rule. Crediting the catch to it named
+  // the wrong child 75% of the time — worse than the question it replaced,
+  // because a question costs a keypress and a wrong name costs a season. Play
+  // type over the same runs was 4/4, which is the split this encodes: the
+  // closed-question read is reliable about the EVENT and unreliable about the
+  // PERSON.
+  const chartedPlayer = (charted.credits ?? []).find(
+    (c) => c.stat === 'reception' || c.stat === 'target' || c.stat === 'rush'
+  )?.position
+  const alternative = chartedPlayer ? normalizeStatPosition(chartedPlayer, 'offense') : null
+  const candidates: string[] = [finishedWith, alternative].filter(
+    (p, i, all) => !!p && all.indexOf(p) === i
+  ) as string[]
+  const asking = {
+    unresolved: true,
+    question: check.play_type === 'pass' ? 'Who caught this pass?' : 'Who carried the ball?',
+    candidates,
+  }
+
   if (check.play_type === 'pass') {
+    // The THROWER is asserted: it was qb on every run of both clips and on the
+    // coach's answer, and a pass thrown by someone other than the quarterback
+    // is rare enough to be worth charting when two reads agree on it.
     const thrower = check.thrown_by ? normalizeStatPosition(check.thrown_by, 'offense') : null
     if (!thrower || !isOffensivePosition(thrower)) return []
     return [
       { stat: 'pass_complete', position: thrower, yards: null, touchdown, note },
-      { stat: 'reception', position: finishedWith, yards: null, touchdown, note },
+      { stat: 'reception', position: finishedWith, yards: null, touchdown, note, ...asking },
     ]
   }
 
   if (check.play_type === 'run') {
-    return [{ stat: 'rush', position: finishedWith, yards: null, touchdown, note }]
+    return [{ stat: 'rush', position: finishedWith, yards: null, touchdown, note, ...asking }]
   }
 
   return []
