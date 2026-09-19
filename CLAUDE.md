@@ -411,12 +411,29 @@ export interface PositionAnalysisResult {
   completed**. The short closed-question prompt beats the 25k-token charting prompt on the
   load-bearing facts, and any future work on this module should start there rather than adding
   more instructions to the big one.
-- **A charted turnover the second read contradicts is discarded.** A completion and an
-  interception are both `play_type: "pass"`, so the run/pass check could not catch either
-  interception above, and an interception the film did not contain would have gone onto a
-  quarterback's season. `ball_ended_with` names one of OUR positions, so it is a statement that we
-  kept the ball. One-directional: the verifier has no vocabulary for "a defender took it", so
-  silence is never a veto.
+- **Where the two reads disagree, the CHECK supplies the play** (`rebuildFromCheck`). Discarding
+  both was the first answer and it was retired by measurement: the charting read has been right
+  once in nine runs, the closed-question read right every time it answered, so discarding threw
+  the reliable read away with the unreliable one and left the coach an empty sheet over a play
+  they had just watched. Two triggers, both resting on the same evidence:
+  - the two reads disagree about run versus pass;
+  - the charting read claims the ball did NOT finish in our hands (`lostIt`: intercepted, fumbled
+    away, **or incomplete**) while the check names one of OUR players as finishing with it. An
+    incompletion is not a turnover, which is exactly how a completion was charted 0-for-1 until a
+    measurement caught it — the concept is "we lost it", not "it was a turnover".
+  One-directional: the check has no vocabulary for "a defender took it", so silence is never a
+  veto, and a turnover neither read contradicts still stands.
+  The GAIN is never rebuilt (nothing corroborates it), the TOUCHDOWN is (two reads disagreeing
+  about run versus pass are not disagreeing about the goal line), and nothing is counted at all
+  when the check cannot name a player or is under 0.8 confidence.
+- **Measured state, both ground-truth clips, three runs each** (after the rebuild):
+  - *Completed 4th-down pass*: charting said sack / sack / interception — wrong 3/3. Sheet read
+    **pass 1/1 on all three**, against 0/3 before this work. The gain stays blank; the check's
+    figure was 12–14 on this clip but ~10 short of truth on the other, so precision there is not
+    accuracy.
+  - *55-yard QB keeper touchdown*: unchanged, which is the point — run + touchdown **3/3**, carrier
+    charted rb / wingback_right / qb and parked as a one-keypress question **3/3**, so the coin
+    flip still never reaches a player's line. No regression.
 - **The jersey colour was NOT the cause, and that was measured.** With the team's real away colour
   ("White", exactly what the app sends) the charting pass called a completed pass an INTERCEPTION
   three times out of three, while the verification pass returned the identical answer three times
@@ -440,12 +457,6 @@ export interface PositionAnalysisResult {
   ("Home · Blue"), and when both colours exist and differ the choice defaults to "Not sure" so the
   coach makes it. Covered in STATSIQ/RANKERIQ/TEAMIQ/MISTAKEIQ; QBIQ, OLIQ, RBIQ and SCOUTIQ have
   no own-team colour at all and always take the no-colour branch — a real gap.
-- With none, the charting prompt falls to its "work out which
-  side is ours from the play itself" branch, and on a deep ball caught among defenders that is how
-  our completion becomes their interception. Measured on that clip: 0/3 correct without a colour,
-  1/3 with — suggestive, not conclusive, and `EVAL_JERSEY` exists so the next person measures
-  rather than assumes. Note the eval ran for months against no-colour, which is a configuration no
-  coach uses.
 - **The verification call is retried once.** Losing it is not neutral: what ships is then the read
   that is usually wrong, labelled only "not corroborated". A 503 from an overloaded model was
   observed mid-eval and is transient.
