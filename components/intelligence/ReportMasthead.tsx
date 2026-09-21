@@ -51,22 +51,35 @@ export default function ReportMasthead({
 
   return (
     <header className="report-masthead glass-card p-6 mb-5 print:shadow-none print:break-after-avoid">
-      {/* Brand row */}
-      <div className="flex items-start justify-between gap-4 pb-4 border-b border-[var(--brand-border)]">
+      {/* Brand row.
+
+          STACKED until `sm`, and that is the whole fix for a real collision.
+          Side by side, the report-kind block carried `shrink-0` — so on a phone
+          it refused to give up width, overflowed its own box and printed
+          "OPPONENT SCOUTING REPORT · COMBINED" straight through the wordmark
+          and the logo. `leading-none` on the wordmark then let the wrapped
+          tagline overlap itself on top of that.
+
+          Two rows cannot collide, so the phone gets two rows. `shrink-0` is
+          gone (the text wraps instead of overflowing) and every line carries an
+          explicit leading. */}
+      <div className="flex flex-col gap-3 pb-4 border-b border-[var(--brand-border)] sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         <div className="flex items-center gap-2.5 min-w-0">
           <Image src="/logo.svg" alt="" width={30} height={33} className="shrink-0" />
-          <div className="min-w-0 leading-none">
-            <p className="text-base font-bold tracking-tight text-[var(--brand-navy)]">PlayScout</p>
-            <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-[var(--brand-muted)] mt-1">
+          <div className="min-w-0">
+            <p className="text-base font-bold leading-tight tracking-tight text-[var(--brand-navy)]">
+              PlayScout
+            </p>
+            <p className="text-[9px] font-semibold uppercase leading-tight tracking-[0.18em] text-[var(--brand-muted)] mt-1">
               Football Intelligence
             </p>
           </div>
         </div>
-        <div className="text-right shrink-0">
-          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[var(--brand-gold-dark)]">
+        <div className="min-w-0 sm:text-right">
+          <p className="text-[11px] font-bold uppercase leading-tight tracking-[0.18em] text-[var(--brand-gold-dark)]">
             {moduleKey}
           </p>
-          <p className="text-[11px] font-medium uppercase tracking-[0.1em] text-[var(--brand-muted)] mt-0.5">
+          <p className="text-[11px] font-medium uppercase leading-tight tracking-[0.1em] text-[var(--brand-muted)] mt-0.5">
             {kind}
           </p>
         </div>

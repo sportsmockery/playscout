@@ -112,25 +112,32 @@ export default function ClipBreakdown({ teamId, videoId, videoTitle, comment, re
               <h4 className="text-[11px] font-bold uppercase tracking-wide text-[var(--brand-muted)] mb-2">
                 Player grades in this clip
               </h4>
+              {/* The grade is a fixed column; everything else is prose and
+                  flows. The name used to carry `shrink-0`, which on a phone
+                  squeezed the note beside it to nothing — the same defect that
+                  printed the masthead's report kind through the logo. A text
+                  block gets `min-w-0`; only the number is fixed. */}
               <ul className="space-y-1.5">
                 {grades.map((g, i) => (
                   <li key={i} className="flex items-start gap-2 text-xs">
                     <span className={`font-bold w-7 shrink-0 ${scoreColor(g.grade ?? null)}`}>
                       {g.grade ?? '—'}
                     </span>
-                    <span className="font-semibold text-[var(--brand-ink)] shrink-0">
-                      {g.identifier}
-                      {g.position ? <span className="text-[var(--brand-muted)]"> {g.position}</span> : null}
-                      {g.number_rejected_reason && (
-                        <span
-                          className="ml-1 text-[10px] font-normal text-[var(--brand-muted)]"
-                          title={`A jersey number was reported but discarded: ${g.number_rejected_reason}`}
-                        >
-                          (by role)
-                        </span>
-                      )}
+                    <span className="min-w-0">
+                      <span className="font-semibold text-[var(--brand-ink)]">
+                        {g.identifier}
+                        {g.position ? <span className="text-[var(--brand-muted)]"> {g.position}</span> : null}
+                        {g.number_rejected_reason && (
+                          <span
+                            className="ml-1 text-[10px] font-normal text-[var(--brand-muted)]"
+                            title={`A jersey number was reported but discarded: ${g.number_rejected_reason}`}
+                          >
+                            (by role)
+                          </span>
+                        )}
+                      </span>{' '}
+                      <span className="text-[var(--brand-muted)]">{g.note}</span>
                     </span>
-                    <span className="text-[var(--brand-muted)] min-w-0">{g.note}</span>
                   </li>
                 ))}
               </ul>
