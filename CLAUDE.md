@@ -575,6 +575,18 @@ export interface PositionAnalysisResult {
   coach's operational definitions are now carried verbatim: Cover 1 is man with one safety alone
   in the deep middle READING THE QUARTERBACK; Cover 0 is man with no middle safety because that
   safety is covering someone.
+- **Coverage and pressure are two independent observations, and the prompt says so explicitly.**
+  Cover 0 and Cover 1 usually come with extra rushers; that is a correlation, not a definition.
+  A defence can play Cover 0 behind a four-man rush, or send six and play zone. The read must
+  never infer one from the other in either direction, and the prompt names the exact bad
+  inference ("they only rushed four, so it cannot be Cover 0") so it can be recognised.
+- **Every position gets read before a coverage is named** — the deep middle (is the safety
+  reading the QUARTERBACK, or carrying a man? that single distinction IS Cover 1 vs Cover 0, and
+  it is read off his eyes and hips, never off the rush count), the corners (turn and run, or open
+  and settle), the linebackers (carry, drop, or rush), and anyone who left coverage to blitz.
+  Pictures that disagree produce `not_determinable` rather than an average of them.
+  `defense-structure.test.ts` guards all of this, including a regression test that no definition
+  reacquires a pressure precondition.
 - **Ground truth on file** (Bradley, `EVAL_TRUTH_*` in `scripts/eval-defense.ts`): the first few
   possessions are a **mixture of Cover 0 and Cover 1** — i.e. shell ∈ {zero_high, one_high},
   coverage ∈ {cover_0, cover_1}. The harness scores truth as a SET, because "a mixture of two

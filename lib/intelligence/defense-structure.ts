@@ -320,10 +320,31 @@ presnap_shell — how many deep safeties are showing BEFORE the snap. Count the 
   standing deeper than about 10 yards: two_high, one_high, zero_high, three_high. This is
   usually the MOST answerable question here, because the defence is still and in frame.
 
-coverage_played — what they actually played after the snap. If the corners turned and ran with
-  receivers it was man; if they dropped to spots and watched the quarterback it was zone. If you
-  can tell man from zone but not which one, answer man_unknown or zone_unknown — that is a real
-  answer, not a failure. Answer not_determinable whenever the coverage left the frame.
+coverage_played — what they actually played after the snap. Read it off the defenders in
+  coverage, using the checklist below. If you can tell man from zone but not which one, answer
+  man_unknown or zone_unknown — that is a real answer, not a failure. Answer not_determinable
+  whenever the coverage left the frame.
+
+  COVERAGE AND PRESSURE ARE TWO SEPARATE OBSERVATIONS. Never infer either from the other.
+  Cover 0 and Cover 1 often come with extra rushers — that is a CORRELATION, not a definition.
+  A defence can play Cover 0 behind a four-man rush and it is still Cover 0; it can send six and
+  play zone behind it. Count the rush for pressure_look; read the coverage off the coverage
+  players. If you catch yourself reasoning "they only rushed four, so it cannot be Cover 0",
+  stop — that inference is the error this rule exists to prevent.
+
+  READ EVERY POSITION BEFORE YOU NAME A COVERAGE. A coverage is what eleven players are doing:
+  - THE DEEP MIDDLE, and this is the whole Cover 1 / Cover 0 distinction. Is one safety alone
+    back there READING THE QUARTERBACK — square, eyes in the backfield, feet ready to break
+    either way? That is Cover 1. Is there NO safety in the middle because he is carrying a
+    receiver man-to-man? That is Cover 0. This is read off that safety's eyes and hips. It is
+    never read off the rush count.
+  - THE CORNERS. Did they turn and run with a receiver (man), or open to the quarterback and
+    settle on a spot (zone)?
+  - THE LINEBACKERS. Did one carry a back or tight end across the field (man), drop to a spot
+    facing the quarterback (zone), or rush?
+  - ANYONE WHO LEFT COVERAGE to blitz, and who picked up the man he left.
+  If those pictures disagree with each other, answer not_determinable rather than averaging
+  them into a coverage nobody played.
 
 safety_rotation — what the safeties did between the snap and the throw or handoff. A defence
   that shows two-high and rotates to one-high is the single most useful thing to tell a
@@ -344,7 +365,8 @@ corner_leverage_field / corner_leverage_boundary — inside, outside or head_up 
 box_count — defenders within about 5 yards of the ball before the snap.
 
 pressure_look — how many rushed and from where, including showed_pressure_bailed when they
-  walked up and dropped out.
+  walked up and dropped out. Count the rushers. Do not adjust this to fit the coverage you
+  named, and do not adjust the coverage to fit this.
 
 presnap_tells — the things a quarterback could LOOK AT at the line. Each one is an observation
   ("the field safety walked down to 8 yards", "the boundary corner pressed only when the back
