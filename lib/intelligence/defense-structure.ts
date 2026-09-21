@@ -638,6 +638,14 @@ can actually see and leave the rest out.
   covering  — on man_coverage, the OFFENSIVE position he carried (wr_left, te_right, rb, ...).
   note      — anything a coach would want, in a few words.
 
+ON A RUNNING PLAY, NOBODY COVERS ANYBODY. Everyone converts to a run fit within a step, so
+man_coverage and zone_deep will be rare or absent and the played coverage is genuinely not
+determinable — that is the right answer, not a failure. What IS readable on a run is the
+ALIGNMENT: where every defender stood at the snap, and above all how many safeties were deep and
+how deep each one was. Chart the alignment with the same care on a run as on a pass. It is the
+only record of what the defence CALLED, and a coach scouting a defence needs that whether or not
+the ball went in the air.
+
 COVERAGE AND PRESSURE ARE TWO SEPARATE OBSERVATIONS, and charting the eleven is how that stays
 true. Cover 0 and Cover 1 usually come with extra rushers, but that is
 a CORRELATION, not a definition. Never adjust one player's action so the group fits a coverage

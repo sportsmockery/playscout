@@ -275,3 +275,40 @@ describe('the coverage is derived from the eleven, not named', () => {
     expect(snap.defenders).toHaveLength(1)
   })
 })
+
+describe('a running play is charted by alignment, not by coverage', () => {
+  // Measured: on play 1 of the ground-truth game the model charted ten
+  // defenders and every action was run_fit or chased_ball, because the play is
+  // a run. Coverage is genuinely not determinable there, and the ALIGNMENT is
+  // the only record of what was called.
+  const runPlay: DefenderRow[] = [
+    { position: 'de_left', alignment: 'on_line_outside_shade', action: 'run_fit' },
+    { position: 'dt_left', alignment: 'on_line_inside_shade', action: 'run_fit' },
+    { position: 'dt_right', alignment: 'on_line_inside_shade', action: 'run_fit' },
+    { position: 'de_right', alignment: 'on_line_outside_shade', action: 'chased_ball' },
+    { position: 'lb_left', alignment: 'off_ball_box', depth_yards: 5, action: 'run_fit' },
+    { position: 'lb_right', alignment: 'off_ball_box', depth_yards: 5, action: 'run_fit' },
+    { position: 'cb_left', alignment: 'off_wide', depth_yards: 7, action: 'chased_ball' },
+    { position: 'cb_right', alignment: 'off_wide', depth_yards: 7, action: 'chased_ball' },
+    { position: 'ss', alignment: 'over_slot', depth_yards: 5, action: 'run_fit' },
+    { position: 'fs', alignment: 'deep_middle', depth_yards: 12, action: 'chased_ball' },
+  ]
+
+  it('still reads the shell off the alignment', () => {
+    expect(deriveShell(runPlay)).toBe('one_high')
+  })
+
+  it('declines to name a coverage nobody played', () => {
+    expect(deriveCoverage(runPlay).coverage).toBe('not_determinable')
+  })
+
+  it('does not invent pressure out of run fits', () => {
+    expect(derivePressureLook(runPlay)).toBe('not_determinable')
+  })
+
+  it('tells the read to chart alignment with the same care on a run', () => {
+    const prompt = buildDefensiveStructurePrompt('Bradley')
+    expect(prompt).toContain('ON A RUNNING PLAY, NOBODY COVERS ANYBODY')
+    expect(prompt).toContain('the same care on a run as on a pass')
+  })
+})
