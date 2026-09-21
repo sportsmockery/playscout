@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { buildScoutIQGamePlanPrompt, type ScoutIQGamePlanContext } from './scoutiq-gameplan'
 import type { AggregatedScoutReport } from '../scoutiq-aggregate'
+import { aggregateDefensiveSnaps } from '../aggregate-defense'
 
 const aggregated = (over: Partial<AggregatedScoutReport> = {}): AggregatedScoutReport => ({
   offensive_tendencies: [],
@@ -9,6 +10,7 @@ const aggregated = (over: Partial<AggregatedScoutReport> = {}): AggregatedScoutR
   situational_tells: [],
   attack_points: [],
   target_players: [],
+  defensive_profile: aggregateDefensiveSnaps([]),
   evidence_sufficiency: {
     plays_observed: 120,
     clips_analyzed: 52,

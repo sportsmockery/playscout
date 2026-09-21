@@ -2,6 +2,8 @@ import { buildFootballBrain, buildGameTypeContext } from '../football-brain'
 import { resolveLevelTier, tierLabel } from '../levels'
 import { ATTACK_CATEGORY_LABELS, type AttackCategory } from '../taxonomy'
 import type { AggregatedScoutReport } from '../scoutiq-aggregate'
+import { renderDefensiveProfile, buildRoleBriefRules } from '../game-plan'
+import { profileIsThin } from '../aggregate-defense'
 
 export interface ScoutIQGamePlanContext {
   opponentName: string
@@ -85,6 +87,12 @@ ${formatAttackPoints(aggregated.attack_points, aggregated.evidence_sufficiency.d
 Target players (weakness identified by legible jersey number or position/alignment — never a guessed number):
 ${aggregated.target_players.map((p) => `- ${p.identifier}: ${p.reason} (confidence ${p.confidence.toFixed(2)})`).join('\n') || '(none identified yet)'}
 
+## ${ctx.opponentName}'s Defensive Structure, charted snap by snap
+Every figure below is counted by the app from the snaps themselves. A rate is always over the
+snaps where that question was READABLE, never over all snaps — the camera follows the ball, so
+the secondary is often out of frame, and "readable on 12 of 70" means you know twelve snaps.
+${renderDefensiveProfile(aggregated.defensive_profile)}
+
 ## Your Team's Own Personnel & Playbook
 ${ctx.ownRosterSummary ?? '(no roster on file)'}
 ${ctx.ownPlaybookSummary ?? '(no playbook on file)'}
@@ -97,6 +105,11 @@ Produce a game plan a ${tierLabel(tier)} coach can actually use this week:
 4. practice_week_focus — 3-5 concrete practice-week install priorities.
 5. evidence_sufficiency_note — one honest sentence on how much this is built on (cite the clip/play counts above, and say how many of those clips actually had them on defense).${aggregated.evidence_sufficiency.unconfirmed_subject_clips > 0 ? ` NOTE: on ${aggregated.evidence_sufficiency.unconfirmed_subject_clips} clip(s) the film analyst could not confirm it was grading ${ctx.opponentName} rather than the other team — say so plainly here.` : ''} If the sample is thin (few clips or plays), say so plainly and recommend scouting more film before fully trusting this plan.
 6. summary — 2-3 sentence executive summary.
+7. quarterback_brief — what OUR quarterback does at the line against them (see the role-brief rules below).
+8. coordinator_brief — the same evidence written for the offensive coordinator.
+9. not_observed — what this film could NOT establish about them, named plainly.
+
+${buildRoleBriefRules(ctx.opponentName, ctx.teamName, profileIsThin(aggregated.defensive_profile))}
 
 RULES:
 - Only reference opponent tendencies, formations, or target players that appear in the evidence above. Never invent a tendency, jersey number, or player detail not listed there.
@@ -111,8 +124,26 @@ Return ONLY JSON matching this schema, no preamble, no markdown fences:
   "target_players_plan": ["<string>", ...],
   "practice_week_focus": ["<string>", ...],
   "evidence_sufficiency_note": "<string>",
-  "summary": "<string>"
+  "summary": "<string>",
+  "quarterback_brief": {
+    "presnap_checklist": ["<what he can SEE in two seconds, in the order he looks>", ...],
+    "shell_reads": [{ "point": "<what this picture turns into>", "evidence": "<figure and denominator from above>" }, ...],
+    "where_to_throw": [{ "point": "<string>", "evidence": "<string>" }, ...],
+    "avoid": ["<what gets the ball intercepted against them>", ...]
+  },
+  "coordinator_brief": {
+    "attack": [{ "point": "<string>", "evidence": "<string>" }, ...],
+    "formation_and_motion": [{ "point": "<string>", "evidence": "<string>" }, ...],
+    "situational": [{ "point": "<string>", "evidence": "<string>" }, ...]
+  },
+  "not_observed": ["<what the film could not establish>", ...]
 }`
+}
+
+export interface KeyedPoint {
+  point: string
+  /** The figure AND its denominator, quoted from the charted evidence. */
+  evidence: string
 }
 
 export interface ScoutIQGamePlan {
@@ -122,4 +153,20 @@ export interface ScoutIQGamePlan {
   practice_week_focus: string[]
   evidence_sufficiency_note: string
   summary: string
+  /**
+   * Role briefs. Optional because every plan generated before the defensive
+   * structure existed has none, and those plans still render.
+   */
+  quarterback_brief?: {
+    presnap_checklist: string[]
+    shell_reads: KeyedPoint[]
+    where_to_throw: KeyedPoint[]
+    avoid: string[]
+  }
+  coordinator_brief?: {
+    attack: KeyedPoint[]
+    formation_and_motion: KeyedPoint[]
+    situational: KeyedPoint[]
+  }
+  not_observed?: string[]
 }
