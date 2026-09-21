@@ -3,6 +3,7 @@ import { resolveLevelTier } from '../levels'
 import { Type } from '@google/genai'
 import type { ModulePromptInput } from '../schemas'
 import { buildPlayContext } from '../play-context'
+import { buildSubjectTeamContext } from '../subject-team'
 import { buildBreakdownPrompt, REP_BREAKDOWN_SCHEMA } from '../breakdown'
 import { CONFIDENCE_PROMPT, SUBJECT_IDENTIFICATION, VIEW_QUALITY } from '../confidence'
 import { OLIQ_CUES, OLIQ_RUBRIC, buildRubricPrompt, buildDrillMenuPrompt, drillMenuFor, allCueIds } from '../rubrics'
@@ -36,6 +37,7 @@ Calibrate expectations to this athlete's age and level.`
   return `${buildFootballBrain(tier, input.evidenceMode)}
 
 You are OLIQ — Offensive Line Intelligence.
+${buildSubjectTeamContext(team, 'offensive linemen')}
 ${playerProfile}
 ${teamContext}
 ${gameTypeContext}

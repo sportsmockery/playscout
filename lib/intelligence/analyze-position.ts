@@ -207,10 +207,34 @@ export async function analyzePosition(
   // a client-supplied value here would let a caller bypass the gate.
   const { data: teamRow } = await supabase
     .from('teams')
-    .select('game_type, level, age_group, offensive_style, defensive_style')
+    .select('game_type, level, age_group, offensive_style, defensive_style, home_jersey_color, away_jersey_color')
     .eq('id', input.teamId)
     .maybeSingle()
   const gameType = teamRow?.game_type as 'flag' | 'tackle' | 'rookie_tackle' | null | undefined
+
+  /**
+   * The coach's jersey colour when the module screen did not ask for one.
+   *
+   * Only four of the eight module screens carry the home/away picker, so
+   * QBIQ, OLIQ and RBIQ — the three that grade ONE NAMED CHILD — were reaching
+   * the model with no way to tell which of the two teams on the field is ours.
+   * The team row already knows, so it is supplied here rather than by adding a
+   * picker to three more screens.
+   *
+   * WHEN THE TEAM WEARS TWO COLOURS THIS STAYS EMPTY, deliberately. A WRONG
+   * colour is worse than none: with none the prompt grades only what it can
+   * attribute unambiguously, and with the opposite colour it confidently
+   * grades the other team's quarterback under this child's name. That is the
+   * exact trap the module screens' picker was changed to avoid — it used to
+   * default to HOME and silently shipped the wrong colour on away film — so
+   * this must not reintroduce it by guessing.
+   */
+  const unambiguousTeamColor = (() => {
+    const home = (teamRow?.home_jersey_color as string | null) ?? null
+    const away = (teamRow?.away_jersey_color as string | null) ?? null
+    if (home && away) return home.trim().toLowerCase() === away.trim().toLowerCase() ? home : undefined
+    return home ?? away ?? undefined
+  })()
   const tier = resolveLevelTier(teamRow as { age_group?: string | null; level?: string | null } | null)
   // Whose film is this? Read from the video row, never from the caller: it
   // decides how the subject is named and whether the coach's roster is a valid
@@ -256,7 +280,10 @@ export async function analyzePosition(
           // "the <colour> players ARE the subject team" — which would pick the
           // wrong side, or nobody. Dropping it moves those prompts onto their
           // own careful no-colour branch.
-          jersey_color: misdirected ? undefined : input.team.jersey_color,
+          // A colour the coach chose for THIS run always wins — they know
+          // which kit was worn. The team row is the fallback, and only when it
+          // is unambiguous.
+          jersey_color: misdirected ? undefined : input.team.jersey_color ?? unambiguousTeamColor,
           game_type: gameType ?? undefined,
           // Standing scheme context from the team row, so a coach records it
           // once in team settings rather than retyping it into every run.

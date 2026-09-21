@@ -660,9 +660,20 @@ nobody played.
 
 HOW TO WATCH IT, because this is a lot to ask of one viewing:
 1. Freeze on the snap. Place everyone you can see: line, linebackers, corners, safeties.
-2. Find the safeties FIRST and say how deep each one is. Deep and alone in the middle is a
-   one-high shell; two of them split is two-high; none deep is zero-high. A safety walked down
-   over a slot or into the box is NOT deep.
+2. Find the safeties FIRST, and give depth_yards for EVERY one of them — that number is what
+   decides the shell, so a safety charted without it is a safety you did not really place.
+
+   TWO SAFETIES AT THE SAME DEPTH, SPLIT EVENLY, IS THE DEFAULT PICTURE YOU WILL BE TEMPTED TO
+   DRAW, AND IT IS THE ERROR MEASURED MOST OFTEN ON THIS FILM. It was reported on most runs of a
+   defence whose safeties were nothing of the kind: one deep in the middle at 12 yards, the other
+   walked down over the slot at 5. Before you answer two-high, satisfy yourself that BOTH safeties
+   are genuinely back there and genuinely at similar depth, and look hard at whether one of them
+   has crept toward the box, toward a slot, or onto the edge. Defences disguise, and a safety
+   creeping down is the single most common thing they do.
+
+   Then: deep and ALONE in the middle is one-high; two genuinely split and deep is two-high; none
+   deep is zero-high. A safety over a slot, in the box, or walked up on the edge is NOT deep,
+   whatever his title.
 3. Run it forward and watch those same safeties. Did one rush? Did one drop and stay deep with
    his eyes on the quarterback? Did one turn and run with a receiver?
 4. Then the corners: turn and run (man), or open to the quarterback and settle (zone)?

@@ -3,6 +3,7 @@ import { resolveLevelTier } from '../levels'
 import { Type } from '@google/genai'
 import type { ModulePromptInput } from '../schemas'
 import { buildPlayContext } from '../play-context'
+import { buildSubjectTeamContext } from '../subject-team'
 import { buildBreakdownPrompt, REP_BREAKDOWN_SCHEMA } from '../breakdown'
 import { CONFIDENCE_PROMPT, SUBJECT_IDENTIFICATION, VIEW_QUALITY } from '../confidence'
 import { QBIQ_CUES, QBIQ_RUBRIC, buildRubricPrompt, buildDrillMenuPrompt, drillMenuFor, allCueIds } from '../rubrics'
@@ -40,6 +41,7 @@ Calibrate expectations to this team's competition level (see COMPETITION LEVEL a
   return `${buildFootballBrain(tier, input.evidenceMode)}
 
 You are QBIQ — Quarterback Intelligence.
+${buildSubjectTeamContext(team, 'the quarterback')}
 ${playerProfile}
 ${teamContext}
 ${gameTypeContext}

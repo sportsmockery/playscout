@@ -312,3 +312,25 @@ describe('a running play is charted by alignment, not by coverage', () => {
     expect(prompt).toContain('the same care on a run as on a pass')
   })
 })
+
+describe('the symmetric two-deep default is named as the trap', () => {
+  // UNMEASURED. Written against a diagnosed error — the read reported both
+  // safeties at deep-half 10-12 yards on most runs of a defence playing one
+  // deep with the strong safety walked down — but never tested against film,
+  // because the key was revoked before it could be. These tests prove the
+  // wording is present, NOT that it works.
+  const prompt = buildDefensiveStructurePrompt('Bradley')
+
+  it('requires a depth for every safety, since depth decides the shell', () => {
+    expect(prompt).toContain('give depth_yards for EVERY one of them')
+  })
+
+  it('names the default picture as the most common measured error', () => {
+    expect(prompt).toContain('IS THE DEFAULT PICTURE YOU WILL BE TEMPTED TO')
+    expect(prompt).toContain('THE ERROR MEASURED MOST OFTEN ON THIS FILM')
+  })
+
+  it('points at the specific thing being missed — a safety creeping down', () => {
+    expect(prompt).toContain('creeping down is the single most common thing they do')
+  })
+})

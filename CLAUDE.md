@@ -517,7 +517,17 @@ export interface PositionAnalysisResult {
   the OTHER team's stats as ours and the whole sheet inverts. Now the buttons name the colour
   ("Home · Blue"), and when both colours exist and differ the choice defaults to "Not sure" so the
   coach makes it. Covered in STATSIQ/RANKERIQ/TEAMIQ/MISTAKEIQ; QBIQ, OLIQ, RBIQ and SCOUTIQ have
-  no own-team colour at all and always take the no-colour branch — a real gap.
+  no own-team colour at all and always take the no-colour branch — a real gap. **QBIQ, OLIQ and
+  RBIQ are now closed** via `lib/intelligence/subject-team.ts`, a shared `buildSubjectTeamContext`
+  the four modules that had their own paragraph and the three that had NOTHING all import. Those
+  three grade ONE NAMED CHILD and their prompts said "grade the quarterback visible in the clip"
+  — on two-team film there are two quarterbacks, and the failure is silent: a fluent, detailed
+  report about somebody else's kid filed under yours.
+  Because only four module screens carry the home/away picker, `analyze-position.ts` now falls
+  back to the TEAM ROW's colour — and **only when it is unambiguous**. A team with two different
+  colours on file yields no colour at all, deliberately: a wrong colour is worse than none, and
+  defaulting to HOME is the exact bug the picker was changed to stop. A colour the coach picked
+  for that run still wins over the row.
 - **The verification call is retried once.** Losing it is not neutral: what ships is then the read
   that is usually wrong, labelled only "not corroborated". A 503 from an overloaded model was
   observed mid-eval and is transient.
