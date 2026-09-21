@@ -339,6 +339,15 @@ export const PositionAnalysisOutputSchema = z.object({
   // test still green. That is why the contract test now asserts the field
   // SURVIVES rather than only that the parse succeeds.
   defensive_snaps: z.array(z.object({
+    defenders: z.array(z.object({
+      position: z.string(),
+      alignment: z.string().optional(),
+      depth_yards: z.number().nullable().optional(),
+      side: z.string().nullable().optional(),
+      action: z.string().optional(),
+      covering: z.string().nullable().optional(),
+      note: z.string().nullable().optional(),
+    })).optional(),
     presnap_shell: z.string().optional(),
     coverage_played: z.string().optional(),
     safety_rotation: z.string().optional(),

@@ -14,8 +14,11 @@ import {
   PRESNAP_TELL_KINDS,
   BALL_POSITIONS,
   FIELD_SIDES,
+  DEFENDER_ALIGNMENTS,
+  DEFENDER_ACTIONS,
   buildDefensiveStructurePrompt,
 } from '../defense-structure'
+import { DEFENSIVE_POSITIONS, OFFENSIVE_POSITIONS } from '../positions'
 
 /**
  * ScoutIQ Stage 1 (System B, per-clip) — scouts an OPPONENT's film. Unlike
@@ -133,9 +136,27 @@ Return ONLY the JSON schema. No preamble.`
  * that demanded it would force the model to invent a coverage for a snap its
  * own defence was not on the field for.
  */
+const DEFENDER_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    position: { type: Type.STRING, enum: [...DEFENSIVE_POSITIONS] },
+    alignment: { type: Type.STRING, enum: [...DEFENDER_ALIGNMENTS] },
+    depth_yards: { type: Type.NUMBER, nullable: true },
+    side: { type: Type.STRING, enum: ['field', 'boundary', 'middle', 'not_visible'] },
+    action: { type: Type.STRING, enum: [...DEFENDER_ACTIONS] },
+    covering: { type: Type.STRING, enum: [...OFFENSIVE_POSITIONS], nullable: true },
+    note: { type: Type.STRING, nullable: true },
+  },
+  required: ['position', 'alignment', 'action'],
+}
+
 const DEFENSIVE_SNAP_SCHEMA = {
   type: Type.OBJECT,
   properties: {
+    // The load-bearing field. Shell, coverage, rotation and pressure are all
+    // computed from these rows; the scalar answers below are a fallback for a
+    // clip where too few players were visible to chart.
+    defenders: { type: Type.ARRAY, items: DEFENDER_SCHEMA },
     presnap_shell: { type: Type.STRING, enum: [...COVERAGE_SHELLS] },
     coverage_played: { type: Type.STRING, enum: [...COVERAGES] },
     safety_rotation: { type: Type.STRING, enum: [...SAFETY_ROTATIONS] },
