@@ -4,6 +4,18 @@ import { resolveLevelTier } from '../levels'
 import { Type } from '@google/genai'
 import type { ModulePromptInput } from '../schemas'
 import { buildPlayContext } from '../play-context'
+import {
+  COVERAGE_SHELLS,
+  COVERAGES,
+  SAFETY_ROTATIONS,
+  STRENGTH_DECLARATIONS,
+  LEVERAGES,
+  PRESSURE_LOOKS,
+  PRESNAP_TELL_KINDS,
+  BALL_POSITIONS,
+  FIELD_SIDES,
+  buildDefensiveStructurePrompt,
+} from '../defense-structure'
 
 /**
  * ScoutIQ Stage 1 (System B, per-clip) — scouts an OPPONENT's film. Unlike
@@ -106,11 +118,55 @@ from ${opponentLabel}'s film, for a coach preparing to play them:
 HARD RULE: never recommend anything that would help ${opponentLabel} play better. You are not
 their coach. Every recommendation in this report is an action for the team scouting them.
 
+${buildDefensiveStructurePrompt(opponentLabel)}
+
 SAMPLE SIZE — plays_observed = distinct snaps/plays visible in these frames. If
 plays_observed is 1, cap every tendency's confidence at roughly 0.4 and say so.
 Never invent a tendency, formation, or target player not visible in the frames.
 
 Return ONLY the JSON schema. No preamble.`
+}
+
+/**
+ * One charted defensive snap. Optional in `required` on purpose: the block is
+ * left out entirely on a play where the opponent has the BALL, and a schema
+ * that demanded it would force the model to invent a coverage for a snap its
+ * own defence was not on the field for.
+ */
+const DEFENSIVE_SNAP_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    presnap_shell: { type: Type.STRING, enum: [...COVERAGE_SHELLS] },
+    coverage_played: { type: Type.STRING, enum: [...COVERAGES] },
+    safety_rotation: { type: Type.STRING, enum: [...SAFETY_ROTATIONS] },
+    strength_declared: { type: Type.STRING, enum: [...STRENGTH_DECLARATIONS] },
+    ball_position: { type: Type.STRING, enum: [...BALL_POSITIONS] },
+    field_side: { type: Type.STRING, enum: [...FIELD_SIDES] },
+    field_safety_depth: { type: Type.NUMBER, nullable: true },
+    boundary_safety_depth: { type: Type.NUMBER, nullable: true },
+    corner_leverage_field: { type: Type.STRING, enum: [...LEVERAGES], nullable: true },
+    corner_leverage_boundary: { type: Type.STRING, enum: [...LEVERAGES], nullable: true },
+    box_count: { type: Type.INTEGER, nullable: true },
+    pressure_look: { type: Type.STRING, enum: [...PRESSURE_LOOKS] },
+    blitz_came_from: { type: Type.STRING, nullable: true },
+    presnap_tells: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          kind: { type: Type.STRING, enum: [...PRESNAP_TELL_KINDS] },
+          observation: { type: Type.STRING },
+          followed_by: { type: Type.STRING, nullable: true },
+          confidence: { type: Type.NUMBER },
+        },
+        required: ['kind', 'observation'],
+      },
+    },
+    confidence: { type: Type.NUMBER },
+    evidence_timestamps: { type: Type.ARRAY, items: { type: Type.NUMBER } },
+    note: { type: Type.STRING, nullable: true },
+  },
+  required: ['presnap_shell', 'coverage_played', 'pressure_look', 'confidence'],
 }
 
 const TENDENCY_ITEM_SCHEMA = {
@@ -220,6 +276,7 @@ export const SCOUTIQ_RESPONSE_SCHEMA = {
     },
     evidence_frames: { type: Type.ARRAY, items: { type: Type.INTEGER } },
     evidence_timestamps: { type: Type.ARRAY, items: { type: Type.NUMBER } },
+    defensive_snaps: { type: Type.ARRAY, items: DEFENSIVE_SNAP_SCHEMA },
   },
   required: [
     'overall_score', 'position_scores', 'reasoning',

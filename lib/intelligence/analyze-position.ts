@@ -16,6 +16,7 @@ import { buildRANKERIQSystemPrompt, RANKERIQ_RESPONSE_SCHEMA } from './modules/r
 import { buildSTATSIQSystemPrompt, STATSIQ_RESPONSE_SCHEMA } from './modules/statsiq'
 import { buildSTATSIQFactsPrompt, STATSIQ_FACTS_RESPONSE_SCHEMA } from './modules/statsiq-facts'
 import { factsOutputToAnalysisOutput } from './stat-facts'
+import { normalizeDefensiveSnap } from './defense-structure'
 import {
   PositionAnalysisOutputSchema,
   type PositionAnalysisInput,
@@ -766,6 +767,15 @@ export async function analyzePosition(
     unit_graded: parsed.unit_graded,
     players_not_evaluable: parsed.players_not_evaluable,
     target_players: parsed.target_players,
+    // Only on a snap where the opponent was DEFENDING. Charted on the offence's
+    // own plays it would describe the coach's team as if it were the scouting
+    // subject, and the batch rollup would average two different defences
+    // together — the one failure this whole block exists to produce evidence
+    // against.
+    defensive_snaps:
+      parsed.opponent_possession === 'defense' || parsed.opponent_possession === 'both'
+        ? parsed.defensive_snaps?.map((s) => normalizeDefensiveSnap(s as Record<string, unknown>))
+        : undefined,
     model: route.model,
     // In video mode there are no discrete frames to count, so report what the
     // sample rate actually produced — that is the number comparable to the 16
