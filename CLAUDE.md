@@ -587,6 +587,34 @@ export interface PositionAnalysisResult {
   Pictures that disagree produce `not_determinable` rather than an average of them.
   `defense-structure.test.ts` guards all of this, including a regression test that no definition
   reacquires a pressure precondition.
+- **MEASURED, 3 ground-truth clips.** Asking the model to NAME a coverage scored **shell 0/8,
+  coverage 0/8** — it answered `two_high` 8 times out of 8 and `four_man` 8 out of 8, which is
+  the signature of naming the commonest picture in football rather than reading the snap. It also
+  could not have been right: play 1 is one-high with the free safety BLITZING, and the vocabulary
+  had no "the safety rushed". Charting all eleven and computing the labels is the replacement.
+- **Possession had to be given a PROCEDURE, and that fixed it.** `opponent_possession` gates the
+  whole report and was flipping to 'offense' on a third of runs of film where the opponent was
+  plainly defending. The prompt defined the field and never said how to determine it. Now:
+  find the ball at the snap → the receiver and the linemen in front of him are the OFFENSE →
+  read THEIR jersey colour → answer accordingly; and explicitly do not decide it from play
+  direction, camera side, or which team fills the frame. **8/12 correct before, 18/20 after.**
+- **Resolution: medium ≥ low for this read, HIGH IS WORSE, and the shell is still unreliable.**
+  Same prompt, same clip, only `mediaResolution` varied (play 1 / play 13):
+  shell low **0/4 · 1/4**, medium **2/4 · 0/2**, high **2/4 · —**. But at HIGH the model asserted
+  a coverage on 4 runs of 4 and every one was wrong (`cover_3` ×3, `cover_4_quarters`), where low
+  and medium abstained. More pixels bought confidence, not correctness — the same result the
+  StatsIQ fps/resolution sweep produced. **SCOUTIQ stays at 2fps/low until a bigger sample says
+  otherwise**; the combined shell numbers (low 1/8, medium 2/6) do not justify the cost of
+  raising it for all 76 clips of a batch.
+- **The specific remaining failure is diagnosable**: the read puts BOTH safeties at deep-half,
+  10–12 yards, on most runs. When it is right it charts `ss@over_slot/5` — it sees the strong
+  safety walked down. So it is not failing to look; it defaults to a symmetric two-deep picture
+  and misses the safety coming down. That is the next thing to attack, not the resolution.
+- **A running play is charted by ALIGNMENT.** On play 1 every charted action came back `run_fit`
+  or `chased_ball`, because it is a run — nobody covers anybody, so the played coverage is
+  genuinely `not_determinable` there and the coverage column cannot score on a run however good
+  the read gets. The coach's "Cover 0" on such a play is the CALL, readable pre-snap. The shell
+  is the scoreable signal on a run.
 - **Ground truth on file** (Bradley, `EVAL_TRUTH_*` in `scripts/eval-defense.ts`): the first few
   possessions are a **mixture of Cover 0 and Cover 1** — i.e. shell ∈ {zero_high, one_high},
   coverage ∈ {cover_0, cover_1}. The harness scores truth as a SET, because "a mixture of two

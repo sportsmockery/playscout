@@ -67,10 +67,25 @@ CRITICAL — SUBJECT ANCHORING:
   direction of play) and subject_confirmed (true only when you are sure that side is
   ${opponentLabel}). A report on the wrong team is worse than no report, and this is the only
   field a coach can check that on.
-- ALWAYS fill opponent_possession: 'defense' when ${opponentLabel} is defending on this play,
-  'offense' when they have the ball, 'both' if the clip shows both, 'unclear' if you cannot tell.
-  Ways to attack them can only come from plays where they are on DEFENSE, and this is what lets
-  those be counted against the right number of clips.
+- ALWAYS fill opponent_possession, and WORK IT OUT FROM THE SNAP rather than from impression.
+  Measured on real film: this flipped on a third of runs of the same clip, and it gates the whole
+  report — every way to attack ${opponentLabel} comes from a play where they are DEFENDING, so a
+  wrong answer here discards a good read of the right team or files the wrong team's structure
+  under their name.
+
+  The procedure, in this order:
+  1. Find the BALL at the moment it is snapped, and the player who receives it.
+  2. That player and the linemen in a stance directly in front of him are the OFFENSE. Everyone
+     facing them is the DEFENSE. This is the only thing that decides it.
+  3. Read the OFFENSE's jersey colour.
+  4. If the offense is ${opponentLabel}, answer 'offense'. If the offense is the other team, then
+     ${opponentLabel} is defending — answer 'defense'.
+
+  Do NOT decide it from which way the play travels, which sideline the camera sits on, which team
+  fills more of the frame, which bench is nearer, or which team you were told to scout. None of
+  those tell you who snapped the ball. If you cannot find the snap — the clip starts late, the
+  ball is hidden — answer 'unclear' rather than guessing; an 'unclear' costs one clip, a wrong
+  answer corrupts the report.
 
 SCOUTIQ RUBRIC — like TEAMIQ, this module reports FREQUENCY and identifiable targets, not
 quality scores. The only 0-100 score is execution_consistency, describing how consistently
