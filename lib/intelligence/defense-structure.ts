@@ -56,8 +56,14 @@ export type CoverageShell = (typeof COVERAGE_SHELLS)[number]
 
 export const COVERAGE_SHELL_DEFINITIONS: Record<CoverageShell, string> = {
   two_high: 'Two safeties deep and roughly split — Cover 2, 4 or 6 territory',
-  one_high: 'One safety in the deep middle — Cover 1 or Cover 3 territory',
-  zero_high: 'No deep safety — everyone is down; usually all-out pressure or goal line',
+  one_high: 'One safety alone in the deep middle, reading the quarterback — Cover 1 or Cover 3 territory',
+  // NOT "usually all-out pressure or goal line". That was my wording and a
+  // coach corrected it off his own film: the opponent it was written against
+  // plays zero-high as a BASE call, mixed with one-high, on ordinary downs in
+  // the first possessions of a game. Attaching a precondition to a shell makes
+  // the model look for the precondition and answer "not visible" when it is
+  // absent, which suppresses exactly the read this is for.
+  zero_high: 'No deep safety at all — the safety is covering a man or is in the box. A base call for some defences, not only a goal-line or all-out-pressure look',
   three_high: 'Three deep defenders pre-snap, seen in some youth prevent looks',
   not_visible: 'The safeties are out of frame or the clip starts too late to see the shell',
 }
@@ -85,8 +91,11 @@ export const COVERAGES = [
 export type Coverage = (typeof COVERAGES)[number]
 
 export const COVERAGE_DEFINITIONS: Record<Coverage, string> = {
-  cover_0: 'Man across the board, no deep help, almost always with pressure',
-  cover_1: 'Man with one deep safety helping over the top',
+  // A coach's own definition, which is the operational one: "Cover 0 there is
+  // no safety in the middle because he is man to man covering someone too."
+  // Pressure often comes with it and is NOT what identifies it.
+  cover_0: 'Man across the board with NO safety in the deep middle — that safety is covering a man instead of helping. Extra rushers often come with it but are not required',
+  cover_1: 'Man underneath with ONE safety alone in the deep middle, reading the quarterback rather than covering a man',
   cover_2: 'Two deep safeties splitting the field, five underneath zones',
   cover_2_man: 'Two deep safeties, man underneath',
   cover_3: 'Three deep (two corners and a safety), four underneath zones',

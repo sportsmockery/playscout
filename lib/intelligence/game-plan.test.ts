@@ -38,7 +38,10 @@ describe('the evidence handed to the model', () => {
 
   it('explains what each coverage id means, so the brief need not guess', () => {
     const rendered = renderDefensiveProfile(profileOf(times(5, { coverage_played: 'cover_1' })))
-    expect(rendered).toContain('Man with one deep safety helping over the top')
+    // The coach's own definition, carried verbatim into the prompt: a Cover 1
+    // safety is READING THE QUARTERBACK rather than covering a man. That is
+    // what separates it from Cover 0 on this film.
+    expect(rendered).toContain('reading the quarterback rather than covering a man')
   })
 
   it('reports a measured average with the count behind it', () => {

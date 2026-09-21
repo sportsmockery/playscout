@@ -553,6 +553,38 @@ export interface PositionAnalysisResult {
   rather than a totals table: credits roll up into any question (a season, a down, one player),
   and a total cannot be taken apart again.
 
+**Defensive structure — what SCOUTIQ charts for a game plan** (`lib/intelligence/defense-structure.ts`)
+- Per DEFENSIVE snap: pre-snap shell, played coverage, safety rotation, declared strength, ball
+  position/field side, safety depths, corner leverage, box count, pressure look, and pre-snap
+  tells. Rolled up per opponent by `aggregate-defense.ts` and written into ScoutIQ's EXISTING
+  Stage-2 game plan (`modules/scoutiq-gameplan.ts`) as QB and coordinator briefs — there is one
+  game plan in this product, not two.
+- **Pre-snap and post-snap are separate questions.** The camera follows the ball, so the shell is
+  usually readable and the played coverage often is not. A rollup reporting 60 shells and 20
+  coverages is correct. For a quarterback the shell is the more useful fact anyway.
+- **Two denominators, and conflating them is the trap.** A coverage rate is over the snaps where
+  coverage was READABLE, never over all snaps. Dividing by all snaps reports "Cover 3 on 20%" for
+  a defence that played it 20 times in the 24 snaps anyone could see.
+- A split (by hash, by situation, by declared strength) needs **4+ snaps**. "100% two-high on the
+  left hash" off three plays reads as a tendency and is three plays.
+- **Do NOT attach preconditions to a shell or coverage definition.** My first wording said
+  zero-high was "usually all-out pressure or goal line" and Cover 0 came "almost always with
+  pressure". A coach corrected it off his own film: Bradley plays Cover 0 and Cover 1 as BASE
+  calls on ordinary downs. A precondition makes the model hunt for the precondition and answer
+  "not visible" when it is absent — suppressing exactly the read the field exists for. The
+  coach's operational definitions are now carried verbatim: Cover 1 is man with one safety alone
+  in the deep middle READING THE QUARTERBACK; Cover 0 is man with no middle safety because that
+  safety is covering someone.
+- **Ground truth on file** (Bradley, `EVAL_TRUTH_*` in `scripts/eval-defense.ts`): the first few
+  possessions are a **mixture of Cover 0 and Cover 1** — i.e. shell ∈ {zero_high, one_high},
+  coverage ∈ {cover_0, cover_1}. The harness scores truth as a SET, because "a mixture of two
+  coverages" is a real checkable fact even though it names no single answer per snap: a read of
+  cover_3 is wrong against it, cover_0 is right. Marked clips: plays 1, 6 and 13 of the 76-clip
+  cut-up. **UNMEASURED so far** — the harness exists, the clips have not been run through it.
+- The film is high-school, shot from an elevated wide angle that shows the whole secondary
+  pre-snap — materially better for a shell read than the youth sideline film the pessimistic
+  wording in `defense-structure.ts` was written against. Re-read that caveat once measured.
+
 **Scoring scale (all modules):**
 90-100 Elite | 80-89 Advanced | 70-79 Solid | 60-69 Developing | <60 Beginner
 
