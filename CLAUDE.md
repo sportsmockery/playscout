@@ -82,6 +82,18 @@ export const MODEL_ROUTES: Record<AIJobType, { provider: string; model: string }
 
 Note: `analyze-position.ts` currently routes every module (QBIQ/OLIQ/TEAMIQ/MISTAKEIQ/SCOUTIQ) through the single `frame_observation` job type rather than per-module job types — one source of truth for the frame-analysis model choice.
 
+**`gemini-2.5-pro` IS BEING SUNSET, and every System B job is pinned to it.** A key
+issued 2026-09-22 gets a hard 404 on `models/gemini-2.5-pro` — *"no longer available to
+new users. Please update your code to use models/gemini-3.1-pro-preview"* — while older
+keys still answer, which is why production is unaffected today and a fresh eval key
+cannot reach it at all. It is still listed by the models endpoint; the listing is
+permissive and the call is not, so availability must be tested by calling it. Five of
+the eleven routes (`frame_observation`, `sequence_analysis`, `assignment_grading`,
+`mistake_detection`, and therefore every module analysis) stop the day that key lapses.
+`scripts/eval-statsiq.ts` takes `EVAL_MODEL` so a replacement can be scored; **a number
+measured on any other model is measuring a different system**, and every figure recorded
+in this file was measured on 2.5-pro.
+
 Providers: `lib/ai/providers/anthropic.ts`, `google.ts`, `perplexity.ts`, `openai.ts` (embeddings only — `text-embedding-3-small` for team-memory RAG, not a chat/analysis model)
 
 ---

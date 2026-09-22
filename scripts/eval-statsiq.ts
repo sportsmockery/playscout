@@ -43,7 +43,17 @@ import {
 } from '../lib/intelligence/stat-verify'
 import { tallyStatPlays } from '../lib/intelligence/stat-lines'
 
-const MODEL = 'gemini-2.5-pro'
+/**
+ * Overridable because gemini-2.5-pro — what MODEL_ROUTES ships — now returns
+ * 404 "no longer available to new users" for keys issued after its sunset
+ * began. It still answers for older keys, so production is unaffected today
+ * and a fresh eval key cannot reach it at all.
+ *
+ * Any run on a different model is measuring a DIFFERENT SYSTEM than production
+ * runs. Say which model produced a number before comparing it to anything in
+ * CLAUDE.md, all of which was measured on 2.5-pro.
+ */
+const MODEL = process.env.EVAL_MODEL || 'gemini-2.5-pro'
 
 const clipPath = process.argv[2]
 const runs = Number(process.argv[3] ?? 1)
