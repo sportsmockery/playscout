@@ -289,6 +289,21 @@ export interface PositionAnalysisResult {
   exactly what put one kid's grade on another, so with no roster on file every player is graded
   by role and the UI points the coach at `/teams/[id]/roster`. Entering jersey numbers is what
   unlocks player-level grading and player profiles.
+- **The roster is pasted, not typed one modal at a time** (`lib/roster/parse-roster.ts` +
+  `ImportRosterButton`). A real freshman roster is sixty kids, so "tedious to enter" was the
+  gate in front of every per-player feature in the product. The parser pulls height, weight,
+  class year, level and position out FIRST and takes the jersey from whatever small integer
+  survives — hunting the number first reads the 6 of `6'0"` and the 134 of `134lbs`. Nothing
+  saves until the coach has seen the preview table, because a bad parse files one child's season
+  under another child's name, which is the exact failure the identity gates exist to stop.
+  **A duplicate jersey BLOCKS the import rather than warning**: `matchRosterPlayer` resolves a
+  number only when exactly one player wears it, so saving two costs BOTH kids every grade and
+  stat. `normalizeJersey` is `digitsOf`'s twin and must stay that way, or a number entered here
+  stops matching the number read off the film.
+- **`players.grade_level` is a LEVEL, not a graduation year.** It is the `GRADE_LEVEL_GROUPS`
+  vocabulary the Add Player form offers and the value handed to the model as the player's level,
+  so "2030" there is meaningless to both. The importer keeps a year as `notes: "Class of 2030"`
+  and applies a level the coach picks for the whole paste.
 - **Scrimmage/practice film claims no numbers at all** (`filmConditions: 'scrimmage'`, a checkbox
   on the module screen). Pinnies and borrowed jerseys carry numbers belonging to other players,
   so a roster "match" there proves nothing about who is wearing it — and some players wear no
@@ -1173,7 +1188,7 @@ route group adds no path segment — `app/(app)/dashboard/page.tsx` serves
 |---|---|
 | `/dashboard` | Main dashboard |
 | `/teams`, `/teams/new`, `/teams/[teamId]` | Teams list, create, command center |
-| `/teams/[teamId]/roster` | Roster (no player profile page exists yet) |
+| `/teams/[teamId]/roster` | Roster — paste-import + single add (no player profile page exists yet) |
 | `/teams/[teamId]/film` | Film library |
 | `/teams/[teamId]/film/[videoId]` | Film detail |
 | `/teams/[teamId]/film/[videoId]/plays` | Play sequences + Hudl breakdown attach |

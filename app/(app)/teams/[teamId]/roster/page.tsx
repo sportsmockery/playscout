@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft, UserCircle } from 'lucide-react';
 import AddPlayerButton from './AddPlayerButton';
+import ImportRosterButton from './ImportRosterButton';
 import PlayerActions from './PlayerActions';
 
 export async function generateMetadata({ params }: { params: Promise<{ teamId: string }> }) {
@@ -45,6 +46,13 @@ export default async function RosterPage({
 
   if (!team) notFound();
 
+  // Passed to the importer so a number already on the roster is shown as a
+  // collision in the preview rather than saved as a duplicate — two players
+  // wearing one number cannot be matched to either.
+  const existingJerseys = players
+    .map((p) => (p.jersey_number != null ? String(p.jersey_number) : null))
+    .filter((j): j is string => j !== null);
+
   return (
     <div className="p-6 max-w-5xl mx-auto">
       <div className="flex items-center gap-3 mb-2">
@@ -57,24 +65,33 @@ export default async function RosterPage({
         </Link>
       </div>
 
-      <div className="flex items-center justify-between mb-8">
+      {/* Stacked on a phone: two buttons plus the heading do not fit on one
+          390px row, and a flex row would squeeze the text rather than wrap. */}
+      <div className="flex flex-col gap-4 mb-8 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-[var(--brand-navy)]">Roster</h1>
           <p className="text-[var(--brand-muted)] text-sm mt-0.5">
             {players.length} player{players.length !== 1 ? 's' : ''}
           </p>
         </div>
-        <AddPlayerButton teamId={teamId} />
+        <div className="flex items-center gap-2">
+          <ImportRosterButton teamId={teamId} existingJerseys={existingJerseys} />
+          <AddPlayerButton teamId={teamId} />
+        </div>
       </div>
 
       {players.length === 0 ? (
         <div className="glass-card p-16 text-center">
           <UserCircle size={48} className="text-[var(--brand-border-strong)] mx-auto mb-4" />
           <h2 className="text-xl font-bold text-[var(--brand-navy)] mb-2">No players yet</h2>
-          <p className="text-[var(--brand-muted)] text-sm mb-6">
-            Add players to build your roster and unlock intelligence analyses.
+          <p className="text-[var(--brand-muted)] text-sm mb-6 max-w-md mx-auto">
+            Jersey numbers are what let RankerIQ and StatsIQ put a grade or a stat on a name
+            instead of a position. Paste the whole roster in one go.
           </p>
-          <AddPlayerButton teamId={teamId} variant="primary" />
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <ImportRosterButton teamId={teamId} existingJerseys={existingJerseys} variant="primary" />
+            <AddPlayerButton teamId={teamId} />
+          </div>
         </div>
       ) : (
         <div className="glass-card overflow-hidden">
