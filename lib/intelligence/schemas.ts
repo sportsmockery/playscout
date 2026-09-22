@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { DefensiveSnap } from './defense-structure'
 import { Type } from '@google/genai'
 import type { EvidenceMode } from './football-brain'
 import { RepBreakdownSchema, type RepBreakdown } from './breakdown'
@@ -327,6 +328,49 @@ export const PositionAnalysisOutputSchema = z.object({
     confidence: z.number(),
     evidence_frames: z.array(z.number()).optional(),
   })).optional(),
+  // SCOUTIQ only — what the opponent's DEFENCE did on this snap: coverage
+  // shell, played coverage, safety rotation, declared strength, hash, leverage,
+  // pressure and the pre-snap tells. Rolled up by aggregate-defense.ts into the
+  // distributions a QB/OC/DC brief is written from.
+  //
+  // A field missing from THIS schema is silently deleted rather than rejected —
+  // `z.object` strips unknown keys — so a model can answer a question perfectly
+  // and have the answer disappear between the API and the report with every
+  // test still green. That is why the contract test now asserts the field
+  // SURVIVES rather than only that the parse succeeds.
+  defensive_snaps: z.array(z.object({
+    defenders: z.array(z.object({
+      position: z.string(),
+      alignment: z.string().optional(),
+      depth_yards: z.number().nullable().optional(),
+      side: z.string().nullable().optional(),
+      action: z.string().optional(),
+      covering: z.string().nullable().optional(),
+      note: z.string().nullable().optional(),
+    })).optional(),
+    presnap_shell: z.string().optional(),
+    coverage_played: z.string().optional(),
+    safety_rotation: z.string().optional(),
+    strength_declared: z.string().optional(),
+    ball_position: z.string().optional(),
+    field_side: z.string().optional(),
+    field_safety_depth: z.number().nullable().optional(),
+    boundary_safety_depth: z.number().nullable().optional(),
+    corner_leverage_field: z.string().nullable().optional(),
+    corner_leverage_boundary: z.string().nullable().optional(),
+    box_count: z.number().nullable().optional(),
+    pressure_look: z.string().optional(),
+    blitz_came_from: z.string().nullable().optional(),
+    presnap_tells: z.array(z.object({
+      kind: z.string(),
+      observation: z.string(),
+      followed_by: z.string().nullable().optional(),
+      confidence: z.number().optional(),
+    })).optional(),
+    confidence: z.number().optional(),
+    evidence_timestamps: z.array(z.number()).optional(),
+    note: z.string().nullable().optional(),
+  })).optional(),
 })
 
 export interface PositionAnalysisResult {
@@ -384,6 +428,8 @@ export interface PositionAnalysisResult {
   unit_graded?: string
   players_not_evaluable?: string
   target_players?: { identifier: string; reason: string; confidence: number; evidence_frames?: number[] }[]
+  /** SCOUTIQ — the opponent's defensive structure on this snap. */
+  defensive_snaps?: DefensiveSnap[]
   model: string
   framesAnalyzed: number
 }

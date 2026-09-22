@@ -4,6 +4,21 @@ import { resolveLevelTier } from '../levels'
 import { Type } from '@google/genai'
 import type { ModulePromptInput } from '../schemas'
 import { buildPlayContext } from '../play-context'
+import {
+  COVERAGE_SHELLS,
+  COVERAGES,
+  SAFETY_ROTATIONS,
+  STRENGTH_DECLARATIONS,
+  LEVERAGES,
+  PRESSURE_LOOKS,
+  PRESNAP_TELL_KINDS,
+  BALL_POSITIONS,
+  FIELD_SIDES,
+  DEFENDER_ALIGNMENTS,
+  DEFENDER_ACTIONS,
+  buildDefensiveStructurePrompt,
+} from '../defense-structure'
+import { DEFENSIVE_POSITIONS, OFFENSIVE_POSITIONS } from '../positions'
 
 /**
  * ScoutIQ Stage 1 (System B, per-clip) — scouts an OPPONENT's film. Unlike
@@ -52,10 +67,25 @@ CRITICAL — SUBJECT ANCHORING:
   direction of play) and subject_confirmed (true only when you are sure that side is
   ${opponentLabel}). A report on the wrong team is worse than no report, and this is the only
   field a coach can check that on.
-- ALWAYS fill opponent_possession: 'defense' when ${opponentLabel} is defending on this play,
-  'offense' when they have the ball, 'both' if the clip shows both, 'unclear' if you cannot tell.
-  Ways to attack them can only come from plays where they are on DEFENSE, and this is what lets
-  those be counted against the right number of clips.
+- ALWAYS fill opponent_possession, and WORK IT OUT FROM THE SNAP rather than from impression.
+  Measured on real film: this flipped on a third of runs of the same clip, and it gates the whole
+  report — every way to attack ${opponentLabel} comes from a play where they are DEFENDING, so a
+  wrong answer here discards a good read of the right team or files the wrong team's structure
+  under their name.
+
+  The procedure, in this order:
+  1. Find the BALL at the moment it is snapped, and the player who receives it.
+  2. That player and the linemen in a stance directly in front of him are the OFFENSE. Everyone
+     facing them is the DEFENSE. This is the only thing that decides it.
+  3. Read the OFFENSE's jersey colour.
+  4. If the offense is ${opponentLabel}, answer 'offense'. If the offense is the other team, then
+     ${opponentLabel} is defending — answer 'defense'.
+
+  Do NOT decide it from which way the play travels, which sideline the camera sits on, which team
+  fills more of the frame, which bench is nearer, or which team you were told to scout. None of
+  those tell you who snapped the ball. If you cannot find the snap — the clip starts late, the
+  ball is hidden — answer 'unclear' rather than guessing; an 'unclear' costs one clip, a wrong
+  answer corrupts the report.
 
 SCOUTIQ RUBRIC — like TEAMIQ, this module reports FREQUENCY and identifiable targets, not
 quality scores. The only 0-100 score is execution_consistency, describing how consistently
@@ -106,11 +136,73 @@ from ${opponentLabel}'s film, for a coach preparing to play them:
 HARD RULE: never recommend anything that would help ${opponentLabel} play better. You are not
 their coach. Every recommendation in this report is an action for the team scouting them.
 
+${buildDefensiveStructurePrompt(opponentLabel)}
+
 SAMPLE SIZE — plays_observed = distinct snaps/plays visible in these frames. If
 plays_observed is 1, cap every tendency's confidence at roughly 0.4 and say so.
 Never invent a tendency, formation, or target player not visible in the frames.
 
 Return ONLY the JSON schema. No preamble.`
+}
+
+/**
+ * One charted defensive snap. Optional in `required` on purpose: the block is
+ * left out entirely on a play where the opponent has the BALL, and a schema
+ * that demanded it would force the model to invent a coverage for a snap its
+ * own defence was not on the field for.
+ */
+const DEFENDER_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    position: { type: Type.STRING, enum: [...DEFENSIVE_POSITIONS] },
+    alignment: { type: Type.STRING, enum: [...DEFENDER_ALIGNMENTS] },
+    depth_yards: { type: Type.NUMBER, nullable: true },
+    side: { type: Type.STRING, enum: ['field', 'boundary', 'middle', 'not_visible'] },
+    action: { type: Type.STRING, enum: [...DEFENDER_ACTIONS] },
+    covering: { type: Type.STRING, enum: [...OFFENSIVE_POSITIONS], nullable: true },
+    note: { type: Type.STRING, nullable: true },
+  },
+  required: ['position', 'alignment', 'action'],
+}
+
+const DEFENSIVE_SNAP_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    // The load-bearing field. Shell, coverage, rotation and pressure are all
+    // computed from these rows; the scalar answers below are a fallback for a
+    // clip where too few players were visible to chart.
+    defenders: { type: Type.ARRAY, items: DEFENDER_SCHEMA },
+    presnap_shell: { type: Type.STRING, enum: [...COVERAGE_SHELLS] },
+    coverage_played: { type: Type.STRING, enum: [...COVERAGES] },
+    safety_rotation: { type: Type.STRING, enum: [...SAFETY_ROTATIONS] },
+    strength_declared: { type: Type.STRING, enum: [...STRENGTH_DECLARATIONS] },
+    ball_position: { type: Type.STRING, enum: [...BALL_POSITIONS] },
+    field_side: { type: Type.STRING, enum: [...FIELD_SIDES] },
+    field_safety_depth: { type: Type.NUMBER, nullable: true },
+    boundary_safety_depth: { type: Type.NUMBER, nullable: true },
+    corner_leverage_field: { type: Type.STRING, enum: [...LEVERAGES], nullable: true },
+    corner_leverage_boundary: { type: Type.STRING, enum: [...LEVERAGES], nullable: true },
+    box_count: { type: Type.INTEGER, nullable: true },
+    pressure_look: { type: Type.STRING, enum: [...PRESSURE_LOOKS] },
+    blitz_came_from: { type: Type.STRING, nullable: true },
+    presnap_tells: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          kind: { type: Type.STRING, enum: [...PRESNAP_TELL_KINDS] },
+          observation: { type: Type.STRING },
+          followed_by: { type: Type.STRING, nullable: true },
+          confidence: { type: Type.NUMBER },
+        },
+        required: ['kind', 'observation'],
+      },
+    },
+    confidence: { type: Type.NUMBER },
+    evidence_timestamps: { type: Type.ARRAY, items: { type: Type.NUMBER } },
+    note: { type: Type.STRING, nullable: true },
+  },
+  required: ['presnap_shell', 'coverage_played', 'pressure_look', 'confidence'],
 }
 
 const TENDENCY_ITEM_SCHEMA = {
@@ -220,6 +312,7 @@ export const SCOUTIQ_RESPONSE_SCHEMA = {
     },
     evidence_frames: { type: Type.ARRAY, items: { type: Type.INTEGER } },
     evidence_timestamps: { type: Type.ARRAY, items: { type: Type.NUMBER } },
+    defensive_snaps: { type: Type.ARRAY, items: DEFENSIVE_SNAP_SCHEMA },
   },
   required: [
     'overall_score', 'position_scores', 'reasoning',

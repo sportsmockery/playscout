@@ -15,6 +15,8 @@ import {
   useAnalysisRuns,
   useBeforeUnloadWhileRunning,
 } from '@/components/intelligence/AnalysisRunProvider';
+import RoleBriefs from '@/components/intelligence/RoleBriefs';
+import type { ScoutIQGamePlan } from '@/lib/intelligence/modules/scoutiq-gameplan';
 
 interface Props {
   teamId: string;
@@ -594,6 +596,12 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
                     </div>
                   );
                 })()}
+
+                {/* The role briefs lead: a quarterback reading this page wants
+                    his own checklist, not a staff-wide plan he has to filter.
+                    Renders nothing on a plan generated before the defensive
+                    structure was charted. */}
+                <RoleBriefs plan={latestReport.game_plan as ScoutIQGamePlan | null} />
 
                 {(['offensive_game_plan', 'defensive_game_plan', 'target_players_plan', 'practice_week_focus'] as const).map((key) => {
                   const items = (latestReport.game_plan as Record<string, string[]> | null)?.[key];

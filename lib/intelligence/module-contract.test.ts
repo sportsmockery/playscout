@@ -108,6 +108,48 @@ describe('every module promises a shape the result schema accepts', () => {
     expect(parsed.success).toBe(true)
   })
 
+  /**
+   * Accepting a response is not the same as KEEPING it.
+   *
+   * `z.object` strips unknown keys rather than rejecting them, so a module can
+   * declare a field, the model can answer it perfectly, and the answer can be
+   * deleted between the API response and the report with every test above
+   * still green. The loop tests that the parse SUCCEEDS; this tests that the
+   * evidence survives it.
+   */
+  const EVIDENCE_FIELDS: Record<string, string[]> = {
+    SCOUTIQ: [
+      'offensive_tendencies',
+      'defensive_tendencies',
+      'situational_tells',
+      'attack_points',
+      'target_players',
+      'defensive_snaps',
+    ],
+    STATSIQ: ['stat_plays'],
+    RANKERIQ: ['player_grades'],
+    MISTAKEIQ: ['mistakes'],
+  }
+
+  for (const [moduleKey, fields] of Object.entries(EVIDENCE_FIELDS)) {
+    it(`${moduleKey} keeps the evidence it asked for`, () => {
+      const config = MODULE_MAP[moduleKey]
+      const response = sample(config.schema as GeminiSchema) as Record<string, unknown>
+      const parsed = PositionAnalysisOutputSchema.parse(response) as Record<string, unknown>
+
+      for (const field of fields) {
+        expect(
+          response[field],
+          `${moduleKey}'s Gemini schema no longer declares ${field} — the emitter changed, not this test.`
+        ).toBeDefined()
+        expect(
+          parsed[field],
+          `${moduleKey} asks the model for ${field} and PositionAnalysisOutputSchema throws the answer away. Add it to schemas.ts.`
+        ).toBeDefined()
+      }
+    })
+  }
+
   it('covers every module that can be analyzed, so none can be added untested', () => {
     // A module added to MODULE_MAP is automatically covered by the loop above;
     // this guards against MODULE_MAP itself being emptied or renamed away.

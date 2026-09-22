@@ -517,7 +517,17 @@ export interface PositionAnalysisResult {
   the OTHER team's stats as ours and the whole sheet inverts. Now the buttons name the colour
   ("Home · Blue"), and when both colours exist and differ the choice defaults to "Not sure" so the
   coach makes it. Covered in STATSIQ/RANKERIQ/TEAMIQ/MISTAKEIQ; QBIQ, OLIQ, RBIQ and SCOUTIQ have
-  no own-team colour at all and always take the no-colour branch — a real gap.
+  no own-team colour at all and always take the no-colour branch — a real gap. **QBIQ, OLIQ and
+  RBIQ are now closed** via `lib/intelligence/subject-team.ts`, a shared `buildSubjectTeamContext`
+  the four modules that had their own paragraph and the three that had NOTHING all import. Those
+  three grade ONE NAMED CHILD and their prompts said "grade the quarterback visible in the clip"
+  — on two-team film there are two quarterbacks, and the failure is silent: a fluent, detailed
+  report about somebody else's kid filed under yours.
+  Because only four module screens carry the home/away picker, `analyze-position.ts` now falls
+  back to the TEAM ROW's colour — and **only when it is unambiguous**. A team with two different
+  colours on file yields no colour at all, deliberately: a wrong colour is worse than none, and
+  defaulting to HOME is the exact bug the picker was changed to stop. A colour the coach picked
+  for that run still wins over the row.
 - **The verification call is retried once.** Losing it is not neutral: what ships is then the read
   that is usually wrong, labelled only "not corroborated". A 503 from an overloaded model was
   observed mid-eval and is transient.
@@ -552,6 +562,78 @@ export interface PositionAnalysisResult {
 - Writes one row per credit to `play_stat_credits` (migration `20260915000000`), an event ledger
   rather than a totals table: credits roll up into any question (a season, a down, one player),
   and a total cannot be taken apart again.
+
+**Defensive structure — what SCOUTIQ charts for a game plan** (`lib/intelligence/defense-structure.ts`)
+- Per DEFENSIVE snap: pre-snap shell, played coverage, safety rotation, declared strength, ball
+  position/field side, safety depths, corner leverage, box count, pressure look, and pre-snap
+  tells. Rolled up per opponent by `aggregate-defense.ts` and written into ScoutIQ's EXISTING
+  Stage-2 game plan (`modules/scoutiq-gameplan.ts`) as QB and coordinator briefs — there is one
+  game plan in this product, not two.
+- **Pre-snap and post-snap are separate questions.** The camera follows the ball, so the shell is
+  usually readable and the played coverage often is not. A rollup reporting 60 shells and 20
+  coverages is correct. For a quarterback the shell is the more useful fact anyway.
+- **Two denominators, and conflating them is the trap.** A coverage rate is over the snaps where
+  coverage was READABLE, never over all snaps. Dividing by all snaps reports "Cover 3 on 20%" for
+  a defence that played it 20 times in the 24 snaps anyone could see.
+- A split (by hash, by situation, by declared strength) needs **4+ snaps**. "100% two-high on the
+  left hash" off three plays reads as a tendency and is three plays.
+- **Do NOT attach preconditions to a shell or coverage definition.** My first wording said
+  zero-high was "usually all-out pressure or goal line" and Cover 0 came "almost always with
+  pressure". A coach corrected it off his own film: Bradley plays Cover 0 and Cover 1 as BASE
+  calls on ordinary downs. A precondition makes the model hunt for the precondition and answer
+  "not visible" when it is absent — suppressing exactly the read the field exists for. The
+  coach's operational definitions are now carried verbatim: Cover 1 is man with one safety alone
+  in the deep middle READING THE QUARTERBACK; Cover 0 is man with no middle safety because that
+  safety is covering someone.
+- **Coverage and pressure are two independent observations, and the prompt says so explicitly.**
+  Cover 0 and Cover 1 usually come with extra rushers; that is a correlation, not a definition.
+  A defence can play Cover 0 behind a four-man rush, or send six and play zone. The read must
+  never infer one from the other in either direction, and the prompt names the exact bad
+  inference ("they only rushed four, so it cannot be Cover 0") so it can be recognised.
+- **Every position gets read before a coverage is named** — the deep middle (is the safety
+  reading the QUARTERBACK, or carrying a man? that single distinction IS Cover 1 vs Cover 0, and
+  it is read off his eyes and hips, never off the rush count), the corners (turn and run, or open
+  and settle), the linebackers (carry, drop, or rush), and anyone who left coverage to blitz.
+  Pictures that disagree produce `not_determinable` rather than an average of them.
+  `defense-structure.test.ts` guards all of this, including a regression test that no definition
+  reacquires a pressure precondition.
+- **MEASURED, 3 ground-truth clips.** Asking the model to NAME a coverage scored **shell 0/8,
+  coverage 0/8** — it answered `two_high` 8 times out of 8 and `four_man` 8 out of 8, which is
+  the signature of naming the commonest picture in football rather than reading the snap. It also
+  could not have been right: play 1 is one-high with the free safety BLITZING, and the vocabulary
+  had no "the safety rushed". Charting all eleven and computing the labels is the replacement.
+- **Possession had to be given a PROCEDURE, and that fixed it.** `opponent_possession` gates the
+  whole report and was flipping to 'offense' on a third of runs of film where the opponent was
+  plainly defending. The prompt defined the field and never said how to determine it. Now:
+  find the ball at the snap → the receiver and the linemen in front of him are the OFFENSE →
+  read THEIR jersey colour → answer accordingly; and explicitly do not decide it from play
+  direction, camera side, or which team fills the frame. **8/12 correct before, 18/20 after.**
+- **Resolution: medium ≥ low for this read, HIGH IS WORSE, and the shell is still unreliable.**
+  Same prompt, same clip, only `mediaResolution` varied (play 1 / play 13):
+  shell low **0/4 · 1/4**, medium **2/4 · 0/2**, high **2/4 · —**. But at HIGH the model asserted
+  a coverage on 4 runs of 4 and every one was wrong (`cover_3` ×3, `cover_4_quarters`), where low
+  and medium abstained. More pixels bought confidence, not correctness — the same result the
+  StatsIQ fps/resolution sweep produced. **SCOUTIQ stays at 2fps/low until a bigger sample says
+  otherwise**; the combined shell numbers (low 1/8, medium 2/6) do not justify the cost of
+  raising it for all 76 clips of a batch.
+- **The specific remaining failure is diagnosable**: the read puts BOTH safeties at deep-half,
+  10–12 yards, on most runs. When it is right it charts `ss@over_slot/5` — it sees the strong
+  safety walked down. So it is not failing to look; it defaults to a symmetric two-deep picture
+  and misses the safety coming down. That is the next thing to attack, not the resolution.
+- **A running play is charted by ALIGNMENT.** On play 1 every charted action came back `run_fit`
+  or `chased_ball`, because it is a run — nobody covers anybody, so the played coverage is
+  genuinely `not_determinable` there and the coverage column cannot score on a run however good
+  the read gets. The coach's "Cover 0" on such a play is the CALL, readable pre-snap. The shell
+  is the scoreable signal on a run.
+- **Ground truth on file** (Bradley, `EVAL_TRUTH_*` in `scripts/eval-defense.ts`): the first few
+  possessions are a **mixture of Cover 0 and Cover 1** — i.e. shell ∈ {zero_high, one_high},
+  coverage ∈ {cover_0, cover_1}. The harness scores truth as a SET, because "a mixture of two
+  coverages" is a real checkable fact even though it names no single answer per snap: a read of
+  cover_3 is wrong against it, cover_0 is right. Marked clips: plays 1, 6 and 13 of the 76-clip
+  cut-up. **UNMEASURED so far** — the harness exists, the clips have not been run through it.
+- The film is high-school, shot from an elevated wide angle that shows the whole secondary
+  pre-snap — materially better for a shell read than the youth sideline film the pessimistic
+  wording in `defense-structure.ts` was written against. Re-read that caveat once measured.
 
 **Scoring scale (all modules):**
 90-100 Elite | 80-89 Advanced | 70-79 Solid | 60-69 Developing | <60 Beginner

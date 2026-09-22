@@ -1,6 +1,8 @@
 import { rollupTendency, type TendencyObservation } from './tendency-rollup'
 import { countRepeats } from './aggregate-batch'
 import type { AttackCategory } from './taxonomy'
+import { aggregateDefensiveSnaps, type DefensiveProfile } from './aggregate-defense'
+import type { DefensiveSnap } from './defense-structure'
 
 export interface ScoutClipEvidence {
   plays_observed?: number | null
@@ -22,6 +24,10 @@ export interface ScoutClipEvidence {
    */
   attack_points?: { point: string; category?: string }[] | null
   target_players?: { identifier: string; reason: string; confidence: number; evidence_frames?: number[] }[] | null
+  /** What their DEFENCE did on this snap — coverage, rotation, strength, tells. */
+  defensive_snaps?: DefensiveSnap[] | null
+  /** The coach's breakdown hash for this clip, used to cross-check the film read. */
+  breakdown_hash?: string | null
 }
 
 export interface AggregatedScoutReport {
@@ -47,6 +53,13 @@ export interface AggregatedScoutReport {
     /** Clips where the model could not confirm it graded the right team. */
     unconfirmed_subject_clips: number
   }
+  /**
+   * The defence's structure across every scouted clip — what a quarterback and
+   * a coordinator actually plan against. Built from the snaps charted on clips
+   * where the opponent was DEFENDING; empty on film that never showed them on
+   * defence, which is a real answer rather than a gap to fill.
+   */
+  defensive_profile: DefensiveProfile
 }
 
 /**
@@ -202,6 +215,17 @@ export function aggregateScoutReport(clips: ScoutClipEvidence[]): AggregatedScou
 
   const defensiveClips = clips.filter(isDefensiveClip)
 
+  // One flat list of snaps with their hashes kept in step, so the cross-check
+  // compares each film read against the breakdown for the SAME clip.
+  const snaps: DefensiveSnap[] = []
+  const hashes: (string | null | undefined)[] = []
+  for (const clip of defensiveClips) {
+    for (const snap of clip.defensive_snaps ?? []) {
+      snaps.push(snap)
+      hashes.push(clip.breakdown_hash)
+    }
+  }
+
   return {
     offensive_tendencies: offensive,
     defensive_tendencies: defensive,
@@ -219,5 +243,6 @@ export function aggregateScoutReport(clips: ScoutClipEvidence[]): AggregatedScou
       offensive_clips: clips.filter(isOffensiveClip).length,
       unconfirmed_subject_clips: clips.filter((c) => c.subject_confirmed === false).length,
     },
+    defensive_profile: aggregateDefensiveSnaps(snaps, hashes),
   }
 }

@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
 
     const { data: scoutResults } = await supabase
       .from('position_analysis_results')
-      .select('video_id, evidence')
+      .select('video_id, evidence, play_sequence_id')
       .eq('module_key', 'SCOUTIQ')
       .in('video_id', videoIds)
 
@@ -79,7 +79,27 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const clips: ScoutClipEvidence[] = scoutResults.map((r) => (r.evidence as ScoutClipEvidence) ?? {})
+    // The hash the COACH tagged on the Plays screen, attached per clip so the
+    // defensive rollup can check the film's own read of it. Two independent
+    // accounts of the same snap: one from the breakdown, one from the video.
+    // Absent when no breakdown was attached, and the cross-check then simply
+    // does not run rather than reporting agreement it never tested.
+    const sequenceIds = scoutResults
+      .map((r) => r.play_sequence_id)
+      .filter((id): id is string => !!id)
+    const hashBySequence = new Map<string, string | null>()
+    if (sequenceIds.length) {
+      const { data: sequences } = await supabase
+        .from('play_sequences')
+        .select('id, hash')
+        .in('id', sequenceIds)
+      for (const seq of sequences ?? []) hashBySequence.set(seq.id as string, seq.hash as string | null)
+    }
+
+    const clips: ScoutClipEvidence[] = scoutResults.map((r) => ({
+      ...((r.evidence as ScoutClipEvidence) ?? {}),
+      breakdown_hash: r.play_sequence_id ? hashBySequence.get(r.play_sequence_id) ?? null : null,
+    }))
     const aggregated = aggregateScoutReport(clips)
     const basedOnVideoIds = [...new Set(scoutResults.map((r) => r.video_id))]
 
