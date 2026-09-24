@@ -1,5 +1,5 @@
 import { buildFootballBrain, buildGameTypeContext } from '../football-brain'
-import { buildTaxonomyPrompt, EXPLOSIVE_PLAY_YARDS, TENDENCY_TYPES, OFFENSIVE_FORMATIONS, DEFENSIVE_FRONTS, SITUATION_BUCKETS, EXPLOSIVE_CAUSES, ATTACK_CATEGORIES } from '../taxonomy'
+import { buildTaxonomyPrompt, EXPLOSIVE_PLAY_YARDS, TENDENCY_TYPES, OFFENSIVE_FORMATIONS, DEFENSIVE_FRONTS, SITUATION_BUCKETS, EXPLOSIVE_CAUSES, ATTACK_CATEGORIES, WEAKNESS_TYPES, WEAKNESS_TYPE_LABELS } from '../taxonomy'
 import { resolveLevelTier } from '../levels'
 import { Type } from '@google/genai'
 import type { ModulePromptInput } from '../schemas'
@@ -104,8 +104,17 @@ created, and which failure caused it (force_failure, gap_failure, pursuit_failur
 situational_tells: use a SITUATIONS id above, and what ${opponentLabel} tends to do in it.
 attack_points: concrete, evidence-based ways to attack ${opponentLabel}, each with the part of a
 game plan it belongs to (category: ${ATTACK_CATEGORIES.join(', ')}). Describe the WEAKNESS you saw,
-not a play call — these are counted across every clip of this opponent, so a point worded the same
-way each time accumulates evidence and one worded freshly every clip looks like a one-off.
+not a play call.
+
+Each attack point also carries a "weakness" id saying WHAT is wrong. Every clip of this opponent is
+counted together, and the id is what does the counting — so two clips seeing the same problem must
+use the same id even when you describe it in different words. Pick the one that fits best; use
+"other" only when none of them describes what you saw:
+${WEAKNESS_TYPES.map((w) => `- ${w}: ${WEAKNESS_TYPE_LABELS[w]}`).join('\n')}
+
+Do NOT file "I could not tell" as an attack point. A clip where nothing was readable contributes no
+attack points at all — that is a real and useful answer, and inventing a weakness to fill the list
+is worse than a short list.
 
 target_players — weak or exploitable players on ${opponentLabel}:
 - identifier: how to point this player out to the coach. Use the jersey number ONLY if it
@@ -281,8 +290,12 @@ export const SCOUTIQ_RESPONSE_SCHEMA = {
         properties: {
           point: { type: Type.STRING },
           category: { type: Type.STRING, enum: [...ATTACK_CATEGORIES] },
+          // WHAT is wrong, as a closed id. The prose carries the detail; this
+          // carries the count, because counting prose does not work — see
+          // WEAKNESS_TYPES.
+          weakness: { type: Type.STRING, enum: [...WEAKNESS_TYPES] },
         },
-        required: ['point', 'category'],
+        required: ['point', 'category', 'weakness'],
       },
     },
     target_players: {

@@ -231,12 +231,21 @@ const KEYED_REPEAT_SIMILARITY = 0.25
 
 export interface CountRepeatsOptions {
   /**
-   * Items with different keys never merge, whatever their wording. Returning
-   * undefined puts an item in the unkeyed bucket, which merges only on the
-   * ordinary threshold — old rows saved before the key existed keep exactly
-   * the behaviour they have today.
+   * A bucket the item belongs to, from outside the text. Two items whose keys
+   * AGREE merge at a lower bar; a differing or missing key leaves the ordinary
+   * threshold in place, so this only ever adds merges.
    */
   keyOf?: (text: string) => string | undefined
+  /**
+   * How much wording still has to agree once the keys do. Defaults to
+   * KEYED_REPEAT_SIMILARITY.
+   *
+   * A caller whose key already IS the identity of the thing — scouting's
+   * closed weakness vocabulary — passes 0: two clips that filed the same
+   * weakness id are reporting the same weakness whatever words they used, and
+   * that is the entire point of having the vocabulary.
+   */
+  similarityForKey?: (key: string) => number | undefined
 }
 
 /**
@@ -275,24 +284,30 @@ export function countRepeats(
 
       const key = opts.keyOf?.(text)
 
+      // Only clusters this item is ELIGIBLE to join are considered, then the
+      // best-scoring of those wins. Scoring first and checking eligibility
+      // after cannot express a threshold of 0 — a same-key pair sharing no
+      // words scores 0, and "better than the best so far" is never true of 0.
       let bestIndex = -1
-      let bestScore = 0
-      let bestThreshold = REPEAT_SIMILARITY
+      let bestScore = -1
       clusters.forEach((c, i) => {
-        const score = jaccard(words, c.words)
-        if (score <= bestScore) return
         // An AGREEING key lowers the bar; a differing or missing one leaves
         // today's bar exactly where it is. So this is never stricter than
         // before — it only adds merges, never removes them.
-        const threshold =
-          key !== undefined && c.key === key ? KEYED_REPEAT_SIMILARITY : REPEAT_SIMILARITY
+        const keysAgree = key !== undefined && c.key === key
+        const threshold = keysAgree
+          ? (opts.similarityForKey?.(key) ?? KEYED_REPEAT_SIMILARITY)
+          : REPEAT_SIMILARITY
+        const score = jaccard(words, c.words)
         if (score < threshold) return
-        bestScore = score
-        bestIndex = i
-        bestThreshold = threshold
+        // Ties go to the earlier cluster, which is the one with more members.
+        if (score > bestScore) {
+          bestScore = score
+          bestIndex = i
+        }
       })
 
-      if (bestIndex >= 0 && bestScore >= bestThreshold) {
+      if (bestIndex >= 0) {
         if (!matchedThisClip.has(bestIndex)) {
           clusters[bestIndex].clips += 1
           matchedThisClip.add(bestIndex)
