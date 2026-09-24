@@ -187,3 +187,82 @@ describe('a non-finding is a denominator, never a tendency', () => {
     expect(countNonFindings([[], ['']])).toBe(0)
   })
 })
+
+describe('the closed weakness vocabulary, which is the durable fix', () => {
+  // The lexical matcher could not reach the corners pair (0.133, against 0.111
+  // for pairs that must never merge). An id can, because it stops inferring
+  // sameness from words and starts stating it.
+  const CORNERS_A = 'Corners play soft off-coverage, giving up easy access throws on the perimeter'
+  const CORNERS_B = 'Boundary corner plays with a large cushion and concedes the quick hitch'
+
+  const byWeakness = (map: Record<string, string>) => ({
+    keyOf: (t: string) => (map[t.trim()] ? `weakness:${map[t.trim()]}` : undefined),
+    similarityForKey: (key: string) => (key.startsWith('weakness:') ? 0 : undefined),
+  })
+
+  it('merges the pair lexical matching could not reach', () => {
+    const opts = byWeakness({ [CORNERS_A]: 'soft_coverage', [CORNERS_B]: 'soft_coverage' })
+    const out = countRepeats([[CORNERS_A], [CORNERS_B]], 8, opts)
+    expect(out).toHaveLength(1)
+    expect(out[0].clips).toBe(2)
+  })
+
+  it('counts a weakness across clips that share NO wording at all', () => {
+    const phrasings = [
+      'Corners play soft off-coverage',
+      'Large cushion by the boundary corner',
+      'They concede the quick game underneath',
+      'Defensive backs bail at the snap and give up the hitch',
+    ]
+    const opts = byWeakness(Object.fromEntries(phrasings.map((p) => [p, 'soft_coverage'])))
+    const out = countRepeats(phrasings.map((p) => [p]), 8, opts)
+    expect(out).toHaveLength(1)
+    // Four clips, four wordings, one number — which is what a game plan needs.
+    expect(out[0].clips).toBe(4)
+  })
+
+  it('keeps different weaknesses apart even when the wording is close', () => {
+    const a = 'The defensive end lost contain on the perimeter'
+    const b = 'The defensive end was slow to recognise the play on the perimeter'
+    const opts = byWeakness({ [a]: 'lost_contain', [b]: 'slow_recognition' })
+    // Same words, different problems: two rows, because the ids say so.
+    expect(countRepeats([[a], [b]], 8, opts)).toHaveLength(2)
+  })
+
+  it('never lets "other" key a merge', () => {
+    // Two weaknesses that both failed to fit the vocabulary are not the same
+    // weakness. rankAttackPoints drops 'other' before it reaches the key.
+    const a = 'Their long snapper is inconsistent'
+    const b = 'They run a rugby punt from a spread look'
+    const out = countRepeats([[a], [b]], 8, { keyOf: () => undefined })
+    expect(out).toHaveLength(2)
+  })
+})
+
+describe('the real aggregation path', () => {
+  it('counts one weakness across clips that share almost no wording', async () => {
+    const { aggregateScoutReport } = await import('./scoutiq-aggregate')
+    const clip = (point: string, weakness: string, category = 'dropback_pass') => ({
+      opponent_possession: 'defense' as const,
+      attack_points: [{ point, category, weakness }],
+    })
+
+    const report = aggregateScoutReport([
+      clip('Corners play soft off-coverage, giving up easy access throws', 'soft_coverage'),
+      clip('Boundary corner plays with a large cushion and concedes the quick hitch', 'soft_coverage'),
+      clip('They concede the quick game underneath all day', 'soft_coverage'),
+      clip('Defensive end lost contain on the perimeter', 'lost_contain', 'perimeter_run'),
+      // Two unrelated points that both failed to fit the vocabulary.
+      clip('Their long snapper is inconsistent', 'other', 'special_teams'),
+      clip('They run a rugby punt from a spread look', 'other', 'special_teams'),
+    ])
+
+    const counts = Object.fromEntries(report.attack_points.map((p) => [p.category + '|' + p.clips, true]))
+    // Three wordings of one weakness become one row with the real count —
+    // they were three separate 1x rows before the vocabulary existed.
+    expect(report.attack_points.find((p) => p.clips === 3)).toBeTruthy()
+    expect(counts['perimeter_run|1']).toBe(true)
+    // 'other' never keys a merge, so the two special-teams points stay apart.
+    expect(report.attack_points.filter((p) => p.category === 'special_teams')).toHaveLength(2)
+  })
+})

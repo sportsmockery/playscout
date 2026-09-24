@@ -22,7 +22,7 @@ export interface ScoutClipEvidence {
    * carries the part of the game plan it belongs to — twenty-five flat
    * sentences is a wall, not a plan.
    */
-  attack_points?: { point: string; category?: string }[] | null
+  attack_points?: { point: string; category?: string; weakness?: string }[] | null
   target_players?: { identifier: string; reason: string; confidence: number; evidence_frames?: number[] }[] | null
   /** What their DEFENCE did on this snap — coverage, rotation, strength, tells. */
   defensive_snaps?: DefensiveSnap[] | null
@@ -101,6 +101,9 @@ export interface RankedAttackPoint {
  */
 const ATTACK_POINT_LIMIT = 40
 
+/** Namespaces the merge key so a weakness id and a category can never collide. */
+const WEAKNESS_PREFIX = 'weakness:'
+
 /**
  * Clusters attack points across clips and counts them.
  *
@@ -123,14 +126,31 @@ function rankAttackPoints(clips: ScoutClipEvidence[]): RankedAttackPoint[] {
   // Which category each phrasing was filed under, so a cluster can take the
   // one its members most often used.
   const categoryVotes = new Map<string, Map<string, number>>()
+  const weaknessVotes = new Map<string, Map<string, number>>()
   for (const clip of clips) {
     for (const a of clip.attack_points ?? []) {
       const text = a.point?.trim()
-      if (!text || !a.category) continue
-      const votes = categoryVotes.get(text) ?? new Map<string, number>()
-      votes.set(a.category, (votes.get(a.category) ?? 0) + 1)
-      categoryVotes.set(text, votes)
+      if (!text) continue
+      if (a.category) {
+        const votes = categoryVotes.get(text) ?? new Map<string, number>()
+        votes.set(a.category, (votes.get(a.category) ?? 0) + 1)
+        categoryVotes.set(text, votes)
+      }
+      // 'other' is the escape hatch, not an identity: two unrelated weaknesses
+      // that both failed to fit the vocabulary are not the same weakness, so
+      // it never keys a merge.
+      if (a.weakness && a.weakness !== 'other') {
+        const votes = weaknessVotes.get(text) ?? new Map<string, number>()
+        votes.set(a.weakness, (votes.get(a.weakness) ?? 0) + 1)
+        weaknessVotes.set(text, votes)
+      }
     }
+  }
+
+  const weaknessOf = (text: string): string | undefined => {
+    const votes = weaknessVotes.get(text.trim())
+    if (!votes?.size) return undefined
+    return [...votes.entries()].sort((a, b) => b[1] - a[1])[0][0]
   }
 
   /**
@@ -154,7 +174,28 @@ function rankAttackPoints(clips: ScoutClipEvidence[]): RankedAttackPoint[] {
     return [...votes.entries()].sort((a, b) => b[1] - a[1])[0][0]
   }
 
-  return countRepeats(lists, ATTACK_POINT_LIMIT, { keyOf: categoryOf }).map((item) => ({
+  /**
+   * The weakness id if the clip filed one, else the category.
+   *
+   * The id IS the identity of the weakness, so two clips that chose the same
+   * one are reporting the same problem however differently they wrote it —
+   * that is the whole reason the vocabulary exists, and `similarityForKey`
+   * returns 0 for it. The category is the weaker fallback for rows saved
+   * before the field existed, and keeps its 0.25.
+   */
+  const keyOf = (text: string): string | undefined => {
+    const weakness = weaknessOf(text.trim())
+    if (weakness) return `${WEAKNESS_PREFIX}${weakness}`
+    const category = categoryOf(text)
+    return category ? `category:${category}` : undefined
+  }
+
+  return countRepeats(lists, ATTACK_POINT_LIMIT, {
+    keyOf,
+    // A shared weakness id needs no wording agreement at all; a shared
+    // category still does, so it takes the default.
+    similarityForKey: (key) => (key.startsWith(WEAKNESS_PREFIX) ? 0 : undefined),
+  }).map((item) => ({
     point: item.text,
     // Voted across every phrasing in the cluster, not just the canonical one.
     // The canonical text is simply the shortest member, so reading its
