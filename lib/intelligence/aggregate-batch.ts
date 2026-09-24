@@ -122,6 +122,51 @@ export function contentWords(text: string): Set<string> {
   )
 }
 
+/**
+ * A clip reporting that it could not see anything, rather than reporting a
+ * thing it saw.
+ *
+ * These have to be excluded from every ranked list, and the reason is not
+ * tidiness. Observed on a real 113-clip scouting report: the number one
+ * "RECURRING FLAW TO ATTACK" was *"Insufficient evidence from this single,
+ * short run play to identify a clear weakness"*, appearing in 3 clips.
+ *
+ * It won because clustering is lexical and a non-finding is TEMPLATED — the
+ * model phrases it near-identically every time, so it merges perfectly, while
+ * a real observation ("playside DE was reached") is worded freshly in every
+ * clip and does not. The ranking therefore systematically promotes the
+ * absence of evidence over the evidence.
+ *
+ * A non-finding is a DENOMINATOR — how much of the film could not be read —
+ * and `countNonFindings` reports it as one.
+ */
+const NON_FINDING = [
+  /insufficient evidence/i,
+  /\bno (clear|obvious|notable|specific|identifiable)\b/i,
+  /\bnothing (notable|of note|specific|clear)\b/i,
+  // "could not" with the space, not just "couldn't" — the space was missing
+  // and every "Could not determine …" sailed through as a real finding.
+  /\b(could|can|was|were)\s*(not|n't)\s+(be\s+)?(determine|identify|tell|assess|evaluate|establish|discern)/i,
+  /\bunable to (determine|identify|tell|assess|evaluate)/i,
+  /\bnot (visible|determinable|discernible|assessable|clear enough)\b/i,
+  /\b(too (short|brief|few)|single (short )?(clip|play))\b.*\b(to (identify|determine|assess)|evidence)\b/i,
+  /\bunremarkable\b/i,
+]
+
+export function isNonFinding(text: string): boolean {
+  const t = text.trim()
+  if (!t) return true
+  return NON_FINDING.some((re) => re.test(t))
+}
+
+/** How many of these clips reported no readable finding at all. */
+export function countNonFindings(lists: string[][]): number {
+  return lists.filter((list) => {
+    const items = (list ?? []).map((s) => s?.trim()).filter(Boolean) as string[]
+    return items.length > 0 && items.every(isNonFinding)
+  }).length
+}
+
 export function jaccard(a: Set<string>, b: Set<string>): number {
   if (!a.size || !b.size) return 0
   let shared = 0
@@ -139,13 +184,79 @@ export function jaccard(a: Set<string>, b: Set<string>): number {
 const REPEAT_SIMILARITY = 0.5
 
 /**
+ * The threshold to use when something OUTSIDE the text already establishes
+ * that two items are about the same thing — scouting's attack-point category.
+ *
+ * MEASURED against a real 113-clip report. At 0.5 with no key, four pairs of
+ * plainly identical coaching points all stayed apart:
+ *
+ *   0.375  "susceptible to screen passes … aggressive rush from the DEs"
+ *        / "vulnerable to screen passes … aggressive upfield rush from the D-line"
+ *   0.250  "team pursuit is poor; shallow angles to the ball"
+ *        / "linebackers and secondary take poor pursuit angles"
+ *   0.250  "defensive end lost contain"  /  "playside DE was reached and lost contain"
+ *   0.133  "corners play soft off-coverage"  /  "boundary corner plays with a cushion"
+ *
+ * So one real tendency shattered into dozens of 1-clip fragments and the
+ * report told the coach "only a handful of patterns appeared in more than one
+ * clip" over 113 clips of film.
+ *
+ * Lowering the bar globally would merge unrelated points. Lowering it only
+ * where the CATEGORIES AGREE does not: the category is carrying part of the
+ * claim, so less textual agreement is needed for the rest.
+ *
+ * It lowers the bar, and never raises it. A differing category — or none —
+ * leaves the ordinary threshold in place rather than blocking the merge, and
+ * that distinction is load-bearing: the category is itself a model judgment
+ * and a noisier one than the text. `scoutiq-aggregate.test.ts` pins the case,
+ * where three clips describe one soft edge and ONE of them files it under
+ * `situational` instead of `perimeter_run`. Gating strictly on the key split
+ * that cluster in two. Only ever ADDING merges cannot.
+ *
+ * 0.25 catches three of those four pairs. It is NOT tuned to catch the fourth,
+ * and the numbers say why: the corners pair scores 0.133, while pairs that
+ * must never merge score 0.111 —
+ *
+ *   0.111  "corners play soft off-coverage"  /  "defensive end lost contain"
+ *   0.111  "linebackers over-pursue"  /  "safety is slow to rotate over the top"
+ *
+ * A threshold nine thousandths above the things it must reject is a
+ * coincidence, not a rule. **Lexical matching cannot separate these**, and the
+ * durable fix is for the model to file each weakness under a closed vocabulary
+ * so the counting is exact instead of inferred — the same move that fixed
+ * tendencies, grades and stat credits. Do not tune this number down to close
+ * the gap; add the vocabulary.
+ */
+const KEYED_REPEAT_SIMILARITY = 0.25
+
+export interface CountRepeatsOptions {
+  /**
+   * Items with different keys never merge, whatever their wording. Returning
+   * undefined puts an item in the unkeyed bucket, which merges only on the
+   * ordinary threshold — old rows saved before the key existed keep exactly
+   * the behaviour they have today.
+   */
+  keyOf?: (text: string) => string | undefined
+}
+
+/**
  * Clusters near-identical items across clips and counts how many clips each
  * appeared in. Exported because opponent scouting needs exactly this: a list
  * of ways to attack a defense is worthless unranked, and the same weakness is
  * worded differently in every clip.
  */
-export function countRepeats(lists: string[][], limit = 8): RepeatedItem[] {
-  const clusters: { text: string; words: Set<string>; clips: number; members: string[] }[] = []
+export function countRepeats(
+  lists: string[][],
+  limit = 8,
+  opts: CountRepeatsOptions = {}
+): RepeatedItem[] {
+  const clusters: {
+    text: string
+    words: Set<string>
+    clips: number
+    members: string[]
+    key?: string
+  }[] = []
 
   for (const list of lists) {
     // One clip saying the same thing twice still counts once.
@@ -153,20 +264,35 @@ export function countRepeats(lists: string[][], limit = 8): RepeatedItem[] {
     for (const raw of list) {
       const text = raw?.trim()
       if (!text) continue
+      // A clip reporting it saw nothing is not a tendency. Left in, the
+      // boilerplate wins: "insufficient evidence …" is worded identically
+      // every time so it clusters perfectly, while real football observations
+      // are worded freshly every time and do not — which is how a non-finding
+      // became the top RECURRING FLAW TO ATTACK on a 113-clip report.
+      if (isNonFinding(text)) continue
       const words = contentWords(text)
       if (!words.size) continue
 
+      const key = opts.keyOf?.(text)
+
       let bestIndex = -1
       let bestScore = 0
+      let bestThreshold = REPEAT_SIMILARITY
       clusters.forEach((c, i) => {
         const score = jaccard(words, c.words)
-        if (score > bestScore) {
-          bestScore = score
-          bestIndex = i
-        }
+        if (score <= bestScore) return
+        // An AGREEING key lowers the bar; a differing or missing one leaves
+        // today's bar exactly where it is. So this is never stricter than
+        // before — it only adds merges, never removes them.
+        const threshold =
+          key !== undefined && c.key === key ? KEYED_REPEAT_SIMILARITY : REPEAT_SIMILARITY
+        if (score < threshold) return
+        bestScore = score
+        bestIndex = i
+        bestThreshold = threshold
       })
 
-      if (bestScore >= REPEAT_SIMILARITY && bestIndex >= 0) {
+      if (bestIndex >= 0 && bestScore >= bestThreshold) {
         if (!matchedThisClip.has(bestIndex)) {
           clusters[bestIndex].clips += 1
           matchedThisClip.add(bestIndex)
@@ -175,7 +301,7 @@ export function countRepeats(lists: string[][], limit = 8): RepeatedItem[] {
         clusters[bestIndex].members.push(text)
         if (text.length < clusters[bestIndex].text.length) clusters[bestIndex].text = text
       } else {
-        clusters.push({ text, words, clips: 1, members: [text] })
+        clusters.push({ text, words, clips: 1, members: [text], key })
         matchedThisClip.add(clusters.length - 1)
       }
     }

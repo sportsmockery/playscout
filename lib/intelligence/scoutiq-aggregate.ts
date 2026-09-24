@@ -133,7 +133,28 @@ function rankAttackPoints(clips: ScoutClipEvidence[]): RankedAttackPoint[] {
     }
   }
 
-  return countRepeats(lists, ATTACK_POINT_LIMIT).map((item) => ({
+  /**
+   * The category each phrasing was filed under, used to GATE merging.
+   *
+   * Two points in different parts of the game plan are different points at any
+   * similarity score — so this only ever prevents a merge, never forces one,
+   * which makes it strictly safer than the threshold alone. What it buys is
+   * the freedom to require less textual agreement INSIDE a category, where the
+   * category already carries part of the claim. Measured on a real 113-clip
+   * report, purely lexical matching left "corners play soft off-coverage" and
+   * "boundary corner plays with a large cushion" in separate clusters at 0.133.
+   *
+   * A point with no category falls in the unkeyed bucket and keeps today's
+   * behaviour exactly — which is what every row saved before categories
+   * existed will do.
+   */
+  const categoryOf = (text: string): string | undefined => {
+    const votes = categoryVotes.get(text.trim())
+    if (!votes?.size) return undefined
+    return [...votes.entries()].sort((a, b) => b[1] - a[1])[0][0]
+  }
+
+  return countRepeats(lists, ATTACK_POINT_LIMIT, { keyOf: categoryOf }).map((item) => ({
     point: item.text,
     // Voted across every phrasing in the cluster, not just the canonical one.
     // The canonical text is simply the shortest member, so reading its

@@ -35,6 +35,29 @@ function avg(yards: number, attempts: number): string {
   return (Math.round((yards / attempts) * 10) / 10).toFixed(1);
 }
 
+/**
+ * A yardage figure of zero means one of two completely different things, and
+ * printing "0" for both is the sheet's worst habit: either the plays really
+ * gained nothing, or nothing could be measured. A coach who watched a
+ * completed pass move the chains and then reads "PASSING 0" concludes the
+ * whole sheet is broken — and on that number, they are right.
+ *
+ * So a figure is only shown when something behind it was actually measured.
+ * Otherwise it reads "—", which is what we know.
+ *
+ * MODULE SCOPE, and applied to EVERY row rather than only the totals. It used
+ * to live inside the component and was passed only to `totals`, so the team
+ * line read "—" while the player line directly above it read "0" for the same
+ * completion. One sheet making both claims at once is worse than either.
+ */
+export function yardsOrDash(
+  yards: number,
+  attempts: number,
+  unmeasuredCredits: number
+): number | '—' {
+  return yards === 0 && attempts > 0 && unmeasuredCredits >= attempts ? '—' : yards;
+}
+
 function Table({
   title,
   columns,
@@ -164,19 +187,6 @@ export default function BoxScore({ lines, team, warnings = [], subtitle, compact
     team.unmeasuredYardagePlays ??
     team.unmeasured.rush + team.unmeasured.pass + team.unmeasured.receiving;
 
-  /**
-   * A yardage figure of zero means one of two completely different things, and
-   * printing "0" for both is the sheet's worst habit: either the plays really
-   * gained nothing, or nothing could be measured. A coach who watched a
-   * completed pass move the chains and then reads "PASSING 0" concludes the
-   * whole sheet is broken — and on that number, they are right.
-   *
-   * So a total is only shown when something behind it was actually measured.
-   * Otherwise it reads "—", which is what we know.
-   */
-  const yardsOrDash = (yards: number, attempts: number, unmeasuredCredits: number) =>
-    yards === 0 && attempts > 0 && unmeasuredCredits >= attempts ? '—' : yards;
-
   const rushYards = yardsOrDash(o.rush_yards, o.carries, team.unmeasured.rush);
   const passYards = yardsOrDash(o.pass_yards, o.pass_completions, team.unmeasured.pass);
   const recYards = yardsOrDash(o.receiving_yards, o.receptions, team.unmeasured.receiving);
@@ -252,7 +262,7 @@ export default function BoxScore({ lines, team, warnings = [], subtitle, compact
           label: <PlayerLabel line={l} />,
           cells: [
             l.offense.carries,
-            l.offense.rush_yards,
+            yardsOrDash(l.offense.rush_yards, l.offense.carries, l.unmeasured.rush),
             avg(l.offense.rush_yards, l.offense.carries - l.unmeasured.rush),
             l.offense.rush_td,
           ],
@@ -268,7 +278,7 @@ export default function BoxScore({ lines, team, warnings = [], subtitle, compact
           label: <PlayerLabel line={l} />,
           cells: [
             `${l.offense.pass_completions}/${l.offense.pass_attempts}`,
-            l.offense.pass_yards,
+            yardsOrDash(l.offense.pass_yards, l.offense.pass_completions, l.unmeasured.pass),
             l.offense.pass_td,
             l.offense.interceptions_thrown,
           ],
@@ -282,7 +292,12 @@ export default function BoxScore({ lines, team, warnings = [], subtitle, compact
         rows={receiving.map((l) => ({
           key: l.key,
           label: <PlayerLabel line={l} />,
-          cells: [l.offense.targets, l.offense.receptions, l.offense.receiving_yards, l.offense.receiving_td],
+          cells: [
+            l.offense.targets,
+            l.offense.receptions,
+            yardsOrDash(l.offense.receiving_yards, l.offense.receptions, l.unmeasured.receiving),
+            l.offense.receiving_td,
+          ],
         }))}
         totals={[o.targets, o.receptions, recYards, o.receiving_td]}
       />

@@ -82,6 +82,18 @@ export const MODEL_ROUTES: Record<AIJobType, { provider: string; model: string }
 
 Note: `analyze-position.ts` currently routes every module (QBIQ/OLIQ/TEAMIQ/MISTAKEIQ/SCOUTIQ) through the single `frame_observation` job type rather than per-module job types — one source of truth for the frame-analysis model choice.
 
+**`gemini-2.5-pro` IS BEING SUNSET, and every System B job is pinned to it.** A key
+issued 2026-09-22 gets a hard 404 on `models/gemini-2.5-pro` — *"no longer available to
+new users. Please update your code to use models/gemini-3.1-pro-preview"* — while older
+keys still answer, which is why production is unaffected today and a fresh eval key
+cannot reach it at all. It is still listed by the models endpoint; the listing is
+permissive and the call is not, so availability must be tested by calling it. Five of
+the eleven routes (`frame_observation`, `sequence_analysis`, `assignment_grading`,
+`mistake_detection`, and therefore every module analysis) stop the day that key lapses.
+`scripts/eval-statsiq.ts` takes `EVAL_MODEL` so a replacement can be scored; **a number
+measured on any other model is measuring a different system**, and every figure recorded
+in this file was measured on 2.5-pro.
+
 Providers: `lib/ai/providers/anthropic.ts`, `google.ts`, `perplexity.ts`, `openai.ts` (embeddings only — `text-embedding-3-small` for team-memory RAG, not a chat/analysis model)
 
 ---
@@ -553,6 +565,27 @@ export interface PositionAnalysisResult {
   in one field or exactly with a Plays-screen breakdown; ball carrier **qb 3 / rb 2 /
   wingback_right 1** — a genuine coin flip, parked as a question **6/6** so a wrong name never
   reaches a player's line. Re-measure before changing any of this.
+- **Reading the two ends in SEPARATE blind calls was measured and LOST too** —
+  `lib/intelligence/split-yardage.ts`, `EVAL_SPLIT=1`, never wired into production.
+  It fixed the real flaw in the bullet below (one call that knows the gain back-fills two
+  positions producing it) by giving each end its own call, shown only its own moment, never
+  told a gain was wanted. On the 55-yard touchdown it scored **4/4** where the shipped
+  pipeline scored 1/4. On a coach-confirmed **15-yard** gain (31 → 46, ref spot visible) it
+  scored **0/4 and was WRONG all four times** — 23, 11, 11, 21 — where the shipped pipeline
+  was 0/4 but **withheld twice** rather than answering wrong.
+  - The reads are accurate to about **±5 yards, and so is everything else**. What changed
+    between the two clips was not the read but the TOLERANCE: `yardsTolerance` is the greater
+    of 3 yards and 12%, so ±5 passes on a 55-yard play and fails on a 15-yard one. The 4/4
+    was an artifact of measuring on a long play. **Any future yardage claim must be scored on
+    a SHORT gain**, where the tolerance is tight, or it is not evidence.
+  - **The self-check validated consistency, not accuracy, and that is the lesson.** Each read
+    reports distance to both goal lines and they must sum to 100; the sums were correct
+    **14 times out of 14** while the snap spot was read as the 35 when the ball was on the 31.
+    A model misreading which painted stripe it is looking at reports two distances that agree
+    with each other perfectly. Do not build a confidence signal out of internal arithmetic.
+  - Being confidently wrong is worse than withholding, which is what this arm did: its failure
+    mode has no "I could not tell", because the sum check always passes.
+  Sixth hypothesis killed by measurement.
 - **Do NOT re-try "ask for two field positions and subtract them".** It is a good idea and it is
   wrong here. The premise — that reading a painted stripe is an observation while a gain is a
   calculation, so the model should report start and end and let the code subtract — fails because

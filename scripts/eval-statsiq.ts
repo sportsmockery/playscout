@@ -42,8 +42,24 @@ import {
   schemeHasQbMesh,
 } from '../lib/intelligence/stat-verify'
 import { tallyStatPlays } from '../lib/intelligence/stat-lines'
+import {
+  buildFieldPositionPrompt,
+  FIELD_POSITION_SCHEMA,
+  parseFieldPosition,
+  deriveSplitGain,
+} from '../lib/intelligence/split-yardage'
 
-const MODEL = 'gemini-2.5-pro'
+/**
+ * Overridable because gemini-2.5-pro — what MODEL_ROUTES ships — now returns
+ * 404 "no longer available to new users" for keys issued after its sunset
+ * began. It still answers for older keys, so production is unaffected today
+ * and a fresh eval key cannot reach it at all.
+ *
+ * Any run on a different model is measuring a DIFFERENT SYSTEM than production
+ * runs. Say which model produced a number before comparing it to anything in
+ * CLAUDE.md, all of which was measured on 2.5-pro.
+ */
+const MODEL = process.env.EVAL_MODEL || 'gemini-2.5-pro'
 
 const clipPath = process.argv[2]
 const runs = Number(process.argv[3] ?? 1)
@@ -185,6 +201,12 @@ interface Scorecard {
   yards: Mark
 }
 
+/**
+ * The split yardage read, scored on its own so the comparison against the
+ * existing number is PAIRED — same run, same window, same model, two answers.
+ */
+const splitMarks: Mark[] = []
+
 /** One per veto policy — see the three sheets printed per run. */
 const scorecards: Scorecard[] = []
 const scorecardsB: Scorecard[] = []
@@ -260,6 +282,18 @@ function printScorecard() {
   printOne('A  check may override charting  (shipped)', scorecards)
   printOne('B  charting keeps the play, player parked', scorecardsB)
   printOne('C  check may override only if both checks agree', scorecardsC)
+
+  if (splitMarks.length) {
+    const tally = (m: Mark) => splitMarks.filter((x) => x === m).length
+    console.log('\n══════════ SPLIT yardage · two blind reads, subtracted in code ══════════')
+    console.log('            ' + splitMarks.map((_, i) => `r${i + 1}`).join('  '))
+    console.log(
+      'yards       ' +
+        splitMarks.map((m) => ` ${MARK_ICON[m]}`).join('  ') +
+        `   ${tally('pass')}/${splitMarks.length}` +
+        (tally('fail') ? ` (${tally('fail')} wrong)` : '')
+    )
+  }
   console.log('\n  ✓ right   ✗ wrong   · withheld (declined to answer, not wrong)')
 }
 
@@ -295,6 +329,43 @@ async function once(run: number) {
     }
   )
   console.log(`charting (${CHARTING}) input tokens: ${charting.inputTokens}`)
+
+  // 2b. The SPLIT yardage read, measured alongside so the comparison is paired
+  //     — same run, same located window, same model, both numbers.
+  //
+  //     Each end is a separate call shown only its own moment, so neither can
+  //     back-fill positions toward a gain it already chose. That is the whole
+  //     difference from the idea CLAUDE.md says not to retry.
+  let splitLine = ''
+  let splitYards: number | null = null
+  if (process.env.EVAL_SPLIT && located.length === 1) {
+    const { snap_seconds: snap, end_seconds: end } = located[0]
+    const moment = async (which: 'snap' | 'end', start: number, stop: number) => {
+      const res = await call(buildFieldPositionPrompt(which), FIELD_POSITION_SCHEMA as object, {
+        fps: 4,
+        resolution: 'medium',
+        start: Math.max(0, start),
+        end: Math.min(duration, stop),
+      })
+      return parseFieldPosition(res.text)
+    }
+    // Deliberately sequential: two calls in flight on one key is a rate-limit
+    // risk, and nothing here is latency-sensitive.
+    const atSnap = await moment('snap', snap - 0.5, snap + 1.5)
+    const atEnd = await moment('end', end - 1.5, end + 1.5)
+    const split = deriveSplitGain(atSnap, atEnd)
+    splitYards = split.yards
+    console.log('split snap:', JSON.stringify(atSnap))
+    console.log('split end :', JSON.stringify(atEnd))
+    splitLine = `${split.yards ?? '—'} (${split.attacking ?? 'no direction'}${
+      split.directionAssumed ? ', assumed' : ''
+    }${split.reachedEndZone ? ', end zone' : ''})${split.failure ? ` [${split.failure}]` : ''}`
+    console.log('SPLIT yardage:', splitLine)
+    // A null is withheld, not wrong — the same distinction the sheet makes.
+    splitMarks.push(
+      yardsMark(splitYards ?? 0, splitYards == null ? 1 : 0, truth.yards)
+    )
+  }
 
   let parsedJson: unknown
   try {
