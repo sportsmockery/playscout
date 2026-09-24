@@ -48,10 +48,18 @@ describe('attack points in the game plan prompt', () => {
     expect(prompt).not.toContain('[object Object]')
   })
 
-  it('tells the model the counts are the ranking, not decoration', () => {
+  it('separates plan material from single looks rather than asking nicely', () => {
+    // This used to assert the prompt said points were "RANKED by how many
+    // clips" and that the model "must not present them as equally reliable".
+    // It did say that, and on a real 113-clip report the model wrote "only a
+    // handful of patterns appeared in more than one clip" and then built the
+    // entire plan out of 2-clip items anyway. An instruction to weigh evidence
+    // is not a constraint; a split in code is.
     const prompt = buildScoutIQGamePlanPrompt(ctx())
-    expect(prompt).toContain('RANKED by how many clips')
-    expect(prompt).toContain('must not present them as equally reliable')
+    expect(prompt).toContain('REPEATED')
+    expect(prompt).toContain('Build the plan out of these and nothing else')
+    expect(prompt).toContain('SINGLE LOOKS')
+    expect(prompt).toContain('must NOT become')
   })
 
   it('says so plainly when nothing has been scouted yet', () => {
