@@ -20,18 +20,44 @@ export interface ScoutIQGamePlanContext {
   ownPlaybookSummary?: string
 }
 
+/**
+ * How many clips a point must appear in before a game plan may be built on it.
+ *
+ * A HARD SPLIT IN CODE, not an instruction. The prompt already told the model
+ * "something seen once may be a one-off … you must not present them as equally
+ * reliable", and on a real 113-clip report it faithfully wrote "only a handful
+ * of patterns appeared in more than one clip" and then built the entire plan
+ * out of 2-clip items anyway. A model asked to weigh evidence will weigh it
+ * and still use what it has; the only thing that reliably keeps thin evidence
+ * out of a plan is not handing it over as plan material.
+ *
+ * Three, because two observations can be a coincidence and three is the
+ * smallest number that cannot. It is deliberately NOT scaled to the
+ * denominator: 3 of 12 clips is a real tendency on a short scout, and picking
+ * a percentage here would be inventing a threshold nothing has measured.
+ * The rate is printed either way, so a coach reading "3 of 47" can judge it.
+ */
+export const MIN_TENDENCY_CLIPS = 3
+
+function line(a: AggregatedScoutReport['attack_points'][number], defensiveClips: number): string {
+  const label = ATTACK_CATEGORY_LABELS[a.category as AttackCategory] ?? a.category
+  const of = defensiveClips > 0 ? ` of ${defensiveClips}` : ''
+  return `- [${label}] ${a.point} — seen in ${a.clips}${of} clip${a.clips === 1 ? '' : 's'} where they were on defense`
+}
+
+export function splitByEvidence(points: AggregatedScoutReport['attack_points']) {
+  return {
+    repeated: points.filter((a) => a.clips >= MIN_TENDENCY_CLIPS),
+    singleLooks: points.filter((a) => a.clips < MIN_TENDENCY_CLIPS),
+  }
+}
+
 function formatAttackPoints(
   points: AggregatedScoutReport['attack_points'],
   defensiveClips: number
 ): string {
   if (!points.length) return '(none observed yet)'
-  return points
-    .map((a) => {
-      const label = ATTACK_CATEGORY_LABELS[a.category as AttackCategory] ?? a.category
-      const of = defensiveClips > 0 ? ` of ${defensiveClips}` : ''
-      return `- [${label}] ${a.point} — seen in ${a.clips}${of} clip${a.clips === 1 ? '' : 's'} where they were on defense`
-    })
-    .join('\n')
+  return points.map((a) => line(a, defensiveClips)).join('\n')
 }
 
 function formatTendencyLines(tendencies: AggregatedScoutReport['offensive_tendencies']): string {
@@ -77,12 +103,20 @@ Formations observed: ${aggregated.formations.map((f) => f.name).join(', ') || '(
 Situational tells:
 ${aggregated.situational_tells.map((t) => `- ${t.situation}: ${t.tell} (${t.clips} clip${t.clips === 1 ? '' : 's'})`).join('\n') || '(none observed yet)'}
 
-Ways to attack them, RANKED by how many clips each showed up in. The denominator is the
-${aggregated.evidence_sufficiency.defensive_clips} clip(s) in which ${ctx.opponentName} was ON DEFENSE — the only clips that can
-show a way to attack them — out of ${aggregated.evidence_sufficiency.clips_analyzed} scouted in total.
-Order your plan by this evidence — something seen in most of those clips is a tendency, something
-seen once may be a one-off, and you must not present them as equally reliable:
-${formatAttackPoints(aggregated.attack_points, aggregated.evidence_sufficiency.defensive_clips)}
+Ways to attack them. The denominator is the ${aggregated.evidence_sufficiency.defensive_clips} clip(s) in which
+${ctx.opponentName} was ON DEFENSE — the only clips that can show a way to attack them — out of
+${aggregated.evidence_sufficiency.clips_analyzed} scouted in total.
+
+REPEATED — seen in ${MIN_TENDENCY_CLIPS}+ clips. **Build the plan out of these and nothing else.**
+${formatAttackPoints(splitByEvidence(aggregated.attack_points).repeated, aggregated.evidence_sufficiency.defensive_clips) === '(none observed yet)' ? '(nothing repeated across enough clips to plan around — say so)' : formatAttackPoints(splitByEvidence(aggregated.attack_points).repeated, aggregated.evidence_sufficiency.defensive_clips)}
+
+SINGLE LOOKS — seen once or twice. These are NOT tendencies and must NOT become
+recommendations, priorities or the reason for a call. You may mention one only as
+supporting colour beside a REPEATED point it agrees with, and you must say it was a
+single look when you do. If the REPEATED list above is empty, the honest answer is that
+this film does not yet support a game plan — say that instead of promoting anything from
+this list:
+${formatAttackPoints(splitByEvidence(aggregated.attack_points).singleLooks, aggregated.evidence_sufficiency.defensive_clips)}
 
 Target players (weakness identified by legible jersey number or position/alignment — never a guessed number):
 ${aggregated.target_players.map((p) => `- ${p.identifier}: ${p.reason} (confidence ${p.confidence.toFixed(2)})`).join('\n') || '(none identified yet)'}
