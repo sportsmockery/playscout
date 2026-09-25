@@ -213,14 +213,28 @@ export async function getVideosByOpponent(teamId: string, opponentId: string): P
  * Without it the module screen cannot say "4 of 106 scouted", and every
  * re-visit re-selects clips the coach already paid to analyze.
  */
-export async function getScoutedVideoIds(videoIds: string[]): Promise<string[]> {
+/**
+ * Which of these clips have been scouted FOR THIS OPPONENT.
+ *
+ * Per-opponent, not per-video. Asking "does this clip have any SCOUTIQ result"
+ * was right while a clip belonged to one opponent; on film of two opponents
+ * playing each other it marks every clip as already done the moment the first
+ * team is scouted, and the coach is offered nothing to select.
+ */
+export async function getScoutedVideoIds(
+  videoIds: string[],
+  opponentId?: string | null
+): Promise<string[]> {
   if (!videoIds.length) return []
   const supabase = await createClient()
-  const { data } = await supabase
+  let q = supabase
     .from('position_analysis_results')
     .select('video_id')
     .eq('module_key', 'SCOUTIQ')
     .in('video_id', videoIds)
+  // Without an opponent the honest answer is the old one: any scout counts.
+  if (opponentId) q = q.eq('opponent_id', opponentId)
+  const { data } = await q
   return [...new Set((data ?? []).map((r) => r.video_id as string).filter(Boolean))]
 }
 

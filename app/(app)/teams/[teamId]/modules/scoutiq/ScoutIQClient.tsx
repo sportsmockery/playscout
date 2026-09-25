@@ -27,6 +27,8 @@ interface Props {
   opponentVideos: Video[];
   /** Clips that already have a SCOUTIQ result, so we neither re-charge for them nor hide the progress. */
   scoutedVideoIds: string[];
+  /** Film tagged to this opponent — what gets pre-selected out of the whole library. */
+  taggedVideoIds?: string[];
   scoutReports: ScoutReport[];
 }
 
@@ -104,7 +106,7 @@ function AddOpponentForm({ teamId, onCreated }: { teamId: string; onCreated: (id
   );
 }
 
-export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, selectedOpponentId, opponentVideos, scoutedVideoIds, scoutReports }: Props) {
+export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, selectedOpponentId, opponentVideos, scoutedVideoIds, taggedVideoIds, scoutReports }: Props) {
   const router = useRouter();
   const [showAddOpponent, setShowAddOpponent] = useState(opponents.length === 0);
   // Seeded from the opponent record rather than starting blank every visit.
@@ -120,11 +122,18 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
   // half the clips cannot answer the question and cost a Gemini call each.
   const selectableIds = opponentVideos.filter((v) => !isUnanalyzable(v)).map((v) => v.id);
   const scouted = new Set(scoutedVideoIds);
-  const unscoutedIds = selectableIds.filter((id) => !scouted.has(id));
+  /**
+   * The whole library is selectable; only this opponent's own film is
+   * pre-selected. Defaulting to every clip on the team would queue a paid
+   * vision call per clip of film that has nothing to do with them.
+   */
+  const tagged = new Set(taggedVideoIds ?? selectableIds);
+  const preferredIds = selectableIds.filter((id) => tagged.has(id));
+  const unscoutedIds = preferredIds.filter((id) => !scouted.has(id));
   // Start on the clips that still need doing. Re-selecting film the coach has
   // already paid to analyze is the default that quietly bills them twice.
   const [selectedIds, setSelectedIds] = useState<string[]>(
-    unscoutedIds.length ? unscoutedIds : selectableIds
+    unscoutedIds.length ? unscoutedIds : preferredIds
   );
 
   function toggleClip(id: string) {
@@ -368,20 +377,48 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
                   <span className="text-[var(--brand-muted)]">
                     {selectedIds.length} of {selectableIds.length} clip
                     {selectableIds.length === 1 ? '' : 's'} selected
-                    {unscoutedIds.length > 0 && unscoutedIds.length < selectableIds.length
-                      ? ` — the ${unscoutedIds.length} not yet scouted`
+                    {unscoutedIds.length > 0 && unscoutedIds.length < preferredIds.length
+                      ? ` — the ${unscoutedIds.length} not yet scouted for ${selectedOpponent?.name ?? 'them'}`
                       : ''}
+                    {/* The list is the whole library now, so say so — otherwise
+                        "Select all" silently means "every clip on the team",
+                        which is a paid vision call per clip of film that may
+                        have nothing to do with this opponent. */}
+                    {preferredIds.length < selectableIds.length && (
+                      <>
+                        {' · '}
+                        <span className="text-[var(--brand-ink)]">
+                          {preferredIds.length} filed under {selectedOpponent?.name ?? 'this opponent'}
+                        </span>
+                        , the rest is other film in your library
+                      </>
+                    )}
                   </span>
                   {selectableIds.length > 1 && (
                     <button
                       onClick={() =>
                         setSelectedIds(
-                          selectedIds.length === selectableIds.length ? [] : selectableIds
+                          // "All" means this opponent's own film first. Only
+                          // once that is already selected does it widen to the
+                          // whole library, so widening is always a deliberate
+                          // second press rather than the default.
+                          selectedIds.length === selectableIds.length
+                            ? []
+                            : selectedIds.length === preferredIds.length &&
+                                preferredIds.every((id) => selectedIds.includes(id))
+                              ? selectableIds
+                              : preferredIds
                         )
                       }
                       className="font-semibold text-[var(--brand-navy)] hover:underline"
                     >
-                      {selectedIds.length === selectableIds.length ? 'Clear all' : 'Select all'}
+                      {selectedIds.length === selectableIds.length
+                        ? 'Clear all'
+                        : selectedIds.length === preferredIds.length &&
+                            preferredIds.every((id) => selectedIds.includes(id)) &&
+                            preferredIds.length < selectableIds.length
+                          ? `Select all ${selectableIds.length} in library`
+                          : 'Select all'}
                     </button>
                   )}
                 </div>

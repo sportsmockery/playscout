@@ -66,11 +66,22 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    /**
+     * Scoped by WHO WAS SCOUTED, not by which film the clip is filed under.
+     *
+     * It used to gather every SCOUTIQ result on this opponent's videos. That
+     * held only while a clip belonged to one opponent. On film of two
+     * opponents playing each other the same clip is scouted twice, and this
+     * query would have handed team B's report team A's reads of the same
+     * snaps — as extra evidence, silently. Migration 20260925000000 backfilled
+     * opponent_id from the film's tag, which is exactly right for everything
+     * scouted before it.
+     */
     const { data: scoutResults } = await supabase
       .from('position_analysis_results')
       .select('video_id, evidence, play_sequence_id')
       .eq('module_key', 'SCOUTIQ')
-      .in('video_id', videoIds)
+      .eq('opponent_id', opponentId)
 
     if (!scoutResults?.length) {
       return NextResponse.json(
