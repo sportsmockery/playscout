@@ -38,6 +38,11 @@ export async function saveAnalysisResult(
       video_id: input.videoId ?? null,
       play_sequence_id: input.playSequenceId ?? null,
       module_key: input.moduleKey,
+      // SCOUTIQ's subject. Every other module grades the coach's own team, so
+      // the team_id above is enough; SCOUTIQ grades an opponent, and without
+      // this a clip scouted for two opponents produces results nothing can
+      // tell apart — see migration 20260925000000.
+      opponent_id: input.opponentId ?? null,
       overall_score: result.overall_score,
       position_scores: result.position_scores,
       reasoning: result.reasoning,
