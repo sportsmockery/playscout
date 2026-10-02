@@ -11,6 +11,8 @@ import {
 import { STAT_POSITIONS, positionLabel } from '@/lib/intelligence/positions'
 import { STAT_KINDS, sideOfStat } from '@/lib/intelligence/stat-lines'
 
+const MAX_WHAT_HAPPENED = 280
+
 /**
  * Correcting a charted stat.
  *
@@ -240,6 +242,15 @@ export async function PATCH(
     if ('yards' in patch && patch.yards != null && !Number.isFinite(Number(patch.yards))) {
       return NextResponse.json({ error: 'Yards must be a number.' }, { status: 400 })
     }
+    if (
+      patch.what_happened != null &&
+      (typeof patch.what_happened !== 'string' || patch.what_happened.length > MAX_WHAT_HAPPENED)
+    ) {
+      return NextResponse.json(
+        { error: `Keep "what happened" under ${MAX_WHAT_HAPPENED} characters.` },
+        { status: 400 }
+      )
+    }
   }
 
   const corrected: typeof credits = []
@@ -348,6 +359,7 @@ export async function PATCH(
     })),
     ...removedIds.map((id) => {
       const before = credits[rows.findIndex((r) => r.id === id)]
+      const whatHappened = patches[id]?.what_happened?.trim() || null
       return {
         team_id: analysis.team_id,
         result_id: analysisId,
@@ -360,7 +372,9 @@ export async function PATCH(
           stat: before.stat,
           note: before.note,
         },
-        corrected_value: null,
+        // A removal used to be logged as a bare null. The coach's description
+        // of what the play really was is the most useful half of this row.
+        corrected_value: { removed: true, what_happened: whatHappened },
         model: analysis.model_name,
         prompt_version: analysis.prompt_version ?? null,
         corrected_by: user.id,
