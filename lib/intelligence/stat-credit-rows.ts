@@ -133,6 +133,12 @@ export interface CreditPatch {
   touchdown?: boolean
   /** Remove a credit for something that did not happen. */
   remove?: boolean
+  /**
+   * The coach's own words for what the play actually was ("extra point kick"),
+   * kept with a removal in the correction log. It changes no total; it is the
+   * record of what the model misread, from someone who was there.
+   */
+  what_happened?: string
 }
 
 /**

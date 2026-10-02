@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { HelpCircle, CheckCircle2, SkipForward, AlertCircle } from 'lucide-react';
+import { HelpCircle, CheckCircle2, SkipForward, AlertCircle, XCircle } from 'lucide-react';
 import {
   OFFENSIVE_POSITIONS,
   DEFENSIVE_POSITIONS,
@@ -19,8 +19,13 @@ import {
  * scroll or a modal per item turns forty answers into four.
  *
  * Skipping is a first-class outcome. A coach who genuinely does not remember
- * should leave the stat uncounted rather than be pushed into a guess, which is
- * the same mistake the model was making.
+ * should leave the stat on no player's line rather than be pushed into a guess,
+ * which is the same mistake the model was making. A skipped stat still counts
+ * in the TEAM totals (see stat-lines.ts), and the copy says so.
+ *
+ * "Didn't happen" is the other exit: the question itself can be wrong — a kick
+ * charted as a touchdown run — and no answer about WHO fixes a WHAT. It removes
+ * the credit and keeps the coach's description of the real play.
  */
 
 export interface StatQuestion {
@@ -82,8 +87,15 @@ export default function StatQuestionQueue({
 
   const current = questions?.[index] ?? null;
 
-  const answer = useCallback(
-    async (positionId: string) => {
+  // A question can be wrong at its root — the film showed a kick and StatsIQ
+  // charted a touchdown run. Naming a player would put a play that never
+  // happened on a child's line, so the coach can strike it and say what it was.
+  const [striking, setStriking] = useState(false);
+  const [whatHappenedText, setWhatHappenedText] = useState('');
+  const [removed, setRemoved] = useState(0);
+
+  const submit = useCallback(
+    async (patch: { position_id: string } | { remove: true; what_happened?: string }) => {
       if (!current?.analysisId || busy) return;
       setBusy(true);
       setError('');
@@ -91,11 +103,14 @@ export default function StatQuestionQueue({
         const res = await fetch(`/api/intelligence/analysis/${current.analysisId}/stat-credits`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ patches: { [current.id]: { position_id: positionId } } }),
+          body: JSON.stringify({ patches: { [current.id]: patch } }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Could not save that answer.');
-        setAnswered((n) => n + 1);
+        if ('remove' in patch) setRemoved((n) => n + 1);
+        else setAnswered((n) => n + 1);
+        setStriking(false);
+        setWhatHappenedText('');
         setIndex((i) => i + 1);
         onAnswered?.();
       } catch (err) {
@@ -107,9 +122,21 @@ export default function StatQuestionQueue({
     [current, busy, onAnswered],
   );
 
-  const skip = useCallback(() => setIndex((i) => i + 1), []);
+  const answer = useCallback((positionId: string) => submit({ position_id: positionId }), [submit]);
 
-  // Number keys pick a candidate, S skips. Forty questions is a lot of mousing.
+  const strike = useCallback(() => {
+    const text = whatHappenedText.trim();
+    return submit(text ? { remove: true, what_happened: text } : { remove: true });
+  }, [submit, whatHappenedText]);
+
+  const skip = useCallback(() => {
+    setStriking(false);
+    setWhatHappenedText('');
+    setIndex((i) => i + 1);
+  }, []);
+
+  // Number keys pick a candidate, S skips, D says it didn't happen. Forty
+  // questions is a lot of mousing.
   useEffect(() => {
     if (!current) return;
     function onKey(e: KeyboardEvent) {
@@ -123,15 +150,19 @@ export default function StatQuestionQueue({
       } else if (e.key.toLowerCase() === 's') {
         e.preventDefault();
         skip();
+      } else if (e.key.toLowerCase() === 'd') {
+        e.preventDefault();
+        setStriking(true);
       }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [current, answer, skip]);
 
-  if (!questions || (questions.length === 0 && answered === 0)) return null;
+  if (!questions || (questions.length === 0 && answered === 0 && removed === 0)) return null;
 
   const remaining = questions.length - index;
+  const skipped = questions.length - answered - removed;
 
   if (!current) {
     return (
@@ -143,13 +174,15 @@ export default function StatQuestionQueue({
               {answered > 0
                 ? `${answered} stat${answered === 1 ? '' : 's'} attributed`
                 : 'Nothing left to answer'}
+              {removed > 0 && ` · ${removed} removed`}
             </p>
             <p className="text-sm text-emerald-800">
               {answered > 0
-                ? 'Those are counted now, in this report and in the season totals.'
+                ? 'Those are on players’ lines now, in this report and in the season totals.'
                 : 'Every charted stat has a player on it.'}
-              {questions.length - answered > 0 &&
-                ` ${questions.length - answered} skipped — they stay uncounted until someone says who it was.`}
+              {removed > 0 && ' Stats you said didn’t happen are out of every total.'}
+              {skipped > 0 &&
+                ` ${skipped} skipped — they stay in the team totals, on no player’s line, until someone says who it was.`}
             </p>
           </div>
         </div>
@@ -168,11 +201,13 @@ export default function StatQuestionQueue({
         </h3>
         <span className="text-[11px] text-amber-800">
           {remaining} left{answered > 0 ? ` · ${answered} answered` : ''}
+          {removed > 0 ? ` · ${removed} removed` : ''}
         </span>
       </div>
       <p className="text-[11px] text-amber-800 mb-4">
-        These are stats the film showed but could not attribute. Nothing here is counted until you
-        say who it was — StatsIQ asks rather than guessing.
+        These are stats StatsIQ charted but could not attribute. Each one counts in the team totals
+        and on no player&apos;s line until you say who it was. If the play never happened the way
+        it&apos;s described, choose &quot;Didn&apos;t happen&quot; and it comes out of every total.
       </p>
 
       {error && (
@@ -235,11 +270,71 @@ export default function StatQuestionQueue({
             <span className="text-[10px] border border-[var(--brand-border)] rounded px-1">S</span>
             Don&apos;t remember
           </button>
+
+          <button
+            onClick={() => setStriking((s) => !s)}
+            disabled={busy}
+            aria-expanded={striking}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-red-200 text-sm text-red-700 hover:bg-red-50 transition-colors"
+          >
+            <XCircle size={13} />
+            <span className="text-[10px] border border-red-200 rounded px-1">D</span>
+            Didn&apos;t happen
+          </button>
         </div>
 
+        {striking && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              strike();
+            }}
+            className="mt-3 rounded-lg border border-red-200 bg-red-50/60 p-3"
+          >
+            <label
+              htmlFor="stat-what-happened"
+              className="block text-xs font-semibold text-red-900 mb-1.5"
+            >
+              What actually happened on this play? (optional)
+            </label>
+            <input
+              id="stat-what-happened"
+              autoFocus
+              value={whatHappenedText}
+              onChange={(e) => setWhatHappenedText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setStriking(false);
+              }}
+              maxLength={280}
+              placeholder="e.g. Extra point kick — no run, no touchdown"
+              className="w-full px-3 py-2 rounded-lg border border-[var(--brand-border)] bg-white text-sm text-[var(--brand-ink)]"
+            />
+            <p className="text-[10px] text-red-800 mt-1.5">
+              Removes this {whatHappened(current).toLowerCase()} from the team totals and every
+              player&apos;s line. Your note is saved with the correction.
+            </p>
+            <div className="flex gap-2 mt-2">
+              <button
+                type="submit"
+                disabled={busy}
+                className="px-3 py-1.5 rounded-lg bg-red-700 text-white text-sm font-semibold hover:opacity-90 disabled:opacity-60"
+              >
+                Remove stat
+              </button>
+              <button
+                type="button"
+                onClick={() => setStriking(false)}
+                className="px-3 py-1.5 rounded-lg border border-[var(--brand-border)] text-sm text-[var(--brand-muted)] hover:bg-white"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        )}
+
         <p className="text-[10px] text-[var(--brand-muted)] mt-3">
-          Press a number to answer, S to skip. Skipping leaves the stat uncounted rather than
-          guessing at it.
+          Press a number to answer, S to skip, D if it didn&apos;t happen. Skipping keeps the stat
+          in the team totals but off every player&apos;s line.
         </p>
       </div>
     </div>
