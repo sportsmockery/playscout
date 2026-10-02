@@ -283,7 +283,17 @@ export async function analyzePosition(
           // A colour the coach chose for THIS run always wins — they know
           // which kit was worn. The team row is the fallback, and only when it
           // is unambiguous.
-          jersey_color: misdirected ? undefined : input.team.jersey_color ?? unambiguousTeamColor,
+          //
+          // STATSIQ is the exception on opponent film: its subject there IS
+          // the opponent (subjectName above), and a box score with no colour
+          // has no way to tell which of the two teams on the field to chart.
+          // The opponent record's colour says which; with none on file it
+          // stays on the no-colour branch rather than guessing.
+          jersey_color: misdirected
+            ? input.moduleKey === 'STATSIQ'
+              ? filmSubject.opponentJerseyColor ?? undefined
+              : undefined
+            : input.team.jersey_color ?? unambiguousTeamColor,
           game_type: gameType ?? undefined,
           // Standing scheme context from the team row, so a coach records it
           // once in team settings rather than retyping it into every run.
@@ -791,6 +801,14 @@ export async function analyzePosition(
     team_stats: stats?.team,
     stat_warnings: stats ? [...statDisputes, ...stats.warnings] : statDisputes.length ? statDisputes : undefined,
     stat_disputes: statDisputes.length ? statDisputes : undefined,
+    stat_subject:
+      input.moduleKey === 'STATSIQ'
+        ? {
+            side: misdirected ? 'opponent' : 'self',
+            name: inputWithGameType.team?.name ?? null,
+            jersey_color: inputWithGameType.team?.jersey_color ?? null,
+          }
+        : undefined,
     unit_graded: parsed.unit_graded,
     players_not_evaluable: parsed.players_not_evaluable,
     target_players: parsed.target_players,

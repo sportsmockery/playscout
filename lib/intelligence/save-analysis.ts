@@ -96,6 +96,7 @@ export async function saveAnalysisResult(
         stat_plays: result.stat_plays ?? null,
         stat_warnings: result.stat_warnings ?? null,
         stat_disputes: result.stat_disputes ?? null,
+        stat_subject: result.stat_subject ?? null,
       },
       model_provider: 'google',
       model_name: result.model,

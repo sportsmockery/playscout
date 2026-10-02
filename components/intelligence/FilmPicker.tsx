@@ -1,8 +1,9 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { CheckSquare, ChevronDown, ChevronRight, Film, Search, Square } from 'lucide-react';
+import { CheckSquare, ChevronDown, ChevronRight, Film, Layers, Search, Square } from 'lucide-react';
 import type { Video, VideoStatus } from '@/lib/db/types';
+import { groupByTitleStem } from '@/lib/video/title-groups';
 
 export interface FilmPickerFolder {
   id: string;
@@ -64,10 +65,16 @@ const TONE_CLASS = {
  * 2. It selects many clips, and whole folders at once, because a batch is the
  *    normal unit of work: a coach uploads a game as 40 single-play clips and
  *    wants all 40 graded.
+ * 3. Inside a folder, clips that share a title stem ("Andrew vs. Bourbonnais —
+ *    Clip 1…109") collapse into one selectable row, so a game is one click and
+ *    two games with the same clip numbering never mix. See title-groups.ts.
  */
 export default function FilmPicker({ videos, folders, value, onChange, disabled }: Props) {
   const [query, setQuery] = useState('');
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  // Title groups inside a folder start CLOSED — the opposite of folders —
+  // because the point of them is that a whole game is one row.
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const selected = useMemo(() => new Set(value), [value]);
 
   const filtered = useMemo(() => {
@@ -113,6 +120,44 @@ export default function FilmPicker({ videos, folders, value, onChange, disabled 
       else next.add(id);
       return next;
     });
+  }
+
+  function toggleExpanded(id: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  const searching = query.trim().length > 0;
+
+  function renderVideoRow(v: Video) {
+    const status = filmStatusLabel(v);
+    const blocked = isUnanalyzable(v);
+    return (
+      <li key={v.id}>
+        <button
+          onClick={() => !blocked && toggleVideo(v.id)}
+          disabled={blocked}
+          className={`w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[var(--brand-bg)] transition-colors ${
+            blocked ? 'cursor-not-allowed opacity-60' : ''
+          }`}
+        >
+          {selected.has(v.id) ? (
+            <CheckSquare size={14} className="shrink-0 text-[var(--brand-navy)]" />
+          ) : (
+            <Square size={14} className="shrink-0 text-[var(--brand-muted)]" />
+          )}
+          <Film size={12} className="shrink-0 text-[var(--brand-muted)]" />
+          <span className="min-w-0 flex-1 truncate text-xs text-[var(--brand-ink)]">{v.title}</span>
+          <span className={`shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${TONE_CLASS[status.tone]}`}>
+            {status.label}
+          </span>
+        </button>
+      </li>
+    );
   }
 
   if (videos.length === 0) {
@@ -184,29 +229,56 @@ export default function FilmPicker({ videos, folders, value, onChange, disabled 
 
               {!isCollapsed && (
                 <ul>
-                  {group.videos.map((v) => {
-                    const status = filmStatusLabel(v);
-                    const blocked = isUnanalyzable(v);
+                  {groupByTitleStem(group.videos).map((titleGroup) => {
+                    // A one-off title is a plain row; a header over one clip is noise.
+                    if (titleGroup.items.length === 1) {
+                      return renderVideoRow(titleGroup.items[0]);
+                    }
+                    const subKey = `${group.id}:${titleGroup.key}`;
+                    const subSelectable = titleGroup.items.filter((v) => !isUnanalyzable(v));
+                    const subAll = subSelectable.length > 0 && subSelectable.every((v) => selected.has(v.id));
+                    const subSome = subSelectable.some((v) => selected.has(v.id));
+                    // Collapsed by default: a 109-clip game is one row until the
+                    // coach wants to pick inside it. A search opens every match.
+                    const subOpen = searching || expanded.has(subKey);
+                    const subCount = subSelectable.filter((v) => selected.has(v.id)).length;
                     return (
-                      <li key={v.id}>
-                        <button
-                          onClick={() => !blocked && toggleVideo(v.id)}
-                          disabled={blocked}
-                          className={`w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-[var(--brand-bg)] transition-colors ${
-                            blocked ? 'cursor-not-allowed opacity-60' : ''
-                          }`}
-                        >
-                          {selected.has(v.id) ? (
-                            <CheckSquare size={14} className="shrink-0 text-[var(--brand-navy)]" />
-                          ) : (
-                            <Square size={14} className="shrink-0 text-[var(--brand-muted)]" />
-                          )}
-                          <Film size={12} className="shrink-0 text-[var(--brand-muted)]" />
-                          <span className="min-w-0 flex-1 truncate text-xs text-[var(--brand-ink)]">{v.title}</span>
-                          <span className={`shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${TONE_CLASS[status.tone]}`}>
-                            {status.label}
-                          </span>
-                        </button>
+                      <li key={subKey} className="border-t border-[var(--brand-border)] first:border-t-0">
+                        <div className="flex items-center gap-1.5 pl-4 pr-3 py-1.5">
+                          <button
+                            onClick={() => toggleExpanded(subKey)}
+                            className="p-0.5 text-[var(--brand-muted)] hover:text-[var(--brand-navy)]"
+                            aria-label={subOpen ? `Collapse ${titleGroup.name}` : `Expand ${titleGroup.name}`}
+                            aria-expanded={subOpen}
+                          >
+                            {subOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                          </button>
+                          <button
+                            onClick={() => toggleGroup(titleGroup.items)}
+                            className="flex items-center gap-2 min-w-0 flex-1 text-left"
+                          >
+                            {subAll ? (
+                              <CheckSquare size={14} className="shrink-0 text-[var(--brand-navy)]" />
+                            ) : (
+                              <Square
+                                size={14}
+                                className={`shrink-0 ${subSome ? 'text-[var(--brand-navy)]' : 'text-[var(--brand-muted)]'}`}
+                              />
+                            )}
+                            <Layers size={12} className="shrink-0 text-[var(--brand-muted)]" />
+                            <span className="min-w-0 flex-1 truncate text-xs font-semibold text-[var(--brand-ink)]">
+                              {titleGroup.name}
+                            </span>
+                            <span className="ml-auto text-[10px] text-[var(--brand-muted)] shrink-0">
+                              {subSome ? `${subCount} of ${titleGroup.items.length}` : `${titleGroup.items.length} clips`}
+                            </span>
+                          </button>
+                        </div>
+                        {subOpen && (
+                          <ul className="pl-4">
+                            {titleGroup.items.map((v) => renderVideoRow(v))}
+                          </ul>
+                        )}
                       </li>
                     );
                   })}
