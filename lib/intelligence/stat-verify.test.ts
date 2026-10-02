@@ -155,7 +155,7 @@ describe('a play-type disagreement is rebuilt from the read that measures right'
           credits: [{ stat: 'sack_taken', position: 'qb', yards: -8 }],
         }),
       ],
-      [verified({ play_type: 'pass', thrown_by: 'qb', ball_ended_with: 'slot_left', yards: 20 })]
+      [verified({ play_type: 'pass', thrown_by: 'qb', ball_ended_with: 'slot_left', pass_result: 'complete', yards: 20 })]
     )
 
     expect(disputes.join(' ')).toContain("check's account is what is counted")
@@ -401,7 +401,7 @@ describe('a turnover the second read contradicts', () => {
           credits: [{ stat: 'pass_incomplete', position: 'qb' }],
         }),
       ],
-      [verified({ play_type: 'pass', thrown_by: 'qb', ball_ended_with: 'wr_left', yards: 14 })]
+      [verified({ play_type: 'pass', thrown_by: 'qb', ball_ended_with: 'wr_left', pass_result: 'complete', yards: 14 })]
     )
 
     expect(disputes.join(' ')).toContain('pass incomplete')
@@ -430,7 +430,7 @@ describe('a turnover the second read contradicts', () => {
           ],
         }),
       ],
-      [verified({ play_type: 'pass', ball_ended_with: 'wr_left', thrown_by: 'qb', yards: 23 })]
+      [verified({ play_type: 'pass', ball_ended_with: 'wr_left', thrown_by: 'qb', pass_result: 'complete', yards: 23 })]
     )
 
     // Not merely discarded — rebuilt from the read that measures right. With
@@ -571,9 +571,80 @@ describe('the check must corroborate itself before it may overrule charting', ()
     expect(rush?.candidates).toContain('qb')
   })
 
-  it('leaves the shipped behaviour in place by default', () => {
-    const { plays } = reconcileReadings([chartedAsRun()], [verified({ play_type: 'pass' })])
+  it('never rewrites a charted designed run into a pass, even when the check is corroborated', () => {
+    // Observed on a 109-clip Power I / Double Wing batch: two checks agreed on
+    // "pass" for 17 charted runs, and every one became a completion — four of
+    // them passing touchdowns carried over from rushing touchdowns. Two runs of
+    // the same prompt make the same mistake together.
+    const { plays } = reconcileReadings(
+      [chartedAsRun()],
+      [verified({ play_type: 'pass', thrown_by: 'qb', ball_ended_with: 'wr_right', pass_result: 'complete' })]
+    )
     const tally = tallyStatPlays(plays, { declaredSide: 'offense', allowUnverifiedNumbers: true })
-    expect(tally.team.offense.carries).toBe(0)
+    expect(tally.team.offense.carries).toBe(1)
+    expect(tally.team.offense.rush_td).toBe(1)
+    expect(tally.team.offense.pass_attempts).toBe(0)
+    expect(tally.team.offense.pass_td).toBe(0)
+  })
+})
+
+describe('a rebuilt pass is a completion only when the check says it was caught', () => {
+  const chartedIncomplete = () =>
+    chartedAsRun({
+      play_type: 'pass',
+      result: 'incomplete',
+      yards: 0,
+      credits: [
+        { stat: 'pass_incomplete', position: 'qb' },
+        { stat: 'target', position: 'wr_right' },
+      ],
+    })
+
+  it('keeps an incompletion when the check names the intended receiver but not a catch', () => {
+    // The check names the man the ball was thrown AT on an incompletion. That
+    // used to be read as a catch, and the batch came out 42/42.
+    for (const pass_result of ['incomplete', 'cannot_tell', undefined] as const) {
+      const { plays } = reconcileReadings(
+        [chartedIncomplete()],
+        [verified({ play_type: 'pass', thrown_by: 'qb', ball_ended_with: 'wr_right', pass_result })]
+      )
+      const { team } = tallyStatPlays(plays)
+      expect(team.offense.pass_attempts).toBe(1)
+      expect(team.offense.pass_completions).toBe(0)
+    }
+  })
+
+  it('keeps an interception the check confirms', () => {
+    const { plays, disputes } = reconcileReadings(
+      [
+        chartedAsRun({
+          play_type: 'pass',
+          result: 'interception',
+          yards: null,
+          credits: [{ stat: 'pass_intercepted', position: 'qb' }],
+        }),
+      ],
+      [verified({ play_type: 'pass', thrown_by: 'qb', ball_ended_with: 'wr_left', pass_result: 'intercepted' })]
+    )
+    expect(disputes).toHaveLength(0)
+    const { team } = tallyStatPlays(plays)
+    expect(team.offense.interceptions_thrown).toBe(1)
+    expect(team.offense.pass_completions).toBe(0)
+  })
+
+  it('does not rebuild a completion from a check that never answered pass_result', () => {
+    // Cached verifications predate the question; silence is not "complete".
+    const { plays } = reconcileReadings(
+      [
+        chartedAsRun({
+          play_type: 'sack',
+          result: 'loss',
+          yards: -8,
+          credits: [{ stat: 'sack_taken', position: 'qb', yards: -8 }],
+        }),
+      ],
+      [verified({ play_type: 'pass', thrown_by: 'qb', ball_ended_with: 'slot_left', yards: 20 })]
+    )
+    expect(tallyStatPlays(plays).team.offense.pass_completions).toBe(0)
   })
 })

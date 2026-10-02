@@ -480,6 +480,18 @@ export interface PositionAnalysisResult {
   the first key would hand back the first answer and the test would pass against itself. A second
   read that cannot be obtained leaves the old behaviour in place, because failing the other way
   scored 1/7 on the pass clip.
+- **Production showed the gate above is not enough, and two limits now apply on top of it.**
+  On a 109-clip Power I / Double Wing batch (2026-10-02) the sheet read **QB 42/42, 6 TD**.
+  28 of those completions came from `rebuildFromCheck`. 17 were charted RUNS where both checks
+  agreed on "pass", because two runs of the same prompt make the same mistake together, and 4 of
+  the 6 TDs were rushing touchdowns carried over. The other 11 were charted incompletions,
+  interceptions and a fumble, which the check "contradicted" just by naming the intended receiver.
+  The check had no way to say whether a pass was caught. So now:
+  1. The verification asks `pass_result` (complete / incomplete / intercepted / not_a_pass /
+     cannot_tell), and a completion is rebuilt ONLY on an explicit `complete`. A cached
+     verification that lacks the field never counts as complete.
+  2. A charted designed run is never rewritten into a pass. It keeps the run and parks the carrier.
+     A charted SACK can still be rebuilt, because that is the case the clip-A measurement rescued.
 - **Where the two reads disagree, the CHECK supplies the play** (`rebuildFromCheck`). Discarding
   both was the first answer and it was retired by measurement: the charting read has been right
   once in nine runs, the closed-question read right every time it answered, so discarding threw

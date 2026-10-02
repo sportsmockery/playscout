@@ -36,6 +36,18 @@ export interface VerifiedPlay {
   ball_ended_with: string | null
   /** Who threw it, on a pass. */
   thrown_by: string | null
+  /**
+   * Whether a pass was CAUGHT, and by whom. Optional because verifications
+   * cached before it existed do not carry it — and an absent answer must
+   * never be read as "complete".
+   *
+   * Without it, `ball_ended_with` was the only thing a rebuild had to go on,
+   * and on an incompletion or an interception the model fills that with the
+   * receiver the ball was thrown AT. Every rebuilt pass was therefore a
+   * completion. Observed on a 109-clip batch: 42 of 42, ten of them charted
+   * as incompletions or interceptions.
+   */
+  pass_result?: 'complete' | 'incomplete' | 'intercepted' | 'not_a_pass' | 'cannot_tell' | null
   yards: number | null
   confidence: number
 }
@@ -93,17 +105,23 @@ For EVERY play in this clip, in order, answer these questions from what you can 
 
 4. thrown_by — on a pass, the position of the thrower. Null on a run or if you cannot tell.
 
-5. yards — how far the ball advanced, measured off the field. This was shot on a MARKED field:
+5. pass_result — on a pass, what happened to the ball: "complete" (one of this team's players
+   caught it), "incomplete" (it hit the ground or went out of bounds), or "intercepted" (a
+   defender caught it). "not_a_pass" on a run. "cannot_tell" if you did not see it arrive.
+   On an incompletion, ball_ended_with is null — the receiver it was thrown to did not finish
+   with it.
+
+6. yards — how far the ball advanced, measured off the field. This was shot on a MARKED field:
    a stripe every 5 yards, hash marks, sidelines, two goal lines. Find the yard line the ball was
    on at the snap, find the line where the play ended (the goal line, if it scored), and count.
    The camera panning does not stop you — the lines pan with it, so read each end separately.
    Null ONLY if no line is readable in this clip at all. Do not estimate without lines, and do not
    refuse a line you can see.
 
-6. confidence — 0.0 to 1.0, honestly.
+7. confidence — 0.0 to 1.0, honestly.
 
 You are NOT charting statistics and you are NOT writing a report. Do not describe technique, do
-not praise anyone, do not invent a narrative. Answer the six questions per play.
+not praise anyone, do not invent a narrative. Answer the seven questions per play.
 
 Being wrong here is worse than saying "cannot_tell", because another reading of this same film
 will be compared against yours and a coach will be asked about anything the two disagree on.
@@ -126,10 +144,14 @@ export const PLAY_VERIFICATION_SCHEMA = {
           ball_changed_hands: { type: Type.STRING, enum: ['yes', 'no', 'cannot_tell'] },
           ball_ended_with: { type: Type.STRING, nullable: true },
           thrown_by: { type: Type.STRING, nullable: true },
+          pass_result: {
+            type: Type.STRING,
+            enum: ['complete', 'incomplete', 'intercepted', 'not_a_pass', 'cannot_tell'],
+          },
           yards: { type: Type.NUMBER, nullable: true },
           confidence: { type: Type.NUMBER },
         },
-        required: ['play_index', 'play_type', 'ball_changed_hands', 'confidence'],
+        required: ['play_index', 'play_type', 'ball_changed_hands', 'pass_result', 'confidence'],
       },
     },
   },
@@ -200,6 +222,13 @@ export function verificationsAgreeOnPlayType(a: VerifiedPlay[], b: VerifiedPlay[
   if (a.length !== b.length) return false
   const byIndex = new Map(b.map((v) => [v.play_index, v]))
   return a.every((v) => byIndex.get(v.play_index)?.play_type === v.play_type)
+}
+
+function isSack(play: RawStatPlay): boolean {
+  return (
+    (play.play_type ?? '').toLowerCase() === 'sack' ||
+    (play.credits ?? []).some((c) => c.stat === 'sack_taken')
+  )
 }
 
 /** The credit that carries the play — the one whose attribution actually matters. */
@@ -288,6 +317,12 @@ function rebuildFromCheck(check: VerifiedPlay, charted: RawStatPlay): RawStatCre
   }
 
   if (check.play_type === 'pass') {
+    // A completion is only ever rebuilt on the check's explicit word that the
+    // pass was caught. `ball_ended_with` alone is not that word: on an
+    // incompletion or an interception the model names the intended receiver,
+    // and treating that as a catch turned every disputed pass on a 109-clip
+    // batch into a completion (42/42, six of them touchdowns).
+    if (check.pass_result !== 'complete') return []
     // The THROWER is asserted: it was qb on every run of both clips and on the
     // coach's answer, and a pass thrown by someone other than the quarterback
     // is rare enough to be worth charting when two reads agree on it.
@@ -380,13 +415,23 @@ export function reconcileReadings(
     if (check.play_type !== 'cannot_tell' && kind !== 'other') {
       checks += 1
       if (check.play_type !== kind) {
+        // A charted designed RUN is never rewritten into a pass. The check's
+        // pass-for-run read is the error the two-check gate was meant to
+        // filter, and it does not filter it: two runs of the same prompt make
+        // the same mistake together. Observed on a 109-clip Power I / Double
+        // Wing batch: 17 charted runs became completions, 4 of them passing
+        // touchdowns carried over from rushing touchdowns. A SACK is the
+        // exception: the charting read already saw a dropback, and that is the
+        // case the measured rescue was made for.
+        const runIntoPass = kind === 'run' && check.play_type === 'pass' && !isSack(play)
+
         // The charting read keeps the play; only the player is parked.
         //
         // A disagreement about run-versus-pass is still evidence that somebody
         // misread this snap, so the principal actor is a question either way.
         // What differs is whether the EVENT is taken from the read that lost:
         // here it is not, so the gain survives too.
-        if (playTypeVeto === 'charting') {
+        if (playTypeVeto === 'charting' || runIntoPass) {
           disputes.push(
             `Play ${index}: the charting read called this a ${kind} and the check read a ${check.play_type}. The charting account is what is counted — check the player.`
           )
@@ -474,7 +519,23 @@ export function reconcileReadings(
     const finishedWith = check.ball_ended_with
       ? normalizeStatPosition(check.ball_ended_with, 'offense')
       : null
-    if (lostIt && finishedWith && isOffensivePosition(finishedWith) && check.play_type !== 'cannot_tell') {
+    // Naming a receiver is not saying he CAUGHT it — on an incompletion the
+    // model names the man it was thrown to. So a charted incompletion is only
+    // contradicted by an explicit "complete", and a charted incompletion or
+    // interception the check confirms is agreement, not a dispute.
+    const checkConfirmsLoss =
+      (lostIt?.stat === 'pass_incomplete' && check.pass_result === 'incomplete') ||
+      (lostIt?.stat === 'pass_intercepted' && check.pass_result === 'intercepted')
+    const incompletionUncontradicted =
+      lostIt?.stat === 'pass_incomplete' && check.pass_result !== 'complete'
+    if (
+      lostIt &&
+      !checkConfirmsLoss &&
+      !incompletionUncontradicted &&
+      finishedWith &&
+      isOffensivePosition(finishedWith) &&
+      check.play_type !== 'cannot_tell'
+    ) {
       checks += 1
       const rebuilt = rebuildFromCheck(check, play)
       if (rebuilt.length) {
