@@ -619,6 +619,16 @@ export interface PositionAnalysisResult {
   gain. Re-run `EVAL_SWEEP=1` before changing it.
 - Sacks are scored the NFHS/NCAA way — a rushing attempt and a rushing loss for the passer, not
   a pass attempt.
+- **On opponent film StatsIQ charts the OPPONENT, in the opponent record's jersey colour.**
+  Film tagged `film_type: 'opponent'` was already kept off the coach's roster and ledger, but
+  the colour was dropped too, so the model had no way to tell which of the two teams to chart.
+  Now `opponents.jersey_color` is supplied, and every StatsIQ result records `stat_subject`
+  (`side`, `name`, `jersey_color`).
+- **A ScoutIQ combined report shows a box score only from StatsIQ runs whose `stat_subject.side`
+  is `'opponent'`** (`lib/intelligence/opponent-stats.ts`), taking the latest run per clip.
+  Runs on the coach's own film, and runs from before `stat_subject` existed, are never used.
+  Their numbers under an opponent's name would be the misattribution the identity rules exist
+  to stop. With none, the report says so and links StatsIQ with the same clips preselected.
 - Writes one row per credit to `play_stat_credits` (migration `20260915000000`), an event ledger
   rather than a totals table: credits roll up into any question (a season, a down, one player),
   and a total cannot be taken apart again.

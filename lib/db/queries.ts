@@ -1,4 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
+import type { StatsIQRunRow } from '@/lib/intelligence/opponent-stats'
+import type { StatCredit } from '@/lib/intelligence/stat-lines'
 import type { Team, Player, Video, VideoFolder, PositionAnalysisResult, TeamTendency, MistakeEvent, Playbook, PlaybookAnalysis, PlaybookPlay, PlaySequence, Opponent, ScoutReport } from './types'
 
 // Alias for server component compatibility
@@ -222,6 +224,35 @@ export async function getScoutedVideoIds(videoIds: string[]): Promise<string[]> 
     .eq('module_key', 'SCOUTIQ')
     .in('video_id', videoIds)
   return [...new Set((data ?? []).map((r) => r.video_id as string).filter(Boolean))]
+}
+
+/**
+ * STATSIQ runs on these clips that charted the OPPONENT — the only runs a
+ * scouting report may take numbers from. See lib/intelligence/opponent-stats.ts.
+ */
+export async function getOpponentStatsIQRuns(teamId: string, videoIds: string[]): Promise<StatsIQRunRow[]> {
+  if (!videoIds.length) return []
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('position_analysis_results')
+    // Only the three fields the tally reads — the full evidence carries every
+    // clip's breakdown, and a game is a hundred clips.
+    .select(
+      'video_id, created_at, stat_credits:evidence->stat_credits, team_stats:evidence->team_stats, stat_subject:evidence->stat_subject'
+    )
+    .eq('team_id', teamId)
+    .eq('module_key', 'STATSIQ')
+    .eq('evidence->stat_subject->>side', 'opponent')
+    .in('video_id', videoIds)
+  return ((data ?? []) as Record<string, unknown>[]).map((r) => ({
+    video_id: r.video_id as string | null,
+    created_at: r.created_at as string,
+    evidence: {
+      stat_credits: r.stat_credits as StatCredit[] | null,
+      team_stats: r.team_stats as { nullifiedPlays?: number } | null,
+      stat_subject: r.stat_subject as { side?: string; name?: string | null } | null,
+    },
+  }))
 }
 
 export async function getScoutReportsByOpponent(opponentId: string): Promise<ScoutReport[]> {

@@ -37,6 +37,8 @@ export interface FilmSubject {
   /** 'opponent' only when the video is explicitly tagged as opponent film. */
   filmType: 'self' | 'opponent'
   opponentName: string | null
+  /** The opponent's kit, from their opponent record. How STATSIQ tells them apart on two-team film. */
+  opponentJerseyColor?: string | null
 }
 
 /** The safe default: film we know nothing about is treated as the coach's own. */
@@ -82,7 +84,7 @@ export async function resolveFilmSubject(
 
   const { data, error } = await supabase
     .from('videos')
-    .select('film_type, opponent:opponents(name)')
+    .select('film_type, opponent:opponents(name, jersey_color)')
     .eq('id', videoId)
     .maybeSingle()
 
@@ -92,9 +94,11 @@ export async function resolveFilmSubject(
   const embedded = data.opponent as unknown
   const opponent = Array.isArray(embedded) ? embedded[0] : embedded
   const opponentName = (opponent as { name?: string } | null)?.name ?? null
+  const opponentJerseyColor = (opponent as { jersey_color?: string | null } | null)?.jersey_color ?? null
 
   return {
     filmType: data.film_type === 'opponent' ? 'opponent' : 'self',
     opponentName,
+    opponentJerseyColor,
   }
 }

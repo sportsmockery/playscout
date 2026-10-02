@@ -1,7 +1,8 @@
-import { getAnalysisBatchById } from '@/lib/db/queries';
+import { getAnalysisBatchById, getOpponentStatsIQRuns } from '@/lib/db/queries';
+import { tallyOpponentStats } from '@/lib/intelligence/opponent-stats';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { AlertCircle, ArrowLeft, CheckCircle2, Clock, Film, TrendingDown, TrendingUp } from 'lucide-react';
+import { AlertCircle, ArrowLeft, BarChart3, CheckCircle2, Clock, Film, TrendingDown, TrendingUp } from 'lucide-react';
 import type { BatchAggregate } from '@/lib/intelligence/aggregate-batch';
 import type { BatchSummary } from '@/lib/intelligence/batch-summary';
 import ClipBreakdown from './ClipBreakdown';
@@ -72,6 +73,13 @@ export default async function BatchReportPage({
   const joinedTeam = (batch as { teams?: { name?: string } | { name?: string }[] }).teams;
   const teamName = (Array.isArray(joinedTeam) ? joinedTeam[0] : joinedTeam)?.name ?? null;
 
+  const opponentName =
+    ((batch.context ?? {}) as { opponent?: { name?: string } }).opponent?.name ?? null;
+  const reportVideoIds = clips.map((c) => c.videoId);
+  const opponentStats = scouting
+    ? tallyOpponentStats(await getOpponentStatsIQRuns(teamId, reportVideoIds), reportVideoIds)
+    : null;
+
   return (
     <div className="p-6 max-w-4xl mx-auto print:p-0">
       <div className="flex items-center justify-between mb-6">
@@ -126,6 +134,42 @@ export default async function BatchReportPage({
             warnings={aggregate.statTally.warnings}
             subtitle={`${completed} clip${completed === 1 ? '' : 's'} · ${aggregate.statTally.team.plays} play${aggregate.statTally.team.plays === 1 ? '' : 's'} charted`}
           />
+        </div>
+      )}
+
+      {/* A scouting report's box score. SCOUTIQ charts no statistics itself,
+          so these come from StatsIQ runs on the same clips that charted the
+          OPPONENT — never the coach's own team's numbers under their name. */}
+      {scouting && (
+        <div className="mb-5">
+          {opponentStats ? (
+            <BoxScore
+              lines={opponentStats.tally.lines}
+              team={opponentStats.tally.team}
+              warnings={opponentStats.tally.warnings}
+              subtitle={`${opponentStats.chartedAs ?? opponentName ?? 'Opponent'} · charted by StatsIQ from ${opponentStats.chartedClips} of ${clips.length} clip${clips.length === 1 ? '' : 's'} · ${opponentStats.tally.team.plays} play${opponentStats.tally.team.plays === 1 ? '' : 's'}`}
+            />
+          ) : (
+            <div className="glass-card p-5 flex items-start gap-3">
+              <BarChart3 size={18} className="text-[var(--brand-muted)] shrink-0 mt-0.5" />
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-[var(--brand-ink)]">
+                  No stats charted for {opponentName ?? 'this opponent'} yet
+                </p>
+                <p className="text-sm text-[var(--brand-muted)] mt-0.5">
+                  This report reads their alignment and tendencies; it does not count carries,
+                  completions or touchdowns. Run StatsIQ on these same clips and their box score
+                  appears here.
+                </p>
+                <Link
+                  href={`/teams/${teamId}/modules/statsiq?videoIds=${clips.map((c) => c.videoId).join(',')}`}
+                  className="print:hidden inline-flex items-center gap-1.5 mt-3 text-sm font-semibold text-[var(--brand-navy)] hover:underline"
+                >
+                  Chart these {clips.length} clips in StatsIQ →
+                </Link>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

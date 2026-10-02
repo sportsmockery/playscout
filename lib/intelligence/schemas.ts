@@ -425,6 +425,12 @@ export interface PositionAnalysisResult {
    * nothing was charted from them. These are the ones to enter by hand.
    */
   stat_disputes?: string[]
+  /**
+   * WHOSE box score this is. STATSIQ charts the coach's own team on their own
+   * film, and the tagged opponent on opponent film — so a scouting report can
+   * show an opponent's numbers only from runs that charted that opponent.
+   */
+  stat_subject?: { side: 'self' | 'opponent'; name: string | null; jersey_color: string | null }
   unit_graded?: string
   players_not_evaluable?: string
   target_players?: { identifier: string; reason: string; confidence: number; evidence_frames?: number[] }[]
