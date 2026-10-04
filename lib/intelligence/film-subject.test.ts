@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  distinctOpponentColor,
   isOwnTeamModule,
   isMisdirectedRun,
   subjectNameFor,
@@ -61,5 +62,26 @@ describe('subjectNameFor', () => {
 
   it('leaves SCOUTIQ alone — its prompt already handles the opponent itself', () => {
     expect(subjectNameFor('SCOUTIQ', OPPONENT_FILM, 'TP White')).toBe('TP White')
+  })
+})
+
+describe('distinctOpponentColor', () => {
+  it("drops an opponent colour that matches ours, however it is worded", () => {
+    // Bradley's record said "White jerseys" on film where we wore white.
+    expect(distinctOpponentColor('White jerseys', ['White', 'Black'])).toBeUndefined()
+    expect(distinctOpponentColor('WHITE', [null, 'white uniforms'])).toBeUndefined()
+  })
+
+  it('keeps an opponent colour nobody on our side wears', () => {
+    expect(distinctOpponentColor('Red jerseys', ['White', 'Black'])).toBe('Red jerseys')
+  })
+
+  it('has nothing to keep when the opponent has no colour on file', () => {
+    expect(distinctOpponentColor(null, ['White'])).toBeUndefined()
+    expect(distinctOpponentColor('jerseys', ['White'])).toBeUndefined()
+  })
+
+  it('keeps the colour when we have none on file to clash with', () => {
+    expect(distinctOpponentColor('Red', [undefined, null])).toBe('Red')
   })
 })

@@ -102,3 +102,38 @@ export async function resolveFilmSubject(
     opponentJerseyColor,
   }
 }
+
+/** "White jerseys", "white", "WHITE uniforms" → "white". */
+function colorKey(color: string): string {
+  return color
+    .toLowerCase()
+    .replace(/\b(jerseys?|uniforms?|kits?|tops?|shirts?)\b/g, '')
+    .replace(/[^a-z0-9 ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/**
+ * The opponent's colour, or nothing if it could be mistaken for ours.
+ *
+ * On opponent film STATSIQ charts whoever wears the opponent's colour. If our
+ * own team wears that colour too, the prompt cannot tell the two apart, and it
+ * charts OUR players as the opponent. Observed: Bradley's record said "White
+ * jerseys" on film where the coach's team wore white and Bradley wore red. So a
+ * colour matching any of ours is dropped, and the run takes the no-colour path
+ * rather than charting the wrong side with confidence.
+ */
+export function distinctOpponentColor(
+  opponentColor: string | null | undefined,
+  ownColors: (string | null | undefined)[]
+): string | undefined {
+  if (!opponentColor) return undefined
+  const theirs = colorKey(opponentColor)
+  if (!theirs) return undefined
+  const clash = ownColors.some((c) => {
+    if (!c) return false
+    const ours = colorKey(c)
+    return !!ours && (ours === theirs || ours.includes(theirs) || theirs.includes(ours))
+  })
+  return clash ? undefined : opponentColor
+}
