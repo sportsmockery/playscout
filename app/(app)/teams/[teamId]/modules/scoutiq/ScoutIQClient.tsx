@@ -123,12 +123,29 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
   const unscoutedIds = selectableIds.filter((id) => !scouted.has(id));
   // Start on the clips that still need doing. Re-selecting film the coach has
   // already paid to analyze is the default that quietly bills them twice.
-  const [selectedIds, setSelectedIds] = useState<string[]>(
+  const [pickedIds, setPickedIds] = useState<string[]>(
     unscoutedIds.length ? unscoutedIds : selectableIds
   );
+  // Film keeps arriving after this page mounts: a Hudl import or a batch
+  // upload lands clip by clip via router.refresh(). New unscouted clips join
+  // the selection as they appear, matching the everything-selected default,
+  // instead of the coach finding "0 of 104 selected" when the import finishes.
+  const [seenIds, setSeenIds] = useState<string[]>(selectableIds);
+  const seen = new Set(seenIds);
+  const arrivedIds = selectableIds.filter((id) => !seen.has(id));
+  if (arrivedIds.length) {
+    setSeenIds(selectableIds);
+    setPickedIds((prev) => [...prev, ...arrivedIds.filter((id) => !scouted.has(id))]);
+  }
+  // Only clips in THIS opponent's current list count. The count and the button
+  // used to read the raw state, so ids that were no longer in the list showed
+  // up as "191 of 104 clips selected" while scoutAllClips (which filters
+  // against the list) found nothing to queue and silently did nothing.
+  const selectable = new Set(selectableIds);
+  const selectedIds = pickedIds.filter((id) => selectable.has(id));
 
   function toggleClip(id: string) {
-    setSelectedIds((prev) =>
+    setPickedIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
   }
@@ -237,7 +254,7 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
       setQueued(`${res.queued} clip${res.queued === 1 ? '' : 's'} queued — scouting runs in the background.`);
       // Emptied so the same clips can't be queued a second time by someone who
       // isn't sure the first press landed. Re-selecting is one tap.
-      setSelectedIds([]);
+      setPickedIds([]);
       setQueueVersion((v) => v + 1);
     } catch (err) {
       setClipError(err instanceof Error ? err.message : 'Could not queue scouting.');
@@ -375,7 +392,7 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
                   {selectableIds.length > 1 && (
                     <button
                       onClick={() =>
-                        setSelectedIds(
+                        setPickedIds(
                           selectedIds.length === selectableIds.length ? [] : selectableIds
                         )
                       }
