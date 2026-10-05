@@ -110,7 +110,12 @@ export default function AnalysisDock() {
     : 'Analysis complete';
 
   return (
-    <div className="fixed bottom-4 left-4 z-40 w-[320px] max-w-[calc(100vw-2rem)] rounded-xl bg-white shadow-2xl border border-[var(--brand-border)] overflow-hidden print:hidden">
+    // bottom-24, not bottom-4: PlayScoutIQBubble is a 56px button at
+    // `fixed bottom-6 left-6 z-[60]`, in the same corner and above this dock,
+    // so at bottom-4 it sat on the dock's batch rows and covered their status
+    // ("failed" was unreadable on a phone). bottom-24 starts the dock just
+    // above the bubble.
+    <div className="fixed bottom-24 left-4 z-40 w-[320px] max-w-[calc(100vw-2rem)] rounded-xl bg-white shadow-2xl border border-[var(--brand-border)] overflow-hidden print:hidden">
       <div className="flex items-center justify-between px-4 py-2.5 bg-[var(--brand-navy)] text-white">
         <div className="flex items-center gap-2 min-w-0">
           {clipsRunning ? (

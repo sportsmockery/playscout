@@ -66,7 +66,8 @@ export default function AppShell({ children, teamId, defaultTeamId, isAdmin }: A
 
         {/* Page content.
             The bottom padding is not decoration: PlayScoutIQBubble sits at
-            `fixed bottom-6 left-6` (56px tall) and the docks at bottom-4, all
+            `fixed bottom-6 left-6` (56px tall), the analysis dock just above it
+            at bottom-24 and the upload dock at bottom-4 right, all
             above the page. Without clearance they cover whatever is at the
             foot of the content — observed on team settings, where the bubble
             sat squarely on top of the "Connect Hudl" button on a phone. */}
