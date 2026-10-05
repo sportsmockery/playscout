@@ -11,13 +11,24 @@ import { buildOLIQSystemPrompt, OLIQ_RESPONSE_SCHEMA } from './modules/oliq'
 import { buildRBIQSystemPrompt, RBIQ_RESPONSE_SCHEMA } from './modules/rbiq'
 import { buildTEAMIQSystemPrompt, TEAMIQ_RESPONSE_SCHEMA } from './modules/teamiq'
 import { buildMISTAKEIQSystemPrompt, MISTAKEIQ_RESPONSE_SCHEMA } from './modules/mistakeiq'
-import { buildSCOUTIQSystemPrompt, SCOUTIQ_RESPONSE_SCHEMA } from './modules/scoutiq'
+import { buildSCOUTIQSystemPrompt, SCOUTIQ_RESPONSE_SCHEMA, SCOUTIQ_CORE_RESPONSE_SCHEMA } from './modules/scoutiq'
 import { buildRANKERIQSystemPrompt, RANKERIQ_RESPONSE_SCHEMA } from './modules/rankeriq'
 import { buildSTATSIQSystemPrompt, STATSIQ_RESPONSE_SCHEMA } from './modules/statsiq'
 import { buildSTATSIQFactsPrompt, STATSIQ_FACTS_RESPONSE_SCHEMA } from './modules/statsiq-facts'
 import { factsOutputToAnalysisOutput } from './stat-facts'
 import { normalizeDefensiveSnap } from './defense-structure'
 import { normalizeOffensiveSnap } from './offense-structure'
+import { STOP_CATEGORIES, OFFENSIVE_THREAT_TYPES } from './taxonomy'
+
+function isSchemaTooComplex(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err)
+  return /too many states|schema produces a constraint/i.test(message)
+}
+
+/** The schema to fall back to when the full one is refused, or null when there is none. */
+function reducedSchemaFor(moduleKey: string): object | null {
+  return moduleKey === 'SCOUTIQ' ? SCOUTIQ_CORE_RESPONSE_SCHEMA : null
+}
 import {
   PositionAnalysisOutputSchema,
   type PositionAnalysisInput,
@@ -406,15 +417,29 @@ export async function analyzePosition(
       inputTokens: 0, outputTokens: 0, cacheHit: true,
     })
   } else {
-    const result = clip
-      ? await analyzeClipWithGemini(systemPrompt, clip.source, config.schema, {
-          model: route.model,
-          fps: config.fps,
-          mediaResolution: config.resolution,
-          startOffsetSeconds: readWindow.startOffsetSeconds,
-          endOffsetSeconds: readWindow.endOffsetSeconds,
-        })
-      : await analyzeFramesWithGemini(systemPrompt, frames, config.schema, { model: route.model })
+    const callGemini = (schema: typeof config.schema) =>
+      clip
+        ? analyzeClipWithGemini(systemPrompt, clip.source, schema, {
+            model: route.model,
+            fps: config.fps,
+            mediaResolution: config.resolution,
+            startOffsetSeconds: readWindow.startOffsetSeconds,
+            endOffsetSeconds: readWindow.endOffsetSeconds,
+          })
+        : analyzeFramesWithGemini(systemPrompt, frames, schema, { model: route.model })
+    let result: Awaited<ReturnType<typeof callGemini>>
+    try {
+      result = await callGemini(config.schema)
+    } catch (err) {
+      // Gemini refuses a response schema whose decoding grammar is too large
+      // ("too many states for serving") before it reads any film. That took
+      // every ScoutIQ run down once. Retry with the optional extensions
+      // removed so the module degrades to its core read instead of failing.
+      const reduced = isSchemaTooComplex(err) ? reducedSchemaFor(input.moduleKey) : null
+      if (!reduced) throw err
+      console.warn(`[analyze-position] ${input.moduleKey} schema rejected as too complex; retrying with the core schema`)
+      result = await callGemini(reduced as typeof config.schema)
+    }
     rawJson = result.text
     await recordUsage(supabase, {
       teamId: input.teamId, userId, jobType: 'frame_observation',
@@ -828,7 +853,14 @@ export async function analyzePosition(
       parsed.opponent_possession === 'offense' || parsed.opponent_possession === 'both'
         ? parsed.offensive_snaps?.map((s) => normalizeOffensiveSnap(s as Record<string, unknown>))
         : undefined,
-    stop_points: parsed.stop_points,
+    // The schema carries these as plain strings (see OFFENSIVE_SNAP_SCHEMA),
+    // so an off-list id becomes the escape hatch rather than a new category
+    // with its own count.
+    stop_points: parsed.stop_points?.map((p) => ({
+      point: p.point,
+      category: (STOP_CATEGORIES as readonly string[]).includes(p.category ?? '') ? p.category : 'situational',
+      threat: (OFFENSIVE_THREAT_TYPES as readonly string[]).includes(p.threat ?? '') ? p.threat : 'other',
+    })),
     key_players: parsed.key_players,
     model: route.model,
     // In video mode there are no discrete frames to count, so report what the

@@ -126,7 +126,6 @@ export function renderOffensiveProfile(profile: OffensiveProfile): string {
   }
 
   dist('FORMATION', profile.formations)
-  dist('QB ALIGNMENT', profile.qbAlignment)
   dist('MOTION', profile.motion)
   dist('PLAY TYPE', profile.playTypes, (v) => OFFENSIVE_PLAY_TYPE_LABELS[v] ?? v)
   if (profile.runPass.readable) {

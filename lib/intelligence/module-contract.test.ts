@@ -162,6 +162,34 @@ describe('every module promises a shape the result schema accepts', () => {
     expect(parsed.stop_points?.[0]?.threat).toBeDefined()
   })
 
+  it('SCOUTIQ stays inside the schema size Gemini is known to serve', () => {
+    // Gemini compiles the response schema into a decoding grammar and refuses
+    // one that is too large ("too many states for serving") before reading any
+    // film. Adding the offensive chart as enums took SCOUTIQ from 218 enum
+    // values to 309 and every ScoutIQ call in production failed. These are
+    // the counts of the last schema measured working; growing past them needs
+    // a real call against Gemini first, not just this test.
+    const counts = { enumValues: 0, nullable: 0, optional: 0 }
+    const walk = (n: Record<string, unknown> | undefined) => {
+      if (!n || typeof n !== 'object') return
+      if (Array.isArray(n.enum)) counts.enumValues += n.enum.length
+      if (n.nullable) counts.nullable += 1
+      const props = n.properties as Record<string, Record<string, unknown>> | undefined
+      if (props) {
+        const required = (n.required as string[] | undefined) ?? []
+        for (const [k, v] of Object.entries(props)) {
+          if (!required.includes(k)) counts.optional += 1
+          walk(v)
+        }
+      }
+      walk(n.items as Record<string, unknown> | undefined)
+    }
+    walk(MODULE_MAP.SCOUTIQ.schema as unknown as Record<string, unknown>)
+    expect(counts.enumValues).toBeLessThanOrEqual(218)
+    expect(counts.nullable).toBeLessThanOrEqual(14)
+    expect(counts.optional).toBeLessThanOrEqual(27)
+  })
+
   it('covers every module that can be analyzed, so none can be added untested', () => {
     // A module added to MODULE_MAP is automatically covered by the loop above;
     // this guards against MODULE_MAP itself being emptied or renamed away.
