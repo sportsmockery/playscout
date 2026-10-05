@@ -5,9 +5,9 @@ import { LEFT_RIGHT_RULE } from './positions'
  * ScoutIQ possession check — a separate, focused read of the PRE-SNAP picture
  * that decides who has the ball before the main scouting read runs.
  *
- * Why it exists. On a whole-game cut-up (Warriors vs Knights, 13-0) the main
- * read put the scouted team on offense on 52 of 72 plays and charted 5
- * touchdowns for a team that scored 2. Both teams ran Double Wing, the main
+ * Why it exists. On a whole-game cut-up (Warriors lost 13-0 to the Knights)
+ * the main read put the scouted team on offense on 52 of 72 plays and charted
+ * 5 touchdowns for a team that scored none. Both teams ran Double Wing, the main
  * read samples the clip at 2fps in LOW resolution, and it was answering
  * possession as one question among dozens. So when the opponent was the
  * offense, their plays were filed as the scouted team's tendencies.
