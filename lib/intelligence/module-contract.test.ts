@@ -165,10 +165,11 @@ describe('every module promises a shape the result schema accepts', () => {
   it('SCOUTIQ stays inside the schema size Gemini is known to serve', () => {
     // Gemini compiles the response schema into a decoding grammar and refuses
     // one that is too large ("too many states for serving") before reading any
-    // film. Adding the offensive chart as enums took SCOUTIQ from 218 enum
-    // values to 309 and every ScoutIQ call in production failed. These are
-    // the counts of the last schema measured working; growing past them needs
-    // a real call against Gemini first, not just this test.
+    // film. Measured in production: 218 enum values with 81 properties was
+    // served; 309 enums was refused; 218 enums with 99 properties was STILL
+    // refused. So the defensive enums became plain strings (the parser maps
+    // them) and the schema sits at 91. Growing past these numbers needs a
+    // real call against Gemini first, not just this test.
     const counts = { enumValues: 0, nullable: 0, optional: 0 }
     const walk = (n: Record<string, unknown> | undefined) => {
       if (!n || typeof n !== 'object') return
@@ -185,7 +186,7 @@ describe('every module promises a shape the result schema accepts', () => {
       walk(n.items as Record<string, unknown> | undefined)
     }
     walk(MODULE_MAP.SCOUTIQ.schema as unknown as Record<string, unknown>)
-    expect(counts.enumValues).toBeLessThanOrEqual(218)
+    expect(counts.enumValues).toBeLessThanOrEqual(100)
     expect(counts.nullable).toBeLessThanOrEqual(14)
     expect(counts.optional).toBeLessThanOrEqual(27)
   })

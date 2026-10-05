@@ -334,3 +334,16 @@ describe('the symmetric two-deep default is named as the trap', () => {
     expect(prompt).toContain('creeping down is the single most common thing they do')
   })
 })
+
+describe('normalizeDefensiveSnap — ids the schema no longer enforces', () => {
+  it('drops a defender whose position is off the vocabulary and nulls an off-list covering', () => {
+    const snap = normalizeDefensiveSnap({
+      defenders: [
+        { position: 'free safety', alignment: 'deep_middle', action: 'deep_middle' },
+        { position: 'cb_left', alignment: 'press_wide', action: 'man_turn_and_run', covering: '#81' },
+      ],
+    })
+    expect(snap.defenders?.map((d) => d.position)).toEqual(['cb_left'])
+    expect(snap.defenders?.[0].covering).toBeNull()
+  })
+})

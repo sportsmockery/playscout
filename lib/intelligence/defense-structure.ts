@@ -1,3 +1,5 @@
+import { DEFENSIVE_POSITIONS, OFFENSIVE_POSITIONS } from './positions'
+
 /**
  * What a defence is DOING on a snap — the layer a quarterback, an offensive
  * coordinator and a defensive coordinator all actually plan against.
@@ -518,8 +520,13 @@ function finiteOrNull(raw: unknown): number | null {
 }
 
 function normalizeDefender(raw: Record<string, unknown>): DefenderRow | null {
-  const position = typeof raw.position === 'string' ? raw.position : null
-  // A row with no position cannot be counted, grouped or shown to a coach.
+  // A row with no position cannot be counted, grouped or shown to a coach,
+  // and one outside the vocabulary cannot be either: every derivation keys on
+  // these ids. The schema no longer enforces them, so this does.
+  const position =
+    typeof raw.position === 'string' && (DEFENSIVE_POSITIONS as readonly string[]).includes(raw.position)
+      ? raw.position
+      : null
   if (!position) return null
   return {
     position,
@@ -527,7 +534,10 @@ function normalizeDefender(raw: Record<string, unknown>): DefenderRow | null {
     depth_yards: finiteOrNull(raw.depth_yards),
     side: onto(raw.side, ['field', 'boundary', 'middle', 'not_visible'] as const, 'not_visible'),
     action: onto(raw.action, DEFENDER_ACTIONS, 'not_visible'),
-    covering: typeof raw.covering === 'string' ? raw.covering : null,
+    covering:
+      typeof raw.covering === 'string' && (OFFENSIVE_POSITIONS as readonly string[]).includes(raw.covering)
+        ? raw.covering
+        : null,
     note: typeof raw.note === 'string' ? raw.note : null,
   }
 }
