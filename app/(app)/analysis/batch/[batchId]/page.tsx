@@ -46,6 +46,12 @@ export default async function BatchReportPage({
   const resultById = new Map(results.map((r) => [r.id, r]));
   const commentByVideo = new Map((summary?.per_video ?? []).map((p) => [p.video_id, p.comment]));
 
+  // Game order. A whole-game cut-up is reviewed play by play, and queue order
+  // scatters "Clip 37" between unrelated plays.
+  const clipNo = (title: string) => {
+    const m = title.match(/clip\s*#?\s*0*(\d+)/i);
+    return m ? parseInt(m[1], 10) : Infinity;
+  };
   const clips = jobs.map((job) => {
     const v = (job as { videos?: { title?: string } | { title?: string }[] }).videos;
     const video = Array.isArray(v) ? v[0] : v;
@@ -58,7 +64,7 @@ export default async function BatchReportPage({
       result: job.analysis_result_id ? resultById.get(job.analysis_result_id) ?? null : null,
       comment: commentByVideo.get(job.video_id as string) ?? null,
     };
-  });
+  }).sort((a, b) => clipNo(a.videoTitle) - clipNo(b.videoTitle));
 
   const stillRunning = ['queued', 'running'].includes(batch.status as string);
   const completed = clips.filter((c) => c.result).length;

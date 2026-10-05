@@ -37,6 +37,8 @@ function isActive(b: ActiveBatch) {
  * keeps draining while the coach reads their roster or watches film, not only
  * while they sit on the module page.
  */
+const DISMISSED_KEY = 'playscout.analysisDock.dismissed';
+
 export default function AnalysisDock() {
   // Inline single-clip runs, owned by AnalysisRunProvider so they outlive the
   // page that started them. Without these the dock showed nothing at all while
@@ -45,7 +47,27 @@ export default function AnalysisDock() {
   const { runs, dismiss: dismissRun } = useAnalysisRuns();
   const [batches, setBatches] = useState<ActiveBatch[]>([]);
   const [collapsed, setCollapsed] = useState(false);
-  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  // Remembered across reloads: a finished batch keeps coming back from
+  // /api/analysis/active, so an in-memory dismissal reappeared on every visit.
+  const [dismissed, setDismissed] = useState<Set<string>>(() => {
+    try {
+      const raw = typeof window !== 'undefined' ? window.localStorage.getItem(DISMISSED_KEY) : null;
+      return new Set(raw ? (JSON.parse(raw) as string[]) : []);
+    } catch {
+      return new Set();
+    }
+  });
+  const dismissBatch = useCallback((id: string) => {
+    setDismissed((prev) => {
+      const next = new Set(prev).add(id);
+      try {
+        window.localStorage.setItem(DISMISSED_KEY, JSON.stringify([...next].slice(-100)));
+      } catch {
+        // Storage blocked: the dismissal still holds for this visit.
+      }
+      return next;
+    });
+  }, []);
   const pokingRef = useRef(false);
 
   const fetchActive = useCallback(async (): Promise<ActiveBatch[] | null> => {
@@ -195,13 +217,17 @@ export default function AnalysisDock() {
                     {b.module_key}
                     {b.team_name ? <span className="text-[var(--brand-muted)]"> · {b.team_name}</span> : null}
                   </p>
-                  {isActive(b) || writingReport ? (
+                  {isActive(b) ? (
                     <span className="text-[10px] text-[var(--brand-muted)] shrink-0">
                       {done}/{b.total_jobs}
                     </span>
                   ) : (
+                    // Dismissable while the combined report is still being
+                    // written too: every clip is done, the report lands on its
+                    // page either way, and a summary that stalls must not pin
+                    // the dock over the screen for good.
                     <button
-                      onClick={() => setDismissed((prev) => new Set(prev).add(b.id))}
+                      onClick={() => dismissBatch(b.id)}
                       className="text-[10px] text-[var(--brand-muted)] hover:text-[var(--brand-ink)] shrink-0"
                     >
                       Dismiss

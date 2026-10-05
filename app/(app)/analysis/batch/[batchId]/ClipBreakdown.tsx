@@ -47,6 +47,19 @@ interface Props {
   };
 }
 
+/** "Warriors vs Knights Red — Clip 07" → 7. */
+function clipNumber(title: string): number | null {
+  const m = title.match(/clip\s*#?\s*0*(\d+)/i);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+const SIDE_LABEL: Record<string, string> = {
+  offense: 'Their O',
+  defense: 'Their D',
+  both: 'Both',
+  unclear: 'Unclear',
+};
+
 function scoreColor(score: number | null): string {
   if (score == null) return 'text-[var(--brand-muted)]';
   if (score >= 80) return 'text-emerald-600';
@@ -66,7 +79,13 @@ function scoreColor(score: number | null): string {
  */
 export default function ClipBreakdown({ teamId, videoId, videoTitle, comment, result, scouting = false }: Props) {
   const [open, setOpen] = useState(false);
-  const evidence = (result.evidence ?? {}) as EvidenceShape;
+  const evidence = (result.evidence ?? {}) as EvidenceShape & { opponent_possession?: string | null };
+  // On a scouting batch the left column is the CLIP NUMBER, not the score.
+  // ScoutIQ's score is how consistently the opponent ran its own scheme, so a
+  // kickoff with nothing to grade read as a red "0" beside a clip whose number
+  // was truncated off the end of the title on a phone.
+  const number = clipNumber(videoTitle);
+  const side = evidence.opponent_possession ? SIDE_LABEL[evidence.opponent_possession] : null;
   const grades = evidence.player_grades ?? [];
   const mistakes = evidence.mistakes ?? [];
 
@@ -81,9 +100,22 @@ export default function ClipBreakdown({ teamId, videoId, videoTitle, comment, re
           {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
         </span>
 
-        <span className={`shrink-0 text-lg font-bold w-9 text-center ${scoreColor(result.overall_score)}`}>
-          {result.overall_score ?? '—'}
-        </span>
+        {scouting ? (
+          <span className="shrink-0 w-12 text-center">
+            <span className="block text-lg font-bold tabular-nums text-[var(--brand-navy)]">
+              {number != null ? `#${number}` : '—'}
+            </span>
+            {side && (
+              <span className="block text-[10px] font-semibold uppercase tracking-wide text-[var(--brand-muted)]">
+                {side}
+              </span>
+            )}
+          </span>
+        ) : (
+          <span className={`shrink-0 text-lg font-bold w-9 text-center ${scoreColor(result.overall_score)}`}>
+            {result.overall_score ?? '—'}
+          </span>
+        )}
 
         <span className="min-w-0 flex-1">
           <span className="block text-sm font-semibold text-[var(--brand-ink)] truncate">{videoTitle}</span>
