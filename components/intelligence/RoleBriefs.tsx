@@ -15,7 +15,7 @@ import type { ScoutIQGamePlan, KeyedPoint } from '@/lib/intelligence/modules/sco
  * ball, so plenty of snaps show no secondary at all.
  */
 
-function PointList({ points }: { points: KeyedPoint[] }) {
+export function PointList({ points }: { points: KeyedPoint[] }) {
   if (!points?.length) return null;
   return (
     <ul className="space-y-2.5">
@@ -31,7 +31,7 @@ function PointList({ points }: { points: KeyedPoint[] }) {
   );
 }
 
-function Section({
+export function Section({
   title,
   hint,
   children,
@@ -51,10 +51,17 @@ function Section({
   );
 }
 
-export default function RoleBriefs({ plan }: { plan: ScoutIQGamePlan | null }) {
-  const qb = plan?.quarterback_brief;
-  const oc = plan?.coordinator_brief;
-  const notObserved = plan?.not_observed ?? [];
+export default function RoleBriefs({
+  plan,
+  parts = ['qb', 'oc', 'not_observed'],
+}: {
+  plan: ScoutIQGamePlan | null;
+  /** Which briefs to render, so the report can place each under its side of the ball. */
+  parts?: ('qb' | 'oc' | 'not_observed')[];
+}) {
+  const qb = parts.includes('qb') ? plan?.quarterback_brief : undefined;
+  const oc = parts.includes('oc') ? plan?.coordinator_brief : undefined;
+  const notObserved = parts.includes('not_observed') ? plan?.not_observed ?? [] : [];
 
   // Nothing to show on a plan generated before the defensive structure was
   // charted — those plans are still valid, they just have no briefs.

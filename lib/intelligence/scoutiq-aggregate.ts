@@ -1,6 +1,8 @@
 import { rollupTendency, type TendencyObservation } from './tendency-rollup'
 import { countRepeats } from './aggregate-batch'
-import type { AttackCategory } from './taxonomy'
+import { OFFENSIVE_FORMATIONS, DEFENSIVE_FRONTS, type AttackCategory, type StopCategory } from './taxonomy'
+import { aggregateOffensiveSnaps, type OffensiveProfile } from './aggregate-offense'
+import type { OffensiveSnap } from './offense-structure'
 import { aggregateDefensiveSnaps, type DefensiveProfile } from './aggregate-defense'
 import type { DefensiveSnap } from './defense-structure'
 
@@ -26,8 +28,35 @@ export interface ScoutClipEvidence {
   target_players?: { identifier: string; reason: string; confidence: number; evidence_frames?: number[] }[] | null
   /** What their DEFENCE did on this snap — coverage, rotation, strength, tells. */
   defensive_snaps?: DefensiveSnap[] | null
+  /** What their OFFENSE did on this snap — formation, play type, direction, who got it. */
+  offensive_snaps?: OffensiveSnap[] | null
+  /** Ways to stop their offense — the offensive twin of attack_points. */
+  stop_points?: { point: string; category?: string; threat?: string }[] | null
+  /** Their offensive playmakers. */
+  key_players?: { identifier: string; role?: string; reason: string; confidence: number }[] | null
   /** The coach's breakdown hash for this clip, used to cross-check the film read. */
   breakdown_hash?: string | null
+}
+
+export interface RankedStopPoint {
+  point: string
+  category: StopCategory | 'situational'
+  clips: number
+}
+
+/**
+ * The opponent ON OFFENSE, built only from clips where they had the ball —
+ * the half of a scout a defensive coordinator plans from. Kept separate from
+ * the defensive half so neither side's counts are diluted by the other's
+ * clips: a whole-game cut-up is roughly half each.
+ */
+export interface OffenseScout {
+  clips: number
+  profile: OffensiveProfile
+  stop_points: RankedStopPoint[]
+  situational_tells: { situation: string; tell: string; clips: number }[]
+  key_players: { identifier: string; role?: string; reason: string; confidence: number; clips: number }[]
+  formations: { name: string; clips: number }[]
 }
 
 export interface AggregatedScoutReport {
@@ -60,6 +89,10 @@ export interface AggregatedScoutReport {
    * defence, which is a real answer rather than a gap to fill.
    */
   defensive_profile: DefensiveProfile
+  /** Fronts seen while they were defending, by clips. */
+  defensive_fronts: { name: string; clips: number }[]
+  /** Their offense, from the clips where they had the ball. */
+  offense: OffenseScout
 }
 
 /**
@@ -77,6 +110,76 @@ function isDefensiveClip(clip: ScoutClipEvidence): boolean {
 function isOffensiveClip(clip: ScoutClipEvidence): boolean {
   const p = clip.opponent_possession
   return p === 'offense' || p === 'both'
+}
+
+/** How often each name appears across clips, one count per clip. */
+function countByClip(clips: ScoutClipEvidence[], allowed: readonly string[]): { name: string; clips: number }[] {
+  const counts = new Map<string, number>()
+  for (const clip of clips) {
+    const names = new Set((clip.formations ?? []).map((f) => f.name).filter((n) => allowed.includes(n)))
+    for (const n of names) counts.set(n, (counts.get(n) ?? 0) + 1)
+  }
+  return [...counts.entries()]
+    .map(([name, clips]) => ({ name, clips }))
+    .sort((a, b) => b.clips - a.clips || a.name.localeCompare(b.name))
+}
+
+const THREAT_PREFIX = 'threat:'
+
+/**
+ * Stop points ranked the way attack points are: the threat id is the identity
+ * (two clips filing the same id are the same thing however it was worded), the
+ * category the weaker fallback.
+ */
+function rankStopPoints(clips: ScoutClipEvidence[]): RankedStopPoint[] {
+  const lists = clips.map((c) => (c.stop_points ?? []).map((p) => p.point))
+  const threatOf = new Map<string, string>()
+  const categoryVotes = new Map<string, Map<string, number>>()
+  for (const clip of clips) {
+    for (const p of clip.stop_points ?? []) {
+      const text = p.point?.trim()
+      if (!text) continue
+      if (p.threat && p.threat !== 'other') threatOf.set(text, p.threat)
+      if (p.category) {
+        const votes = categoryVotes.get(text) ?? new Map<string, number>()
+        votes.set(p.category, (votes.get(p.category) ?? 0) + 1)
+        categoryVotes.set(text, votes)
+      }
+    }
+  }
+  return countRepeats(lists, ATTACK_POINT_LIMIT, {
+    keyOf: (text) => {
+      const threat = threatOf.get(text.trim())
+      return threat ? `${THREAT_PREFIX}${threat}` : undefined
+    },
+    similarityForKey: (key) => (key.startsWith(THREAT_PREFIX) ? 0 : undefined),
+  }).map((item) => ({
+    point: item.text,
+    category: modalCategory(item.members, categoryVotes) as StopCategory | 'situational',
+    clips: item.clips,
+  }))
+}
+
+function rankKeyPlayers(clips: ScoutClipEvidence[]): OffenseScout['key_players'] {
+  const byId = new Map<string, OffenseScout['key_players'][number]>()
+  for (const clip of clips) {
+    const seen = new Set<string>()
+    for (const p of clip.key_players ?? []) {
+      const id = p.identifier?.trim()
+      if (!id) continue
+      const key = id.toLowerCase()
+      const existing = byId.get(key)
+      const clipsSoFar = (existing?.clips ?? 0) + (seen.has(key) ? 0 : 1)
+      seen.add(key)
+      byId.set(
+        key,
+        !existing || p.confidence > existing.confidence
+          ? { identifier: id, role: p.role, reason: p.reason, confidence: p.confidence, clips: clipsSoFar }
+          : { ...existing, clips: clipsSoFar }
+      )
+    }
+  }
+  return [...byId.values()].sort((a, b) => b.clips - a.clips || b.confidence - a.confidence).slice(0, 12)
 }
 
 function rollupList(existing: TendencyObservation[], incoming: TendencyObservation[]): TendencyObservation[] {
@@ -209,6 +312,7 @@ function modalCategory(
   members: string[],
   categoryVotes: Map<string, Map<string, number>>
 ): AttackCategory | 'situational' {
+  // Shared by attack points and stop points; the caller narrows the type.
   const tally = new Map<string, number>()
   for (const member of members) {
     for (const [category, count] of categoryVotes.get(member) ?? []) {
@@ -262,11 +366,17 @@ export function aggregateScoutReport(clips: ScoutClipEvidence[]): AggregatedScou
   const targetPlayers = new Map<string, { identifier: string; reason: string; confidence: number }>()
   let totalPlaysObserved = 0
 
+  const defensiveClips = clips.filter(isDefensiveClip)
+  const offensiveClips = clips.filter(isOffensiveClip)
+
   for (const clip of clips) {
     totalPlaysObserved += clip.plays_observed ?? 0
     offensive = rollupList(offensive, clip.offensive_tendencies ?? [])
     defensive = rollupList(defensive, clip.defensive_tendencies ?? [])
     for (const f of clip.formations ?? []) formations.set(f.name, f)
+  }
+  // Target players are weak DEFENDERS, so only clips where they defended.
+  for (const clip of defensiveClips) {
     for (const p of clip.target_players ?? []) {
       const existing = targetPlayers.get(p.identifier)
       if (!existing || p.confidence > existing.confidence) {
@@ -274,8 +384,6 @@ export function aggregateScoutReport(clips: ScoutClipEvidence[]): AggregatedScou
       }
     }
   }
-
-  const defensiveClips = clips.filter(isDefensiveClip)
 
   // One flat list of snaps with their hashes kept in step, so the cross-check
   // compares each film read against the breakdown for the SAME clip.
@@ -306,5 +414,14 @@ export function aggregateScoutReport(clips: ScoutClipEvidence[]): AggregatedScou
       unconfirmed_subject_clips: clips.filter((c) => c.subject_confirmed === false).length,
     },
     defensive_profile: aggregateDefensiveSnaps(snaps, hashes),
+    defensive_fronts: countByClip(defensiveClips, DEFENSIVE_FRONTS),
+    offense: {
+      clips: offensiveClips.length,
+      profile: aggregateOffensiveSnaps(offensiveClips.flatMap((c) => c.offensive_snaps ?? [])),
+      stop_points: rankStopPoints(offensiveClips),
+      situational_tells: rankSituationalTells(offensiveClips),
+      key_players: rankKeyPlayers(offensiveClips),
+      formations: countByClip(offensiveClips, OFFENSIVE_FORMATIONS),
+    },
   }
 }

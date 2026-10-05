@@ -1,7 +1,8 @@
 import { buildFootballBrain, buildGameTypeContext } from '../football-brain'
 import { resolveLevelTier, tierLabel } from '../levels'
-import { ATTACK_CATEGORY_LABELS, type AttackCategory } from '../taxonomy'
-import type { AggregatedScoutReport } from '../scoutiq-aggregate'
+import { ATTACK_CATEGORY_LABELS, STOP_CATEGORY_LABELS, type AttackCategory, type StopCategory } from '../taxonomy'
+import type { AggregatedScoutReport, RankedStopPoint } from '../scoutiq-aggregate'
+import { renderOffensiveProfile, aggregateOffensiveSnaps } from '../aggregate-offense'
 import { renderDefensiveProfile, buildRoleBriefRules } from '../game-plan'
 import { profileIsThin } from '../aggregate-defense'
 
@@ -45,6 +46,13 @@ function line(a: AggregatedScoutReport['attack_points'][number], defensiveClips:
   return `- [${label}] ${a.point} — seen in ${a.clips}${of} clip${a.clips === 1 ? '' : 's'} where they were on defense`
 }
 
+export function splitStopPoints(points: RankedStopPoint[]) {
+  return {
+    repeated: points.filter((p) => p.clips >= MIN_TENDENCY_CLIPS),
+    singleLooks: points.filter((p) => p.clips < MIN_TENDENCY_CLIPS),
+  }
+}
+
 export function splitByEvidence(points: AggregatedScoutReport['attack_points']) {
   return {
     repeated: points.filter((a) => a.clips >= MIN_TENDENCY_CLIPS),
@@ -58,6 +66,17 @@ function formatAttackPoints(
 ): string {
   if (!points.length) return '(none observed yet)'
   return points.map((a) => line(a, defensiveClips)).join('\n')
+}
+
+function formatStopPoints(points: RankedStopPoint[], offensiveClips: number): string {
+  if (!points.length) return '(none observed yet)'
+  const of = offensiveClips > 0 ? ` of ${offensiveClips}` : ''
+  return points
+    .map((p) => {
+      const label = STOP_CATEGORY_LABELS[p.category as StopCategory] ?? p.category
+      return `- [${label}] ${p.point} — seen in ${p.clips}${of} clip${p.clips === 1 ? '' : 's'} where they had the ball`
+    })
+    .join('\n')
 }
 
 function formatTendencyLines(tendencies: AggregatedScoutReport['offensive_tendencies']): string {
@@ -80,6 +99,16 @@ export function buildScoutIQGamePlanPrompt(ctx: ScoutIQGamePlanContext): string 
   // plan for a "volunteer 9U-10U coach" — the youth-only ceiling this product
   // explicitly removed everywhere else.
   const tier = resolveLevelTier({ age_group: ctx.teamAgeGroup, level: ctx.teamLevel })
+  // A rollup built before the offense half existed has none; it then renders
+  // as "no offensive evidence" rather than failing the whole game plan.
+  const offense = aggregated.offense ?? {
+    clips: aggregated.evidence_sufficiency.offensive_clips ?? 0,
+    profile: aggregateOffensiveSnaps([]),
+    stop_points: [],
+    situational_tells: [],
+    key_players: [],
+    formations: [],
+  }
 
   return `${buildFootballBrain(tier)}
 
@@ -92,15 +121,40 @@ ${gameTypeContext}
 
 ## Aggregated Opponent Evidence (from ${aggregated.evidence_sufficiency.clips_analyzed} clip(s), ${aggregated.evidence_sufficiency.plays_observed} total plays observed)
 
+The evidence is split by SIDE OF THE BALL, and the report you write must keep that split. Part 1 is
+built only from clips where ${ctx.opponentName} had the ball; Part 2 only from clips where they
+were defending. Never use one half's evidence to support a claim about the other.
+
+# PART 1 — ${ctx.opponentName} ON OFFENSE (${offense.clips} clip(s) where they had the ball)
+
 Offensive tendencies:
 ${formatTendencyLines(aggregated.offensive_tendencies)}
+
+Formations, by how many offensive clips showed each: ${offense.formations.map((f) => `${f.name} (${f.clips})`).join(', ') || '(none observed yet)'}
+
+Charted snap by snap — every figure counted by the app, each rate over the snaps where it was readable:
+${renderOffensiveProfile(offense.profile)}
+
+Situational tells on offense:
+${offense.situational_tells.map((t) => `- ${t.situation}: ${t.tell} (${t.clips} clip${t.clips === 1 ? '' : 's'})`).join('\n') || '(none observed yet)'}
+
+Ways to stop them — SEEN IN ${MIN_TENDENCY_CLIPS}+ OFFENSIVE CLIPS. Build the defensive plan out of these and nothing else:
+${formatStopPoints(splitStopPoints(offense.stop_points).repeated, offense.clips)}
+
+Ways to stop them — SEEN ONCE OR TWICE. Not tendencies; supporting colour only, and say so when used:
+${formatStopPoints(splitStopPoints(offense.stop_points).singleLooks, offense.clips)}
+
+Their playmakers (by legible number or position — never a guessed number):
+${offense.key_players.map((p) => `- ${p.identifier}${p.role ? ` (${p.role})` : ''}: ${p.reason} — in ${p.clips} clip${p.clips === 1 ? '' : 's'}`).join('\n') || '(none identified yet)'}
+
+# PART 2 — ${ctx.opponentName} ON DEFENSE (${aggregated.evidence_sufficiency.defensive_clips} clip(s) where they were defending)
 
 Defensive tendencies:
 ${formatTendencyLines(aggregated.defensive_tendencies)}
 
-Formations observed: ${aggregated.formations.map((f) => f.name).join(', ') || '(none observed yet)'}
+Fronts, by how many defensive clips showed each: ${(aggregated.defensive_fronts ?? []).map((f) => `${f.name} (${f.clips})`).join(', ') || '(none observed yet)'}
 
-Situational tells:
+Situational tells on defense:
 ${aggregated.situational_tells.map((t) => `- ${t.situation}: ${t.tell} (${t.clips} clip${t.clips === 1 ? '' : 's'})`).join('\n') || '(none observed yet)'}
 
 Ways to attack them. The denominator is the ${aggregated.evidence_sufficiency.defensive_clips} clip(s) in which
@@ -132,15 +186,20 @@ ${ctx.ownRosterSummary ?? '(no roster on file)'}
 ${ctx.ownPlaybookSummary ?? '(no playbook on file)'}
 
 ## Task
-Produce a game plan a ${tierLabel(tier)} coach can actually use this week:
-1. offensive_game_plan — how to attack this opponent on offense, matched to YOUR team's own personnel/playbook where possible.
-2. defensive_game_plan — how to stop this opponent's offense.
+Produce a game plan a ${tierLabel(tier)} coach can actually use this week, written as TWO separate
+scouting reports — one on ${ctx.opponentName}'s offense, one on their defense — plus the shared
+practice week:
+0a. offense_scouting — ${ctx.opponentName} ON OFFENSE, from Part 1 only: summary (2-3 sentences: who they are with the ball) and identity (what they do, each point with its figure and denominator).
+0b. defense_scouting — ${ctx.opponentName} ON DEFENSE, from Part 2 only: summary and identity, same rules.
+1. offensive_game_plan — how OUR offense attacks THEIR defense (Part 2), matched to YOUR team's own personnel/playbook where possible.
+2. defensive_game_plan — how OUR defense stops THEIR offense (Part 1).
 3. target_players_plan — how to specifically exploit the target players listed above (only if the evidence above lists any).
 4. practice_week_focus — 3-5 concrete practice-week install priorities.
-5. evidence_sufficiency_note — one honest sentence on how much this is built on (cite the clip/play counts above, and say how many of those clips actually had them on defense).${aggregated.evidence_sufficiency.unconfirmed_subject_clips > 0 ? ` NOTE: on ${aggregated.evidence_sufficiency.unconfirmed_subject_clips} clip(s) the film analyst could not confirm it was grading ${ctx.opponentName} rather than the other team — say so plainly here.` : ''} If the sample is thin (few clips or plays), say so plainly and recommend scouting more film before fully trusting this plan.
+5. evidence_sufficiency_note — one honest sentence on how much this is built on (cite the clip/play counts above, and say how many of those clips had them on offense and how many on defense).${aggregated.evidence_sufficiency.unconfirmed_subject_clips > 0 ? ` NOTE: on ${aggregated.evidence_sufficiency.unconfirmed_subject_clips} clip(s) the film analyst could not confirm it was grading ${ctx.opponentName} rather than the other team — say so plainly here.` : ''} If the sample is thin (few clips or plays), say so plainly and recommend scouting more film before fully trusting this plan.
 6. summary — 2-3 sentence executive summary.
 7. quarterback_brief — what OUR quarterback does at the line against them (see the role-brief rules below).
 8. coordinator_brief — the same evidence written for the offensive coordinator.
+8b. defensive_coordinator_brief — Part 1 written for OUR defensive coordinator: what to stop first, formation/motion tells, situational calls, and their players to account for. If Part 1 is thin, say so and keep it short.
 9. not_observed — what this film could NOT establish about them, named plainly.
 
 ${buildRoleBriefRules(ctx.opponentName, ctx.teamName, profileIsThin(aggregated.defensive_profile))}
@@ -153,6 +212,8 @@ RULES:
 
 Return ONLY JSON matching this schema, no preamble, no markdown fences:
 {
+  "offense_scouting": { "summary": "<string>", "identity": [{ "point": "<string>", "evidence": "<figure and denominator from Part 1>" }, ...] },
+  "defense_scouting": { "summary": "<string>", "identity": [{ "point": "<string>", "evidence": "<figure and denominator from Part 2>" }, ...] },
   "offensive_game_plan": ["<string>", ...],
   "defensive_game_plan": ["<string>", ...],
   "target_players_plan": ["<string>", ...],
@@ -169,6 +230,12 @@ Return ONLY JSON matching this schema, no preamble, no markdown fences:
     "attack": [{ "point": "<string>", "evidence": "<string>" }, ...],
     "formation_and_motion": [{ "point": "<string>", "evidence": "<string>" }, ...],
     "situational": [{ "point": "<string>", "evidence": "<string>" }, ...]
+  },
+  "defensive_coordinator_brief": {
+    "stop_first": [{ "point": "<string>", "evidence": "<string>" }, ...],
+    "formation_and_motion_tells": [{ "point": "<string>", "evidence": "<string>" }, ...],
+    "situational": [{ "point": "<string>", "evidence": "<string>" }, ...],
+    "players_to_account_for": [{ "point": "<string>", "evidence": "<string>" }, ...]
   },
   "not_observed": ["<what the film could not establish>", ...]
 }`
@@ -201,6 +268,15 @@ export interface ScoutIQGamePlan {
     attack: KeyedPoint[]
     formation_and_motion: KeyedPoint[]
     situational: KeyedPoint[]
+  }
+  /** The opponent's offense and defense as two separate scouting reports. */
+  offense_scouting?: { summary: string; identity: KeyedPoint[] }
+  defense_scouting?: { summary: string; identity: KeyedPoint[] }
+  defensive_coordinator_brief?: {
+    stop_first: KeyedPoint[]
+    formation_and_motion_tells: KeyedPoint[]
+    situational: KeyedPoint[]
+    players_to_account_for: KeyedPoint[]
   }
   not_observed?: string[]
 }

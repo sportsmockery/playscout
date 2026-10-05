@@ -225,6 +225,10 @@ export interface ScoutReport {
   attack_points?: Json | null
   game_plan?: Json | null
   evidence_sufficiency?: Json | null
+  /** The opponent ON OFFENSE — charted profile, stop points, playmakers. */
+  offense_scout?: Json | null
+  /** The opponent ON DEFENSE — clips, fronts and charted structure. */
+  defense_scout?: Json | null
   summary?: string | null
   model_provider?: string | null
   model_name?: string | null

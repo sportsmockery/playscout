@@ -134,7 +134,7 @@ export async function POST(req: NextRequest) {
     const route = getRoute('game_strategy')
     const result = await callClaude(route.model, systemPrompt, [
       { role: 'user', content: 'Generate the game plan now, following the JSON schema exactly.' },
-    ], 3000)
+    ], 8000)
 
     await recordUsage(supabase, {
       teamId, userId: user.id, jobType: 'game_strategy',
@@ -173,6 +173,13 @@ export async function POST(req: NextRequest) {
         attack_points: aggregated.attack_points,
         game_plan: gamePlan,
         evidence_sufficiency: aggregated.evidence_sufficiency,
+        // The two halves of the scout, each with its own charted evidence.
+        offense_scout: aggregated.offense,
+        defense_scout: {
+          clips: aggregated.evidence_sufficiency.defensive_clips,
+          fronts: aggregated.defensive_fronts,
+          profile: aggregated.defensive_profile,
+        },
         summary: gamePlan.summary,
         model_provider: route.provider,
         model_name: route.model,

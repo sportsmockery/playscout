@@ -125,6 +125,9 @@ describe('every module promises a shape the result schema accepts', () => {
       'attack_points',
       'target_players',
       'defensive_snaps',
+      'offensive_snaps',
+      'stop_points',
+      'key_players',
     ],
     STATSIQ: ['stat_plays'],
     RANKERIQ: ['player_grades'],
@@ -149,6 +152,15 @@ describe('every module promises a shape the result schema accepts', () => {
       }
     })
   }
+
+  it('SCOUTIQ keeps the id that counts an attack point across clips', () => {
+    // The weakness id is what makes "seen in 14 of 40 clips" exact. It was
+    // missing from the parser and stripped from every saved attack point.
+    const response = sample(MODULE_MAP.SCOUTIQ.schema as GeminiSchema) as Record<string, unknown>
+    const parsed = PositionAnalysisOutputSchema.parse(response)
+    expect(parsed.attack_points?.[0]?.weakness).toBeDefined()
+    expect(parsed.stop_points?.[0]?.threat).toBeDefined()
+  })
 
   it('covers every module that can be analyzed, so none can be added untested', () => {
     // A module added to MODULE_MAP is automatically covered by the loop above;

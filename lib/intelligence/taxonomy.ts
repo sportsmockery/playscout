@@ -237,3 +237,73 @@ export const ATTACK_CATEGORY_LABELS: Record<AttackCategory, string> = {
   situational: 'Situational',
   special_teams: 'Special teams',
 }
+
+/**
+ * WHAT about an opponent's OFFENSE a stop point answers — the offensive twin
+ * of WEAKNESS_TYPES, for the same reason: free text does not count across
+ * clips, an id does. Written as what the scout sees.
+ */
+export const OFFENSIVE_THREAT_TYPES = [
+  'outside_run',
+  'inside_run',
+  'misdirection',
+  'option_read',
+  'qb_run',
+  'play_action',
+  'quick_game',
+  'deep_shot',
+  'screen',
+  'motion_tell',
+  'formation_tell',
+  'playmaker',
+  'tempo',
+  'ball_security',
+  'protection_breakdown',
+  'penalty_prone',
+  'other',
+] as const
+export type OffensiveThreatType = (typeof OFFENSIVE_THREAT_TYPES)[number]
+
+export const OFFENSIVE_THREAT_LABELS: Record<OffensiveThreatType, string> = {
+  outside_run: 'They get the ball to the edge — sweeps, tosses, perimeter runs',
+  inside_run: 'They win between the tackles — wedge, dive, power, trap',
+  misdirection: 'Counters, reverses and fakes that send the defense the wrong way',
+  option_read: 'They read a defender and give or keep off him',
+  qb_run: 'Designed quarterback runs and keepers',
+  play_action: 'Run fakes that pull defenders up before a throw',
+  quick_game: 'Short, quick throws that beat the rush',
+  deep_shot: 'They take shots down the field',
+  screen: 'Screens and throws behind the line',
+  motion_tell: 'Motion, or how it is used, gives the play away',
+  formation_tell: 'A formation, alignment or split gives the play away',
+  playmaker: 'One player gets the ball in the plays that hurt — find him on every snap',
+  tempo: 'They snap fast or change personnel to catch the defense unset',
+  ball_security: 'Loose with the ball — fumbles, bad exchanges, carried away from the body',
+  protection_breakdown: 'Their blocking breaks down — a lineman or back we can win against',
+  penalty_prone: 'A recurring foul that kills their drives',
+  other: 'A threat that none of the ids above describes',
+}
+
+/** Which part of OUR defensive plan answers a stop point. */
+export const STOP_CATEGORIES = [
+  'run_fits',
+  'edge_contain',
+  'pass_coverage',
+  'pass_rush',
+  'motion_adjustment',
+  'situational',
+  'personnel',
+  'takeaway',
+] as const
+export type StopCategory = (typeof STOP_CATEGORIES)[number]
+
+export const STOP_CATEGORY_LABELS: Record<StopCategory, string> = {
+  run_fits: 'Run fits',
+  edge_contain: 'Edge / contain',
+  pass_coverage: 'Pass coverage',
+  pass_rush: 'Pass rush',
+  motion_adjustment: 'Motion adjustment',
+  situational: 'Situational',
+  personnel: 'Personnel',
+  takeaway: 'Takeaway',
+}

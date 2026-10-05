@@ -15,8 +15,7 @@ import {
   useAnalysisRuns,
   useBeforeUnloadWhileRunning,
 } from '@/components/intelligence/AnalysisRunProvider';
-import RoleBriefs from '@/components/intelligence/RoleBriefs';
-import type { ScoutIQGamePlan } from '@/lib/intelligence/modules/scoutiq-gameplan';
+import ScoutSides from '@/components/intelligence/ScoutSides';
 
 interface Props {
   teamId: string;
@@ -557,92 +556,8 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
                   <p className="text-sm text-[var(--brand-ink)]">{latestReport.summary}</p>
                 )}
 
-                {/* The evidence the plan was built from, ranked. A coach asking
-                    for "the top things to attack" wants the count behind each
-                    one — a weakness seen in 30 of 52 clips is a different
-                    claim from one seen once, and the prose above cannot show
-                    that. */}
-                {(() => {
-                  const points = (latestReport.attack_points ?? []) as {
-                    point: string;
-                    category?: string;
-                    clips: number;
-                  }[];
-                  if (!points.length) return null;
-                  // The denominator is the clips where they were DEFENDING —
-                  // the only ones that can show a way to attack them. On a
-                  // whole-game cut-up that is about half the batch, and
-                  // dividing by every clip made a real tendency read as a
-                  // one-off. Falls back to the clip count for reports written
-                  // before possession was recorded.
-                  const sufficiency = latestReport.evidence_sufficiency as
-                    | { defensive_clips?: number; unconfirmed_subject_clips?: number }
-                    | null;
-                  const clipCount =
-                    sufficiency?.defensive_clips || latestReport.based_on_video_ids.length;
-                  return (
-                    <div className="print:order-1">
-                      <h3 className="text-xs font-bold text-[var(--brand-navy)] uppercase tracking-wide mb-1">
-                        What The Film Showed ({points.length} ranked by how often)
-                      </h3>
-                      <p className="text-[11px] text-[var(--brand-muted)] mb-2">
-                        Counted against the {clipCount} clip{clipCount === 1 ? '' : 's'} where they
-                        were on defense.
-                        {sufficiency?.unconfirmed_subject_clips
-                          ? ` On ${sufficiency.unconfirmed_subject_clips} clip${sufficiency.unconfirmed_subject_clips === 1 ? '' : 's'} PlayScout could not confirm it was watching the right team — treat those findings more loosely.`
-                          : ''}
-                      </p>
-                      <ol className="space-y-1.5">
-                        {points.map((a, i) => (
-                          <li key={i} className="flex items-start gap-2 text-sm text-[var(--brand-ink)]">
-                            <span
-                              className="shrink-0 font-mono text-[11px] tabular-nums text-[var(--brand-muted)] mt-0.5"
-                              title={`Seen in ${a.clips} of ${clipCount} clips`}
-                            >
-                              {a.clips}/{clipCount}
-                            </span>
-                            {a.category && (
-                              <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border border-[var(--brand-border)] text-[var(--brand-navy)] mt-0.5">
-                                {a.category.replace(/_/g, ' ')}
-                              </span>
-                            )}
-                            <span>{a.point}</span>
-                          </li>
-                        ))}
-                      </ol>
-                    </div>
-                  );
-                })()}
-
-                {/* The role briefs lead: a quarterback reading this page wants
-                    his own checklist, not a staff-wide plan he has to filter.
-                    Renders nothing on a plan generated before the defensive
-                    structure was charted. */}
-                <RoleBriefs plan={latestReport.game_plan as ScoutIQGamePlan | null} />
-
-                {(['offensive_game_plan', 'defensive_game_plan', 'target_players_plan', 'practice_week_focus'] as const).map((key) => {
-                  const items = (latestReport.game_plan as Record<string, string[]> | null)?.[key];
-                  if (!items?.length) return null;
-                  const labels: Record<string, string> = {
-                    offensive_game_plan: 'How To Attack Them',
-                    defensive_game_plan: 'How To Stop Them',
-                    target_players_plan: 'Target Players',
-                    practice_week_focus: 'This Week At Practice',
-                  };
-                  return (
-                    <div key={key}>
-                      <h3 className="text-xs font-bold text-[var(--brand-navy)] uppercase tracking-wide mb-2">{labels[key]}</h3>
-                      <ul className="space-y-1.5">
-                        {items.map((item, i) => (
-                          <li key={i} className="flex items-start gap-2 text-sm text-[var(--brand-ink)]">
-                            <span className="w-1.5 h-1.5 rounded-full bg-[var(--brand-gold)] flex-shrink-0 mt-1.5" />
-                            {item}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  );
-                })}
+                {/* Their offense and their defense as two separate reports. */}
+                <ScoutSides report={latestReport} opponentName={selectedOpponent.name} />
               </div>
             ) : (
               <p className="text-sm text-[var(--brand-muted)]">
