@@ -152,6 +152,8 @@ ${buildDefensiveStructurePrompt(opponentLabel)}
 
 ${buildOffensiveStructurePrompt(opponentLabel)}
 
+${buildAllowedIdsPrompt()}
+
 stop_points category (part of OUR defensive plan): ${STOP_CATEGORIES.join(', ')}
 stop_points threat ids:
 ${OFFENSIVE_THREAT_TYPES.map((t) => `- ${t}: ${OFFENSIVE_THREAT_LABELS[t]}`).join('\n')}
@@ -168,20 +170,52 @@ Return ONLY the JSON schema. No preamble.`
 }
 
 /**
+ * Every closed vocabulary the defensive chart uses, spelled out. The response
+ * schema no longer enforces them (see DEFENDER_SCHEMA), so the prompt must
+ * carry the exact ids — an answer outside them is discarded by the parser.
+ */
+function buildAllowedIdsPrompt(): string {
+  const line = (field: string, ids: readonly string[]) => `  ${field}: ${ids.join(', ')}`
+  return `ALLOWED IDS — answer these fields with EXACTLY one of the listed ids. Anything else is discarded.
+defensive_snaps:
+${line('presnap_shell', COVERAGE_SHELLS)}
+${line('coverage_played', COVERAGES)}
+${line('safety_rotation', SAFETY_ROTATIONS)}
+${line('strength_declared', STRENGTH_DECLARATIONS)}
+${line('ball_position', BALL_POSITIONS)}
+${line('field_side', FIELD_SIDES)}
+${line('corner_leverage_field / corner_leverage_boundary', LEVERAGES)}
+${line('pressure_look', PRESSURE_LOOKS)}
+${line('presnap_tells[].kind', PRESNAP_TELL_KINDS)}
+defensive_snaps[].defenders:
+${line('position', DEFENSIVE_POSITIONS)}
+${line('alignment', DEFENDER_ALIGNMENTS)}
+${line('side', ['field', 'boundary', 'middle', 'not_visible'])}
+${line('action', DEFENDER_ACTIONS)}
+${line('covering', OFFENSIVE_POSITIONS)}`
+}
+
+/**
  * One charted defensive snap. Optional in `required` on purpose: the block is
  * left out entirely on a play where the opponent has the BALL, and a schema
  * that demanded it would force the model to invent a coverage for a snap its
  * own defence was not on the field for.
  */
+// Plain strings, no enums, in both defensive schemas: Gemini refuses a
+// response schema whose decoding grammar has "too many states", and these two
+// held 127 of SCOUTIQ's 218 enum values — the space the offensive chart needs.
+// Every field is mapped onto its vocabulary by normalizeDefensiveSnap /
+// normalizeDefender, an off-list answer becoming that field's abstention, and
+// the allowed ids are listed in the prompt (buildAllowedIdsPrompt).
 const DEFENDER_SCHEMA = {
   type: Type.OBJECT,
   properties: {
-    position: { type: Type.STRING, enum: [...DEFENSIVE_POSITIONS] },
-    alignment: { type: Type.STRING, enum: [...DEFENDER_ALIGNMENTS] },
+    position: { type: Type.STRING },
+    alignment: { type: Type.STRING },
     depth_yards: { type: Type.NUMBER, nullable: true },
-    side: { type: Type.STRING, enum: ['field', 'boundary', 'middle', 'not_visible'] },
-    action: { type: Type.STRING, enum: [...DEFENDER_ACTIONS] },
-    covering: { type: Type.STRING, enum: [...OFFENSIVE_POSITIONS], nullable: true },
+    side: { type: Type.STRING },
+    action: { type: Type.STRING },
+    covering: { type: Type.STRING, nullable: true },
     note: { type: Type.STRING, nullable: true },
   },
   required: ['position', 'alignment', 'action'],
@@ -194,25 +228,25 @@ const DEFENSIVE_SNAP_SCHEMA = {
     // computed from these rows; the scalar answers below are a fallback for a
     // clip where too few players were visible to chart.
     defenders: { type: Type.ARRAY, items: DEFENDER_SCHEMA },
-    presnap_shell: { type: Type.STRING, enum: [...COVERAGE_SHELLS] },
-    coverage_played: { type: Type.STRING, enum: [...COVERAGES] },
-    safety_rotation: { type: Type.STRING, enum: [...SAFETY_ROTATIONS] },
-    strength_declared: { type: Type.STRING, enum: [...STRENGTH_DECLARATIONS] },
-    ball_position: { type: Type.STRING, enum: [...BALL_POSITIONS] },
-    field_side: { type: Type.STRING, enum: [...FIELD_SIDES] },
+    presnap_shell: { type: Type.STRING },
+    coverage_played: { type: Type.STRING },
+    safety_rotation: { type: Type.STRING },
+    strength_declared: { type: Type.STRING },
+    ball_position: { type: Type.STRING },
+    field_side: { type: Type.STRING },
     field_safety_depth: { type: Type.NUMBER, nullable: true },
     boundary_safety_depth: { type: Type.NUMBER, nullable: true },
-    corner_leverage_field: { type: Type.STRING, enum: [...LEVERAGES], nullable: true },
-    corner_leverage_boundary: { type: Type.STRING, enum: [...LEVERAGES], nullable: true },
+    corner_leverage_field: { type: Type.STRING, nullable: true },
+    corner_leverage_boundary: { type: Type.STRING, nullable: true },
     box_count: { type: Type.INTEGER, nullable: true },
-    pressure_look: { type: Type.STRING, enum: [...PRESSURE_LOOKS] },
+    pressure_look: { type: Type.STRING },
     blitz_came_from: { type: Type.STRING, nullable: true },
     presnap_tells: {
       type: Type.ARRAY,
       items: {
         type: Type.OBJECT,
         properties: {
-          kind: { type: Type.STRING, enum: [...PRESNAP_TELL_KINDS] },
+          kind: { type: Type.STRING },
           observation: { type: Type.STRING },
           followed_by: { type: Type.STRING, nullable: true },
           confidence: { type: Type.NUMBER },
