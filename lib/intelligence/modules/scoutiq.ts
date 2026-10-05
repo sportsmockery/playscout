@@ -345,10 +345,12 @@ export const SCOUTIQ_RESPONSE_SCHEMA = {
       type: Type.ARRAY,
       items: {
         type: Type.OBJECT,
+        // Plain strings, not enums: see OFFENSIVE_SNAP_SCHEMA. The ids are in
+        // the prompt and analyze-position.ts maps anything off-list.
         properties: {
           point: { type: Type.STRING },
-          category: { type: Type.STRING, enum: [...STOP_CATEGORIES] },
-          threat: { type: Type.STRING, enum: [...OFFENSIVE_THREAT_TYPES] },
+          category: { type: Type.STRING },
+          threat: { type: Type.STRING },
         },
         required: ['point', 'category', 'threat'],
       },
@@ -363,15 +365,29 @@ export const SCOUTIQ_RESPONSE_SCHEMA = {
           reason: { type: Type.STRING },
           confidence: { type: Type.NUMBER },
         },
-        required: ['identifier', 'reason', 'confidence'],
+        required: ['identifier', 'role', 'reason', 'confidence'],
       },
     },
   },
   required: [
     'overall_score', 'position_scores', 'reasoning',
     'offensive_tendencies', 'defensive_tendencies', 'formations', 'explosive_plays', 'situational_tells',
-    'attack_points', 'target_players', 'stop_points', 'key_players',
+    'attack_points', 'target_players', 'stop_points', 'key_players', 'offensive_snaps',
     'strengths', 'weaknesses', 'drills', 'summary', 'confidence', 'plays_observed', 'evidence_frames',
     'subject_graded', 'subject_confirmed', 'opponent_possession',
   ],
+}
+
+/**
+ * SCOUTIQ without the offensive chart: what analyze-position.ts retries with
+ * if Gemini refuses the full schema as too complex to serve. The clip then
+ * still gets its defensive read and tendencies rather than failing outright.
+ */
+const OFFENSE_EXTENSION_KEYS = ['offensive_snaps', 'stop_points', 'key_players']
+export const SCOUTIQ_CORE_RESPONSE_SCHEMA = {
+  ...SCOUTIQ_RESPONSE_SCHEMA,
+  properties: Object.fromEntries(
+    Object.entries(SCOUTIQ_RESPONSE_SCHEMA.properties).filter(([k]) => !OFFENSE_EXTENSION_KEYS.includes(k))
+  ),
+  required: SCOUTIQ_RESPONSE_SCHEMA.required.filter((k) => !OFFENSE_EXTENSION_KEYS.includes(k)),
 }

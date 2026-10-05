@@ -53,6 +53,13 @@ describe('normalizeOffensiveSnap', () => {
     expect(s.ball_carrier).toBeNull()
     expect(s.direction).toBe('right')
   })
+
+  it('reads gain_yards sent as text, and treats anything but a number as unmeasured', () => {
+    expect(normalizeOffensiveSnap({ gain_yards: '12' }).gain_yards).toBe(12)
+    expect(normalizeOffensiveSnap({ gain_yards: '-3' }).gain_yards).toBe(-3)
+    expect(normalizeOffensiveSnap({ gain_yards: 'unknown' }).gain_yards).toBeNull()
+    expect(normalizeOffensiveSnap({ ball_carrier: 'unknown' }).ball_carrier).toBeNull()
+  })
 })
 
 describe('aggregateScoutReport — offense and defense kept apart', () => {

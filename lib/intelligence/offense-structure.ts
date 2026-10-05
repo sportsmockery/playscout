@@ -114,7 +114,11 @@ function onto<T extends string>(raw: unknown, allowed: readonly T[], fallback: T
 }
 
 function finiteOrNull(raw: unknown): number | null {
-  return typeof raw === 'number' && Number.isFinite(raw) ? raw : null
+  if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null
+  // The schema carries gain_yards as text ("12", "-3", "unknown") — see
+  // OFFENSIVE_SNAP_SCHEMA. Only a plain number counts as measured.
+  if (typeof raw === 'string' && /^\s*-?\d+(\.\d+)?\s*$/.test(raw)) return parseFloat(raw)
+  return null
 }
 
 /**
@@ -146,23 +150,29 @@ export function normalizeOffensiveSnap(raw: Record<string, unknown>): OffensiveS
   }
 }
 
+/**
+ * Plain strings, every field required, no enums and nothing nullable — on
+ * purpose. Gemini compiles a response schema into a constrained-decoding
+ * grammar and refuses one with "too many states for serving"; the SCOUTIQ
+ * schema was already near that limit from the defensive chart, and adding
+ * these fields as enums (91 more enum values) pushed it over, so EVERY
+ * ScoutIQ call failed in production. The allowed values live in the prompt,
+ * and normalizeOffensiveSnap maps anything off-list to that field's
+ * abstention, so enums here bought nothing the parser does not already do.
+ */
 export const OFFENSIVE_SNAP_SCHEMA = {
   type: Type.OBJECT,
   properties: {
-    formation: { type: Type.STRING, enum: [...OFFENSIVE_FORMATION_READS] },
-    qb_alignment: { type: Type.STRING, enum: [...QB_ALIGNMENTS] },
-    motion: { type: Type.STRING, enum: [...OFFENSIVE_MOTIONS] },
-    play_type: { type: Type.STRING, enum: [...OFFENSIVE_PLAY_TYPES] },
-    direction: { type: Type.STRING, enum: [...PLAY_DIRECTIONS] },
-    ball_carrier: { type: Type.STRING, enum: [...OFFENSIVE_POSITIONS], nullable: true },
-    result: { type: Type.STRING, enum: [...PLAY_RESULTS] },
-    gain_yards: { type: Type.NUMBER, nullable: true },
-    ball_position: { type: Type.STRING, enum: [...BALL_POSITIONS] },
-    confidence: { type: Type.NUMBER },
-    evidence_timestamps: { type: Type.ARRAY, items: { type: Type.NUMBER } },
-    note: { type: Type.STRING, nullable: true },
+    formation: { type: Type.STRING },
+    motion: { type: Type.STRING },
+    play_type: { type: Type.STRING },
+    direction: { type: Type.STRING },
+    ball_carrier: { type: Type.STRING },
+    result: { type: Type.STRING },
+    gain_yards: { type: Type.STRING },
+    ball_position: { type: Type.STRING },
   },
-  required: ['formation', 'motion', 'play_type', 'direction', 'result', 'confidence'],
+  required: ['formation', 'motion', 'play_type', 'direction', 'ball_carrier', 'result', 'gain_yards', 'ball_position'],
 }
 
 export function buildOffensiveStructurePrompt(opponentLabel: string): string {
@@ -173,21 +183,24 @@ where they are defending. This is what our defensive coordinator plans against, 
 as closed answers and the app does the counting. Every field has a "not visible" or "unclear"
 answer and using it is correct — a guessed formation becomes a defensive call built on fiction.
 
-  formation    — ${opponentLabel}'s formation at the snap, from the FORMATIONS list above.
-  qb_alignment — under_center, shotgun, pistol, direct_snap_other (snap to a non-QB back).
+Answer each field with EXACTLY one of the ids listed for it — anything else is discarded.
+
+  formation    — ${opponentLabel}'s formation at the snap: ${OFFENSIVE_FORMATION_READS.join(', ')}.
   motion       — none if nobody moved; jet (full speed across), orbit (across then loops back
                  behind the backfield), short_across (a few steps toward the ball), motion_out
                  (away from the ball toward the sideline), shift (several players reset), other.
-  play_type    — what the play WAS, not what it looked like before the snap. A fake handoff
+  play_type    — one of ${OFFENSIVE_PLAY_TYPES.join(', ')}. What the play WAS, not what it looked like before the snap. A fake handoff
                  followed by a throw is play_action_pass. A run that starts one way and comes
                  back the other is counter_misdirection. qb_run is a designed quarterback run
                  or keeper; a scramble on a pass play is the pass it was.
-  direction    — where the ball went. ${LEFT_RIGHT_RULE}
-  ball_carrier — who carried it, or who the pass was thrown to, by position id. Null if you
-                 cannot tell. Never by jersey number here.
-  result       — gain, no_gain_or_loss, touchdown, incomplete, interception, fumble_lost, sack.
-  gain_yards   — counted off the painted yard stripes (one every 5 yards) from the spot of the
-                 snap to where the play ended. Null only when no stripe is readable at both ends.
+  direction    — left, middle, right or not_visible: where the ball went. ${LEFT_RIGHT_RULE}
+  ball_carrier — who carried it, or who the pass was thrown to: ${OFFENSIVE_POSITIONS.join(', ')}.
+                 "unknown" if you cannot tell. Never by jersey number here.
+  result       — gain, no_gain_or_loss, touchdown, incomplete, interception, fumble_lost, sack,
+                 not_visible.
+  gain_yards   — a number as text ("12", "-3"), counted off the painted yard stripes (one every
+                 5 yards) from the spot of the snap to where the play ended. "unknown" only when
+                 no stripe is readable at both ends.
   ball_position — left_hash, middle or right_hash at the snap, from the offense's perspective.
 
 stop_points — concrete, evidence-based ways to STOP ${opponentLabel}'s offense, ONLY from plays
