@@ -188,6 +188,18 @@ export default function ScoutSides({ report, opponentName }: { report: ScoutRepo
             <RankedList points={offense.stop_points ?? []} of={offensiveClips} unit="where they had the ball" />
           </Section>
         )}
+        {offense?.ball_carriers?.length ? (
+          <Section title="Who carries the ball" hint="From the pre-snap check. A number appears only where it was legible.">
+            <ul className="space-y-1 text-sm text-[var(--brand-ink)]">
+              {offense.ball_carriers.slice(0, 8).map((b, i) => (
+                <li key={i}>
+                  <span className="font-semibold">{b.identifier}</span> — {b.carries} carr{b.carries === 1 ? 'y' : 'ies'}
+                  <ClipRefs labels={b.clip_labels} />
+                </li>
+              ))}
+            </ul>
+          </Section>
+        ) : null}
         {offense?.key_players?.length ? (
           <Section title="Players to account for">
             <ul className="space-y-1.5">

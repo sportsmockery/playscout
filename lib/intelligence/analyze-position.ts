@@ -18,7 +18,38 @@ import { buildSTATSIQFactsPrompt, STATSIQ_FACTS_RESPONSE_SCHEMA } from './module
 import { factsOutputToAnalysisOutput } from './stat-facts'
 import { normalizeDefensiveSnap } from './defense-structure'
 import { normalizeOffensiveSnap } from './offense-structure'
+import { extractPresnapStills, type Still } from './presnap-stills'
+import {
+  POSSESSION_CHECK_SCHEMA,
+  buildPossessionCheckPrompt,
+  buildPossessionFactBlock,
+  parsePossessionCheck,
+  settledPossession,
+  type PossessionCheck,
+} from './possession-check'
 import { STOP_CATEGORIES, OFFENSIVE_THREAT_TYPES } from './taxonomy'
+
+/** Pre-snap stills for the possession check, from the clip bytes or the stored file. Never throws. */
+async function presnapStillsFor(
+  supabase: SupabaseClient,
+  videoId: string | undefined,
+  clip: ResolvedClip,
+  startSeconds: number
+): Promise<Still[]> {
+  try {
+    let bytes: Buffer | null = clip.source.kind === 'inline' ? clip.source.bytes : null
+    if (!bytes && videoId) {
+      const { data: video } = await supabase.from('videos').select('storage_path').eq('id', videoId).maybeSingle()
+      if (video?.storage_path) {
+        const { data: blob } = await supabase.storage.from('videos').download(video.storage_path as string)
+        if (blob) bytes = Buffer.from(await blob.arrayBuffer())
+      }
+    }
+    return bytes ? await extractPresnapStills(bytes, startSeconds) : []
+  } catch {
+    return []
+  }
+}
 
 function isSchemaTooComplex(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err)
@@ -327,7 +358,7 @@ export async function analyzePosition(
     evidenceMode,
   }
 
-  const systemPrompt = config.buildPrompt(inputWithGameType)
+  let systemPrompt = config.buildPrompt(inputWithGameType)
   // Every module here is a frame-based structured-output call — route them
   // all through the same job type so the model choice has one source of
   // truth (lib/ai/model-router.ts) instead of being hardcoded per provider.
@@ -390,6 +421,62 @@ export async function analyzePosition(
   const readWindow = {
     startOffsetSeconds: located?.startOffsetSeconds ?? clip?.startOffsetSeconds,
     endOffsetSeconds: located?.endOffsetSeconds ?? clip?.endOffsetSeconds,
+  }
+
+  // SCOUTIQ: settle who has the ball BEFORE the main read, from the pre-snap
+  // picture, at a resolution where jersey colours are legible. The main read
+  // runs at 2fps/low and answered possession as one question among dozens; on
+  // a whole-game cut-up where both teams ran Double Wing it filed the other
+  // team's offense as the scouted team's on most plays. The answer is handed
+  // to the main read as a fact (and enforced on its output below).
+  let possessionCheck: PossessionCheck | null = null
+  const scoutedName = inputWithGameType.opponent?.name ?? 'the opponent'
+  const scoutedColor = inputWithGameType.opponent?.jersey_color
+  if (input.moduleKey === 'SCOUTIQ' && clip && scoutedColor) {
+    const checkPrompt = buildPossessionCheckPrompt(scoutedName, scoutedColor)
+    const checkKey = [
+      clip.source.kind === 'file' ? clip.source.fileUri : clip.source.bytes.toString('base64'),
+      `possession-v2@${readWindow.startOffsetSeconds ?? 0}-${readWindow.endOffsetSeconds ?? ''}@4/high+stills`,
+    ]
+    const checkHash = hashCacheKey('frame_observation', checkPrompt, checkKey)
+    let checkJson = await getCachedResponse<string>(supabase, checkHash)
+    if (checkJson == null) {
+      // Zoom: full-resolution and 2x-cropped pre-snap stills, cut from the
+      // source file. The video alone is read at a fixed reduced resolution
+      // where a youth player is a few dozen pixels tall.
+      const stills = await presnapStillsFor(supabase, input.videoId, clip, readWindow.startOffsetSeconds ?? 0)
+      const checkResult = await analyzeClipWithGemini(checkPrompt, clip.source, POSSESSION_CHECK_SCHEMA, {
+        model: route.model,
+        fps: 4,
+        mediaResolution: 'high',
+        images: stills,
+        startOffsetSeconds: readWindow.startOffsetSeconds,
+        endOffsetSeconds: readWindow.endOffsetSeconds,
+      }).catch((err) => {
+        // A lost check is not fatal: the main read answers possession itself,
+        // exactly as it did before the check existed.
+        console.warn('[analyze-position] SCOUTIQ possession check failed:', err instanceof Error ? err.message : err)
+        return null
+      })
+      if (checkResult) {
+        checkJson = checkResult.text
+        await recordUsage(supabase, {
+          teamId: input.teamId, userId, jobType: 'frame_observation',
+          provider: route.provider, model: route.model,
+          inputTokens: checkResult.usage.inputTokens, outputTokens: checkResult.usage.outputTokens,
+        })
+        await setCachedResponse(supabase, checkHash, 'frame_observation', checkJson)
+      }
+    }
+    if (checkJson != null) {
+      try {
+        possessionCheck = parsePossessionCheck(JSON.parse(checkJson))
+      } catch {
+        possessionCheck = null
+      }
+    }
+    const fact = possessionCheck ? buildPossessionFactBlock(possessionCheck, scoutedName) : ''
+    if (fact) systemPrompt = `${systemPrompt}\n\n${fact}`
   }
 
   // In video mode the evidence is the clip plus the slice and sample rate we
@@ -775,6 +862,11 @@ export async function analyzePosition(
     evidenceFrames: keepCited(c.evidenceFrames),
   }))
 
+  // The pre-snap check, when it settled possession, overrides the main read:
+  // it is the focused answer to exactly this question. Everything charted for
+  // the wrong side of the ball is dropped below rather than misfiled.
+  const possession = settledPossession(possessionCheck) ?? parsed.opponent_possession
+
   return {
     // StatsIQ's headline number is how much the two independent reads AGREED,
     // not how sure the model says it is. A self-reported 0.95 sat on top of a
@@ -815,10 +907,11 @@ export async function analyzePosition(
     formations: parsed.formations,
     explosive_plays: parsed.explosive_plays,
     situational_tells: parsed.situational_tells,
-    attack_points: parsed.attack_points,
+    attack_points: possession === 'offense' ? undefined : parsed.attack_points,
     subject_graded: parsed.subject_graded,
     subject_confirmed: parsed.subject_confirmed,
-    opponent_possession: parsed.opponent_possession,
+    opponent_possession: possession,
+    possession_check: possessionCheck ?? undefined,
     mistakes: safeMistakes,
     player_grades: rankedGrades,
     stat_plays: statPlays,
@@ -837,31 +930,31 @@ export async function analyzePosition(
         : undefined,
     unit_graded: parsed.unit_graded,
     players_not_evaluable: parsed.players_not_evaluable,
-    target_players: parsed.target_players,
+    target_players: possession === 'offense' ? undefined : parsed.target_players,
     // Only on a snap where the opponent was DEFENDING. Charted on the offence's
     // own plays it would describe the coach's team as if it were the scouting
     // subject, and the batch rollup would average two different defences
     // together — the one failure this whole block exists to produce evidence
     // against.
     defensive_snaps:
-      parsed.opponent_possession === 'defense' || parsed.opponent_possession === 'both'
+      possession === 'defense' || possession === 'both'
         ? parsed.defensive_snaps?.map((s) => normalizeDefensiveSnap(s as Record<string, unknown>))
         : undefined,
     // The opponent's OFFENSE, kept only on a snap where they had the ball, for
     // the same reason defensive_snaps is kept only where they defended.
     offensive_snaps:
-      parsed.opponent_possession === 'offense' || parsed.opponent_possession === 'both'
+      possession === 'offense' || possession === 'both'
         ? parsed.offensive_snaps?.map((s) => normalizeOffensiveSnap(s as Record<string, unknown>))
         : undefined,
     // The schema carries these as plain strings (see OFFENSIVE_SNAP_SCHEMA),
     // so an off-list id becomes the escape hatch rather than a new category
     // with its own count.
-    stop_points: parsed.stop_points?.map((p) => ({
+    stop_points: (possession === 'defense' ? undefined : parsed.stop_points)?.map((p) => ({
       point: p.point,
       category: (STOP_CATEGORIES as readonly string[]).includes(p.category ?? '') ? p.category : 'situational',
       threat: (OFFENSIVE_THREAT_TYPES as readonly string[]).includes(p.threat ?? '') ? p.threat : 'other',
     })),
-    key_players: parsed.key_players,
+    key_players: possession === 'defense' ? undefined : parsed.key_players,
     model: route.model,
     // In video mode there are no discrete frames to count, so report what the
     // sample rate actually produced — that is the number comparable to the 16

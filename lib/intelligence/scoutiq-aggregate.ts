@@ -36,6 +36,8 @@ export interface ScoutClipEvidence {
   stop_points?: { point: string; category?: string; threat?: string }[] | null
   /** Their offensive playmakers. */
   key_players?: { identifier: string; role?: string; reason: string; confidence: number }[] | null
+  /** The pre-snap possession check, including who carried the ball. */
+  possession_check?: { ball_carrier?: { team?: string; position?: string; jersey_number?: string } | null } | null
   /** The coach's breakdown hash for this clip, used to cross-check the film read. */
   breakdown_hash?: string | null
 }
@@ -68,6 +70,11 @@ export interface OffenseScout {
   situational_tells: { situation: string; tell: string; clips: number; clip_labels?: string[] }[]
   key_players: { identifier: string; role?: string; reason: string; confidence: number; clips: number; clip_labels?: string[] }[]
   formations: { name: string; clips: number }[]
+  /**
+   * Who carried the ball on their offensive snaps, from the pre-snap check:
+   * by legible jersey number with the pre-snap spot, or by spot alone.
+   */
+  ball_carriers: { identifier: string; carries: number; clip_labels: string[] }[]
   /** Explosive plays they made, with the clip each one is on. */
   explosive_plays: { clip: string; play_type: string; gain: number | null; result: string | null }[]
 }
@@ -140,6 +147,36 @@ function countByClip(clips: ScoutClipEvidence[], allowed: readonly string[]): { 
 }
 
 const THREAT_PREFIX = 'threat:'
+
+/**
+ * Ball carriers from the pre-snap check, scouted team only. A number groups
+ * only with the same number (and keeps the most common spot beside it); a
+ * carrier with no legible number groups by spot, since that is all the film
+ * showed and it can cover more than one player.
+ */
+function rankBallCarriers(clips: ScoutClipEvidence[]): OffenseScout['ball_carriers'] {
+  const groups = new Map<string, { spots: Map<string, number>; number: string; clips: string[]; carries: number }>()
+  for (const clip of clips) {
+    const c = clip.possession_check?.ball_carrier
+    if (!c || c.team !== 'scouted') continue
+    const spot = (c.position ?? '').trim().toLowerCase()
+    const number = (c.jersey_number ?? '').trim()
+    if (!spot && !number) continue
+    const key = number ? `#${number}` : spot
+    const g = groups.get(key) ?? { spots: new Map<string, number>(), number, clips: [], carries: 0 }
+    g.carries += 1
+    if (spot) g.spots.set(spot, (g.spots.get(spot) ?? 0) + 1)
+    if (clip.clip_label) g.clips.push(clip.clip_label)
+    groups.set(key, g)
+  }
+  return [...groups.entries()]
+    .map(([key, g]) => {
+      const topSpot = [...g.spots.entries()].sort((a, b) => b[1] - a[1])[0]?.[0]
+      const identifier = g.number ? `#${g.number}${topSpot ? ` (${topSpot})` : ''}` : key
+      return { identifier, carries: g.carries, clip_labels: [...g.clips].sort(byGameOrder) }
+    })
+    .sort((a, b) => b.carries - a.carries || a.identifier.localeCompare(b.identifier))
+}
 
 const say = (v: string | null | undefined, skip: string[] = []) =>
   v && !skip.includes(v) ? v.replace(/_/g, ' ') : null
@@ -527,6 +564,7 @@ export function aggregateScoutReport(clips: ScoutClipEvidence[]): AggregatedScou
       situational_tells: rankSituationalTells(offensiveClips),
       key_players: rankKeyPlayers(offensiveClips),
       formations: countByClip(offensiveClips, OFFENSIVE_FORMATIONS),
+      ball_carriers: rankBallCarriers(offensiveClips),
       explosive_plays: offensiveClips
         .flatMap((c) =>
           (c.offensive_snaps ?? [])

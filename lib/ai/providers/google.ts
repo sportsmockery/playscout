@@ -143,6 +143,12 @@ export interface GeminiClipOptions {
   temperature?: number
   maxOutputTokens?: number
   userText?: string
+  /**
+   * Still images sent before the clip, each preceded by its label — e.g.
+   * full-resolution and zoomed pre-snap frames, which carry far more detail
+   * than the per-frame resolution Gemini reads video at.
+   */
+  images?: { label: string; base64: string; mimeType?: string }[]
 }
 
 /** Gemini takes offsets as protobuf Durations ("12.5s"), not numbers. */
@@ -174,9 +180,12 @@ export async function analyzeClipWithGemini(
       ? { inlineData: { mimeType: clip.mimeType, data: clip.bytes.toString('base64') } }
       : { fileData: { fileUri: clip.fileUri, mimeType: clip.mimeType } }
 
-  const parts: object[] = [
-    Object.keys(videoMetadata).length ? { ...media, videoMetadata } : media,
-  ]
+  const parts: object[] = []
+  for (const image of opts.images ?? []) {
+    parts.push({ text: image.label })
+    parts.push({ inlineData: { mimeType: image.mimeType ?? 'image/jpeg', data: image.base64 } })
+  }
+  parts.push(Object.keys(videoMetadata).length ? { ...media, videoMetadata } : media)
   if (opts.userText) parts.push({ text: opts.userText })
 
   const response = await client.models.generateContent({

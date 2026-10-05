@@ -115,6 +115,7 @@ export function buildScoutIQGamePlanPrompt(ctx: ScoutIQGamePlanContext): string 
     situational_tells: [],
     key_players: [],
     formations: [],
+    ball_carriers: [],
     explosive_plays: [],
   }
 
@@ -154,6 +155,9 @@ ${formatStopPoints(splitStopPoints(offense.stop_points).repeated, offense.clips)
 
 Ways to stop them — SEEN ONCE OR TWICE. Not tendencies; supporting colour only, and say so when used:
 ${formatStopPoints(splitStopPoints(offense.stop_points).singleLooks, offense.clips)}
+
+Who carried the ball, from the pre-snap check (number only where it was legible):
+${(offense.ball_carriers ?? []).map((b) => `- ${b.identifier}: ${b.carries} carr${b.carries === 1 ? 'y' : 'ies'}${clipsOf(b.clip_labels)}`).join('\n') || '(not recorded)'}
 
 Their playmakers (by legible number or position — never a guessed number):
 ${offense.key_players.map((p) => `- ${p.identifier}${p.role ? ` (${p.role})` : ''}: ${p.reason} — in ${p.clips} clip${p.clips === 1 ? '' : 's'}${clipsOf(p.clip_labels)}`).join('\n') || '(none identified yet)'}

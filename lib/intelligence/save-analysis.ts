@@ -88,6 +88,7 @@ export async function saveAnalysisResult(
         offensive_snaps: result.offensive_snaps ?? null,
         stop_points: result.stop_points ?? null,
         key_players: result.key_players ?? null,
+        possession_check: result.possession_check ?? null,
         // RANKERIQ's ranked list, so a reopened saved report renders without
         // a second query against player_grades.
         player_grades: result.player_grades ?? null,

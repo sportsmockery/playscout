@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import type { DefensiveSnap } from './defense-structure'
 import type { OffensiveSnap } from './offense-structure'
+import type { PossessionCheck } from './possession-check'
 import { Type } from '@google/genai'
 import type { EvidenceMode } from './football-brain'
 import { RepBreakdownSchema, type RepBreakdown } from './breakdown'
@@ -458,6 +459,8 @@ export interface PositionAnalysisResult {
   defensive_snaps?: DefensiveSnap[]
   /** SCOUTIQ — the opponent's offense on this snap. */
   offensive_snaps?: OffensiveSnap[]
+  /** SCOUTIQ — the pre-snap check that settled possession, and who carried the ball. */
+  possession_check?: PossessionCheck
   model: string
   framesAnalyzed: number
 }
