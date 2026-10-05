@@ -105,3 +105,46 @@ describe('aggregateScoutReport — offense and defense kept apart', () => {
     expect(report.defensive_fronts).toEqual([{ name: 'five_three', clips: 1 }])
   })
 })
+
+describe('clip numbers in the report', () => {
+  const clips: ScoutClipEvidence[] = [
+    {
+      clip_label: 'Clip 52',
+      opponent_possession: 'offense',
+      offensive_snaps: [snap({ play_type: 'outside_run', direction: 'right', gain_yards: 14, ball_carrier: 'wingback_left' })],
+      stop_points: [{ point: 'Set the edge against the sweep', category: 'edge_contain', threat: 'outside_run' }],
+    },
+    {
+      clip_label: 'Clip 37',
+      opponent_possession: 'offense',
+      offensive_snaps: [snap({ play_type: 'outside_run', direction: 'right', result: 'touchdown', gain_yards: null })],
+      stop_points: [{ point: 'Toss goes to the edge every time', category: 'edge_contain', threat: 'outside_run' }],
+    },
+    {
+      clip_label: 'Clip 40',
+      opponent_possession: 'defense',
+      attack_points: [{ point: 'Corners play soft', category: 'dropback_pass', weakness: 'soft_coverage' }],
+      defensive_snaps: [{ presnap_shell: 'one_high', coverage_played: 'cover_1', pressure_look: 'four_man' }],
+    },
+  ]
+  const report = aggregateScoutReport(clips)
+
+  it('names the clips behind each counted point, in game order', () => {
+    expect(report.offense.stop_points[0].clip_labels).toEqual(['Clip 37', 'Clip 52'])
+    expect(report.attack_points[0].clip_labels).toEqual(['Clip 40'])
+  })
+
+  it('lists their explosive plays with the clip each is on', () => {
+    expect(report.offense.explosive_plays.map((e) => e.clip)).toEqual(['Clip 37', 'Clip 52'])
+  })
+
+  it('keeps a play log in game order with the side of the ball on each line', () => {
+    expect(report.play_log.map((p) => `${p.clip}:${p.side}`)).toEqual([
+      'Clip 37:offense',
+      'Clip 40:defense',
+      'Clip 52:offense',
+    ])
+    expect(report.play_log[2].line).toContain('to wingback left')
+    expect(report.play_log[2].line).toContain('14 yds')
+  })
+})

@@ -1,12 +1,14 @@
 import { rollupTendency, type TendencyObservation } from './tendency-rollup'
 import { countRepeats } from './aggregate-batch'
-import { OFFENSIVE_FORMATIONS, DEFENSIVE_FRONTS, type AttackCategory, type StopCategory } from './taxonomy'
+import { OFFENSIVE_FORMATIONS, DEFENSIVE_FRONTS, EXPLOSIVE_PLAY_YARDS, type AttackCategory, type StopCategory } from './taxonomy'
 import { aggregateOffensiveSnaps, type OffensiveProfile } from './aggregate-offense'
 import type { OffensiveSnap } from './offense-structure'
 import { aggregateDefensiveSnaps, type DefensiveProfile } from './aggregate-defense'
 import type { DefensiveSnap } from './defense-structure'
 
 export interface ScoutClipEvidence {
+  /** "Clip 37" — how the report points a coach at a specific play. */
+  clip_label?: string | null
   plays_observed?: number | null
   /**
    * Which side of the ball the opponent was on in this clip. Absent on every
@@ -42,6 +44,15 @@ export interface RankedStopPoint {
   point: string
   category: StopCategory | 'situational'
   clips: number
+  /** Which clips showed it, in game order — "Clip 37, Clip 52". */
+  clip_labels?: string[]
+}
+
+/** One line per scouted play, so the report can send a coach to a specific clip. */
+export interface PlayLogEntry {
+  clip: string
+  side: 'offense' | 'defense'
+  line: string
 }
 
 /**
@@ -54,16 +65,18 @@ export interface OffenseScout {
   clips: number
   profile: OffensiveProfile
   stop_points: RankedStopPoint[]
-  situational_tells: { situation: string; tell: string; clips: number }[]
-  key_players: { identifier: string; role?: string; reason: string; confidence: number; clips: number }[]
+  situational_tells: { situation: string; tell: string; clips: number; clip_labels?: string[] }[]
+  key_players: { identifier: string; role?: string; reason: string; confidence: number; clips: number; clip_labels?: string[] }[]
   formations: { name: string; clips: number }[]
+  /** Explosive plays they made, with the clip each one is on. */
+  explosive_plays: { clip: string; play_type: string; gain: number | null; result: string | null }[]
 }
 
 export interface AggregatedScoutReport {
   offensive_tendencies: TendencyObservation[]
   defensive_tendencies: TendencyObservation[]
   formations: { name: string; side?: string; note?: string }[]
-  situational_tells: { situation: string; tell: string; clips: number }[]
+  situational_tells: { situation: string; tell: string; clips: number; clip_labels?: string[] }[]
   /** Ranked by how many clips each appeared in — the thing that makes a "top 25" mean anything. */
   attack_points: RankedAttackPoint[]
   target_players: { identifier: string; reason: string; confidence: number }[]
@@ -93,6 +106,8 @@ export interface AggregatedScoutReport {
   defensive_fronts: { name: string; clips: number }[]
   /** Their offense, from the clips where they had the ball. */
   offense: OffenseScout
+  /** Every scouted play in game order, one line each. */
+  play_log: PlayLogEntry[]
 }
 
 /**
@@ -126,6 +141,49 @@ function countByClip(clips: ScoutClipEvidence[], allowed: readonly string[]): { 
 
 const THREAT_PREFIX = 'threat:'
 
+const say = (v: string | null | undefined, skip: string[] = []) =>
+  v && !skip.includes(v) ? v.replace(/_/g, ' ') : null
+
+/**
+ * One line per scouted play in game order: what the charting recorded, never
+ * a new read. This is what lets the game plan say "watch Clip 52" and have
+ * the coach find the play the claim rests on.
+ */
+function buildPlayLog(clips: ScoutClipEvidence[]): PlayLogEntry[] {
+  const out: PlayLogEntry[] = []
+  for (const clip of clips) {
+    if (!clip.clip_label) continue
+    for (const s of clip.offensive_snaps ?? []) {
+      const gain =
+        s.result === 'touchdown'
+          ? `touchdown${typeof s.gain_yards === 'number' ? ` (${s.gain_yards} yds)` : ''}`
+          : typeof s.gain_yards === 'number'
+            ? `${s.gain_yards} yds`
+            : say(s.result, ['not_visible'])
+      const parts = [
+        say(s.formation, ['not_visible']),
+        say(s.qb_alignment, ['not_visible']),
+        s.motion && s.motion !== 'none' && s.motion !== 'not_visible' ? `${say(s.motion)} motion` : null,
+        say(s.play_type, ['unclear']),
+        say(s.direction, ['not_visible']),
+        s.ball_carrier ? `to ${say(s.ball_carrier)}` : null,
+        gain,
+      ].filter(Boolean)
+      if (parts.length) out.push({ clip: clip.clip_label, side: 'offense', line: parts.join(', ') })
+    }
+    for (const s of clip.defensive_snaps ?? []) {
+      const parts = [
+        say(s.presnap_shell, ['not_visible']) && `${say(s.presnap_shell)} shell`,
+        say(s.coverage_played, ['not_determinable']),
+        say(s.pressure_look, ['not_determinable']),
+        typeof s.box_count === 'number' ? `${s.box_count} in the box` : null,
+      ].filter(Boolean)
+      if (parts.length) out.push({ clip: clip.clip_label, side: 'defense', line: parts.join(', ') })
+    }
+  }
+  return out.sort((a, b) => byGameOrder(a.clip, b.clip))
+}
+
 /**
  * Stop points ranked the way attack points are: the threat id is the identity
  * (two clips filing the same id are the same thing however it was worded), the
@@ -133,6 +191,7 @@ const THREAT_PREFIX = 'threat:'
  */
 function rankStopPoints(clips: ScoutClipEvidence[]): RankedStopPoint[] {
   const lists = clips.map((c) => (c.stop_points ?? []).map((p) => p.point))
+  const stopLabels = labelsByText(clips, (c) => (c.stop_points ?? []).map((p) => p.point))
   const threatOf = new Map<string, string>()
   const categoryVotes = new Map<string, Map<string, number>>()
   for (const clip of clips) {
@@ -157,6 +216,7 @@ function rankStopPoints(clips: ScoutClipEvidence[]): RankedStopPoint[] {
     point: item.text,
     category: modalCategory(item.members, categoryVotes) as StopCategory | 'situational',
     clips: item.clips,
+    clip_labels: stopLabels(item.members),
   }))
 }
 
@@ -171,11 +231,12 @@ function rankKeyPlayers(clips: ScoutClipEvidence[]): OffenseScout['key_players']
       const existing = byId.get(key)
       const clipsSoFar = (existing?.clips ?? 0) + (seen.has(key) ? 0 : 1)
       seen.add(key)
+      const labels = [...new Set([...(existing?.clip_labels ?? []), ...(clip.clip_label ? [clip.clip_label] : [])])].sort(byGameOrder)
       byId.set(
         key,
         !existing || p.confidence > existing.confidence
-          ? { identifier: id, role: p.role, reason: p.reason, confidence: p.confidence, clips: clipsSoFar }
-          : { ...existing, clips: clipsSoFar }
+          ? { identifier: id, role: p.role, reason: p.reason, confidence: p.confidence, clips: clipsSoFar, clip_labels: labels }
+          : { ...existing, clips: clipsSoFar, clip_labels: labels }
       )
     }
   }
@@ -196,6 +257,42 @@ export interface RankedAttackPoint {
   category: AttackCategory | 'situational'
   /** How many clips this showed up in. */
   clips: number
+  /** Which clips showed it, in game order — "Clip 37, Clip 52". */
+  clip_labels?: string[]
+}
+
+const clipNum = (label: string) => {
+  const m = label.match(/(\d+)/)
+  return m ? parseInt(m[1], 10) : Infinity
+}
+const byGameOrder = (a: string, b: string) => clipNum(a) - clipNum(b) || a.localeCompare(b)
+
+/**
+ * The clips each piece of text came from, so a counted cluster can name the
+ * plays behind it. Keyed by trimmed text; a cluster unions its members.
+ */
+function labelsByText(
+  clips: ScoutClipEvidence[],
+  textsOf: (c: ScoutClipEvidence) => (string | undefined | null)[]
+): (members: string[]) => string[] | undefined {
+  const map = new Map<string, Set<string>>()
+  for (const clip of clips) {
+    if (!clip.clip_label) continue
+    for (const raw of textsOf(clip)) {
+      const text = raw?.trim()
+      if (!text) continue
+      const set = map.get(text) ?? new Set<string>()
+      set.add(clip.clip_label)
+      map.set(text, set)
+    }
+  }
+  return (members) => {
+    const out = new Set<string>()
+    for (const m of members) for (const l of map.get(m.trim()) ?? []) out.add(l)
+    // Absent rather than empty, so a report built from unlabelled clips saves
+    // exactly what it did before clip numbers existed.
+    return out.size ? [...out].sort(byGameOrder) : undefined
+  }
 }
 
 /**
@@ -225,6 +322,7 @@ const WEAKNESS_PREFIX = 'weakness:'
  */
 function rankAttackPoints(clips: ScoutClipEvidence[]): RankedAttackPoint[] {
   const lists = clips.map((c) => (c.attack_points ?? []).map((a) => a.point))
+  const attackLabels = labelsByText(clips, (c) => (c.attack_points ?? []).map((a) => a.point))
 
   // Which category each phrasing was filed under, so a cluster can take the
   // one its members most often used.
@@ -300,6 +398,7 @@ function rankAttackPoints(clips: ScoutClipEvidence[]): RankedAttackPoint[] {
     similarityForKey: (key) => (key.startsWith(WEAKNESS_PREFIX) ? 0 : undefined),
   }).map((item) => ({
     point: item.text,
+    clip_labels: attackLabels(item.members),
     // Voted across every phrasing in the cluster, not just the canonical one.
     // The canonical text is simply the shortest member, so reading its
     // category alone let one clip decide how the whole group was filed.
@@ -331,7 +430,8 @@ function modalCategory(
  */
 function rankSituationalTells(
   clips: ScoutClipEvidence[]
-): { situation: string; tell: string; clips: number }[] {
+): { situation: string; tell: string; clips: number; clip_labels?: string[] }[] {
+  const tellLabels = labelsByText(clips, (c) => (c.situational_tells ?? []).map((t) => t.tell))
   const bySituation = new Map<string, string[][]>()
 
   for (const clip of clips) {
@@ -347,7 +447,12 @@ function rankSituationalTells(
 
   return [...bySituation.entries()]
     .flatMap(([situation, lists]) =>
-      countRepeats(lists, 10).map((item) => ({ situation, tell: item.text, clips: item.clips }))
+      countRepeats(lists, 10).map((item) => ({
+        situation,
+        tell: item.text,
+        clips: item.clips,
+        clip_labels: tellLabels(item.members),
+      }))
     )
     .sort((a, b) => b.clips - a.clips)
 }
@@ -422,6 +527,19 @@ export function aggregateScoutReport(clips: ScoutClipEvidence[]): AggregatedScou
       situational_tells: rankSituationalTells(offensiveClips),
       key_players: rankKeyPlayers(offensiveClips),
       formations: countByClip(offensiveClips, OFFENSIVE_FORMATIONS),
+      explosive_plays: offensiveClips
+        .flatMap((c) =>
+          (c.offensive_snaps ?? [])
+            .filter((s) => s.result === 'touchdown' || (typeof s.gain_yards === 'number' && s.gain_yards >= EXPLOSIVE_PLAY_YARDS))
+            .map((s) => ({
+              clip: c.clip_label ?? 'unlabelled clip',
+              play_type: s.play_type ?? 'unclear',
+              gain: s.gain_yards ?? null,
+              result: s.result ?? null,
+            }))
+        )
+        .sort((a, b) => byGameOrder(a.clip, b.clip)),
     },
+    play_log: buildPlayLog(clips),
   }
 }

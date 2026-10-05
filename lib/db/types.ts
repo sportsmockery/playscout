@@ -45,6 +45,8 @@ export interface Video {
   // then referenced by every play cut out of it.
   gemini_file_uri?: string | null; gemini_file_expires_at?: string | null
   film_type?: FilmType; opponent_id?: string | null; folder_id?: string | null
+  /** Taken out of scouting by the coach, e.g. a pre-game backups' scrimmage. */
+  scout_excluded?: boolean | null
   status?: VideoStatus | null; processing_status?: string | null; error_message?: string | null; created_at: string
 }
 

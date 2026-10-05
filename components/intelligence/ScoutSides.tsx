@@ -16,7 +16,20 @@ import RoleBriefs, { PointList, Section } from './RoleBriefs';
  * rule the game-plan prompt enforces.
  */
 
-type Ranked = { point: string; category?: string; clips: number };
+type Ranked = { point: string; category?: string; clips: number; clip_labels?: string[] };
+
+/** "Clips 37, 52, 60" — the plays to pull up in Hudl. */
+function ClipRefs({ labels, max = 6 }: { labels?: string[]; max?: number }) {
+  if (!labels?.length) return null;
+  const nums = labels.map((l) => l.replace(/^clip\s*/i, ''));
+  const shown = nums.slice(0, max).join(', ');
+  return (
+    <span className="block text-[11px] text-[var(--brand-muted)] mt-0.5">
+      {labels.length === 1 ? 'Clip' : 'Clips'} {shown}
+      {nums.length > max ? ` +${nums.length - max} more` : ''}
+    </span>
+  );
+}
 
 function pct(n: number, d: number): string {
   return d ? `${Math.round((n / d) * 100)}%` : '—';
@@ -53,7 +66,10 @@ function RankedList({ points, of, unit }: { points: Ranked[]; of: number; unit: 
               {a.category.replace(/_/g, ' ')}
             </span>
           )}
-          <span className="min-w-0">{a.point}</span>
+          <span className="min-w-0">
+            {a.point}
+            <ClipRefs labels={a.clip_labels} />
+          </span>
         </li>
       ))}
     </ol>
@@ -180,6 +196,25 @@ export default function ScoutSides({ report, opponentName }: { report: ScoutRepo
                   <span className="font-semibold">{p.identifier}</span>
                   {p.role ? <span className="text-[var(--brand-muted)]"> · {p.role}</span> : null} — {p.reason}{' '}
                   <span className="text-[11px] text-[var(--brand-muted)]">({p.clips} clip{p.clips === 1 ? '' : 's'})</span>
+                  <ClipRefs labels={p.clip_labels} />
+                </li>
+              ))}
+            </ul>
+          </Section>
+        ) : null}
+        {offense?.explosive_plays?.length ? (
+          <Section title="Their big plays" hint="10+ yards or a touchdown — the clips to show your defense.">
+            <ul className="space-y-1 text-sm text-[var(--brand-ink)]">
+              {offense.explosive_plays.map((e, i) => (
+                <li key={i} className="flex gap-2">
+                  <span className="shrink-0 font-mono text-[11px] tabular-nums text-[var(--brand-muted)] mt-0.5 w-14">
+                    {e.clip.replace(/^clip\s*/i, '#')}
+                  </span>
+                  <span className="min-w-0">
+                    {(OFFENSIVE_PLAY_TYPE_LABELS[e.play_type as OffensivePlayType] ?? e.play_type).toString()}
+                    {e.gain != null ? `, ${e.gain} yds` : ''}
+                    {e.result === 'touchdown' ? ', touchdown' : ''}
+                  </span>
                 </li>
               ))}
             </ul>

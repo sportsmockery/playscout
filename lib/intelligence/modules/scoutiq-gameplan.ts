@@ -1,6 +1,6 @@
 import { buildFootballBrain, buildGameTypeContext } from '../football-brain'
 import { resolveLevelTier, tierLabel } from '../levels'
-import { ATTACK_CATEGORY_LABELS, STOP_CATEGORY_LABELS, type AttackCategory, type StopCategory } from '../taxonomy'
+import { EXPLOSIVE_PLAY_YARDS, ATTACK_CATEGORY_LABELS, STOP_CATEGORY_LABELS, type AttackCategory, type StopCategory } from '../taxonomy'
 import type { AggregatedScoutReport, RankedStopPoint } from '../scoutiq-aggregate'
 import { renderOffensiveProfile, aggregateOffensiveSnaps } from '../aggregate-offense'
 import { renderDefensiveProfile, buildRoleBriefRules } from '../game-plan'
@@ -43,7 +43,14 @@ export const MIN_TENDENCY_CLIPS = 3
 function line(a: AggregatedScoutReport['attack_points'][number], defensiveClips: number): string {
   const label = ATTACK_CATEGORY_LABELS[a.category as AttackCategory] ?? a.category
   const of = defensiveClips > 0 ? ` of ${defensiveClips}` : ''
-  return `- [${label}] ${a.point} — seen in ${a.clips}${of} clip${a.clips === 1 ? '' : 's'} where they were on defense`
+  return `- [${label}] ${a.point} — seen in ${a.clips}${of} clip${a.clips === 1 ? '' : 's'} where they were on defense${clipsOf(a.clip_labels)}`
+}
+
+/** " [Clip 37, Clip 52]" — the plays a point rests on, so the plan can cite them. */
+function clipsOf(labels: string[] | undefined, max = 8): string {
+  if (!labels?.length) return ''
+  const shown = labels.slice(0, max).join(', ')
+  return ` [${shown}${labels.length > max ? `, +${labels.length - max} more` : ''}]`
 }
 
 export function splitStopPoints(points: RankedStopPoint[]) {
@@ -74,7 +81,7 @@ function formatStopPoints(points: RankedStopPoint[], offensiveClips: number): st
   return points
     .map((p) => {
       const label = STOP_CATEGORY_LABELS[p.category as StopCategory] ?? p.category
-      return `- [${label}] ${p.point} — seen in ${p.clips}${of} clip${p.clips === 1 ? '' : 's'} where they had the ball`
+      return `- [${label}] ${p.point} — seen in ${p.clips}${of} clip${p.clips === 1 ? '' : 's'} where they had the ball${clipsOf(p.clip_labels)}`
     })
     .join('\n')
 }
@@ -108,6 +115,7 @@ export function buildScoutIQGamePlanPrompt(ctx: ScoutIQGamePlanContext): string 
     situational_tells: [],
     key_players: [],
     formations: [],
+    explosive_plays: [],
   }
 
   return `${buildFootballBrain(tier)}
@@ -136,7 +144,10 @@ Charted snap by snap — every figure counted by the app, each rate over the sna
 ${renderOffensiveProfile(offense.profile)}
 
 Situational tells on offense:
-${offense.situational_tells.map((t) => `- ${t.situation}: ${t.tell} (${t.clips} clip${t.clips === 1 ? '' : 's'})`).join('\n') || '(none observed yet)'}
+${offense.situational_tells.map((t) => `- ${t.situation}: ${t.tell} (${t.clips} clip${t.clips === 1 ? '' : 's'})${clipsOf(t.clip_labels)}`).join('\n') || '(none observed yet)'}
+
+Explosive plays they made (${EXPLOSIVE_PLAY_YARDS}+ yards or a touchdown):
+${(offense.explosive_plays ?? []).map((e) => `- ${e.clip}: ${e.play_type.replace(/_/g, ' ')}${e.gain != null ? `, ${e.gain} yds` : ''}${e.result === 'touchdown' ? ', touchdown' : ''}`).join('\n') || '(none charted)'}
 
 Ways to stop them — SEEN IN ${MIN_TENDENCY_CLIPS}+ OFFENSIVE CLIPS. Build the defensive plan out of these and nothing else:
 ${formatStopPoints(splitStopPoints(offense.stop_points).repeated, offense.clips)}
@@ -145,7 +156,7 @@ Ways to stop them — SEEN ONCE OR TWICE. Not tendencies; supporting colour only
 ${formatStopPoints(splitStopPoints(offense.stop_points).singleLooks, offense.clips)}
 
 Their playmakers (by legible number or position — never a guessed number):
-${offense.key_players.map((p) => `- ${p.identifier}${p.role ? ` (${p.role})` : ''}: ${p.reason} — in ${p.clips} clip${p.clips === 1 ? '' : 's'}`).join('\n') || '(none identified yet)'}
+${offense.key_players.map((p) => `- ${p.identifier}${p.role ? ` (${p.role})` : ''}: ${p.reason} — in ${p.clips} clip${p.clips === 1 ? '' : 's'}${clipsOf(p.clip_labels)}`).join('\n') || '(none identified yet)'}
 
 # PART 2 — ${ctx.opponentName} ON DEFENSE (${aggregated.evidence_sufficiency.defensive_clips} clip(s) where they were defending)
 
@@ -155,7 +166,7 @@ ${formatTendencyLines(aggregated.defensive_tendencies)}
 Fronts, by how many defensive clips showed each: ${(aggregated.defensive_fronts ?? []).map((f) => `${f.name} (${f.clips})`).join(', ') || '(none observed yet)'}
 
 Situational tells on defense:
-${aggregated.situational_tells.map((t) => `- ${t.situation}: ${t.tell} (${t.clips} clip${t.clips === 1 ? '' : 's'})`).join('\n') || '(none observed yet)'}
+${aggregated.situational_tells.map((t) => `- ${t.situation}: ${t.tell} (${t.clips} clip${t.clips === 1 ? '' : 's'})${clipsOf(t.clip_labels)}`).join('\n') || '(none observed yet)'}
 
 Ways to attack them. The denominator is the ${aggregated.evidence_sufficiency.defensive_clips} clip(s) in which
 ${ctx.opponentName} was ON DEFENSE — the only clips that can show a way to attack them — out of
@@ -181,6 +192,10 @@ snaps where that question was READABLE, never over all snaps — the camera foll
 the secondary is often out of frame, and "readable on 12 of 70" means you know twelve snaps.
 ${renderDefensiveProfile(aggregated.defensive_profile)}
 
+## Play log — every scouted play in game order, as charted
+Use this to point a coach at the exact plays behind a claim. It is the charting, not a new read.
+${(aggregated.play_log ?? []).map((p) => `${p.clip} [their ${p.side}]: ${p.line}`).join('\n') || '(no plays charted)'}
+
 ## Your Team's Own Personnel & Playbook
 ${ctx.ownRosterSummary ?? '(no roster on file)'}
 ${ctx.ownPlaybookSummary ?? '(no playbook on file)'}
@@ -205,6 +220,8 @@ practice week:
 ${buildRoleBriefRules(ctx.opponentName, ctx.teamName, profileIsThin(aggregated.defensive_profile))}
 
 RULES:
+- The goal is a scouting report that finds TENDENCIES and WEAKNESSES we can exploit. Lead every section with the ones that repeat most.
+- CITE CLIPS. Every point that rests on specific plays names them, up to four, in game order — "(Clips 37, 52, 60)" — so the coach can pull those plays up in Hudl and show them to the players. In identity, briefs and plans the clip list goes in the text or the evidence field. Use only clip numbers that appear in the evidence above; never invent one, and never cite a clip for something its log line does not show.
 - Only reference opponent tendencies, formations, or target players that appear in the evidence above. Never invent a tendency, jersey number, or player detail not listed there.
 - If a category above has no evidence (e.g. no target players identified), say so in that section rather than inventing one to fill it.
 - Respect the safety rules above: no prohibited drills, no live-contact drills unless GAME TYPE is tackle.

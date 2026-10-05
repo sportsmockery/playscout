@@ -20,7 +20,9 @@ const aggregated = (over: Partial<AggregatedScoutReport> = {}): AggregatedScoutR
     situational_tells: [],
     key_players: [],
     formations: [],
+    explosive_plays: [],
   },
+  play_log: [],
   evidence_sufficiency: {
     plays_observed: 120,
     clips_analyzed: 52,
