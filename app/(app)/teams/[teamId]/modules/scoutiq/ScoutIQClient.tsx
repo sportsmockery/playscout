@@ -15,8 +15,7 @@ import {
   useAnalysisRuns,
   useBeforeUnloadWhileRunning,
 } from '@/components/intelligence/AnalysisRunProvider';
-import RoleBriefs from '@/components/intelligence/RoleBriefs';
-import type { ScoutIQGamePlan } from '@/lib/intelligence/modules/scoutiq-gameplan';
+import ScoutSides from '@/components/intelligence/ScoutSides';
 
 interface Props {
   teamId: string;
@@ -104,6 +103,12 @@ function AddOpponentForm({ teamId, onCreated }: { teamId: string; onCreated: (id
   );
 }
 
+/** "Warriors vs Knights Red — Clip 07" → 7. Null when the title carries no clip number. */
+function clipNumber(title: string): number | null {
+  const m = title.match(/clip\s*#?\s*0*(\d+)/i);
+  return m ? parseInt(m[1], 10) : null;
+}
+
 export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, selectedOpponentId, opponentVideos, scoutedVideoIds, scoutReports }: Props) {
   const router = useRouter();
   const [showAddOpponent, setShowAddOpponent] = useState(opponents.length === 0);
@@ -118,20 +123,81 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
   // The point of the selection is the whole-game cut-up: ways to attack a
   // team can only be seen while they are DEFENDING, so on a full game roughly
   // half the clips cannot answer the question and cost a Gemini call each.
-  const selectableIds = opponentVideos.filter((v) => !isUnanalyzable(v)).map((v) => v.id);
+  // Game order, so "everything before clip 32" reads top to bottom. Clips
+  // with no number keep their place after the numbered ones.
+  const sortedVideos = [...opponentVideos].sort(
+    (a, b) => (clipNumber(a.title) ?? Infinity) - (clipNumber(b.title) ?? Infinity)
+  );
+  const excludedVideos = sortedVideos.filter((v) => v.scout_excluded);
+  const selectableIds = sortedVideos
+    .filter((v) => !isUnanalyzable(v) && !v.scout_excluded)
+    .map((v) => v.id);
   const scouted = new Set(scoutedVideoIds);
   const unscoutedIds = selectableIds.filter((id) => !scouted.has(id));
   // Start on the clips that still need doing. Re-selecting film the coach has
   // already paid to analyze is the default that quietly bills them twice.
-  const [selectedIds, setSelectedIds] = useState<string[]>(
+  const [pickedIds, setPickedIds] = useState<string[]>(
     unscoutedIds.length ? unscoutedIds : selectableIds
   );
+  // Film keeps arriving after this page mounts: a Hudl import or a batch
+  // upload lands clip by clip via router.refresh(). New unscouted clips join
+  // the selection as they appear, matching the everything-selected default,
+  // instead of the coach finding "0 of 104 selected" when the import finishes.
+  const [seenIds, setSeenIds] = useState<string[]>(selectableIds);
+  const seen = new Set(seenIds);
+  const arrivedIds = selectableIds.filter((id) => !seen.has(id));
+  if (arrivedIds.length) {
+    setSeenIds(selectableIds);
+    setPickedIds((prev) => [...prev, ...arrivedIds.filter((id) => !scouted.has(id))]);
+  }
+  // Only clips in THIS opponent's current list count. The count and the button
+  // used to read the raw state, so ids that were no longer in the list showed
+  // up as "191 of 104 clips selected" while scoutAllClips (which filters
+  // against the list) found nothing to queue and silently did nothing.
+  const selectable = new Set(selectableIds);
+  const selectedIds = pickedIds.filter((id) => selectable.has(id));
 
   function toggleClip(id: string) {
-    setSelectedIds((prev) =>
+    setPickedIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
   }
+  const [excludeBefore, setExcludeBefore] = useState('');
+  const [excluding, setExcluding] = useState(false);
+  const [excludeError, setExcludeError] = useState('');
+
+  /** Takes clips out of scouting (or puts them back) and refreshes the list. */
+  async function setExcluded(videoIds: string[], excluded: boolean) {
+    if (!videoIds.length) return;
+    setExcluding(true);
+    setExcludeError('');
+    try {
+      const res = await fetch('/api/videos/scout-exclude', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teamId, videoIds, excluded }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not update those clips.');
+      if (excluded) setPickedIds((prev) => prev.filter((id) => !videoIds.includes(id)));
+      router.refresh();
+    } catch (err) {
+      setExcludeError(err instanceof Error ? err.message : 'Could not update those clips.');
+    } finally {
+      setExcluding(false);
+    }
+  }
+
+  /** "The game starts at clip 32" — exclude every numbered clip before it. */
+  function excludeBeforeClip() {
+    const n = parseInt(excludeBefore, 10);
+    if (!Number.isFinite(n) || n < 2) return;
+    const ids = sortedVideos
+      .filter((v) => !v.scout_excluded && (clipNumber(v.title) ?? Infinity) < n)
+      .map((v) => v.id);
+    if (ids.length) setExcluded(ids, true);
+  }
+
   const [clipResults, setClipResults] = useState<Record<string, ScoutIQClipResult>>({});
   // Analysis is owned by the app shell, not by this page, so a coach can go
   // look at their roster or another clip while it runs. See AnalysisRunProvider.
@@ -210,7 +276,7 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
   async function scoutAllClips() {
     if (!selectedOpponentId || !selectedOpponent || queueing) return;
     const targets = opponentVideos.filter(
-      (v) => !isUnanalyzable(v) && selectedIds.includes(v.id)
+      (v) => !isUnanalyzable(v) && !v.scout_excluded && selectedIds.includes(v.id)
     );
     if (!targets.length) return;
     setClipError('');
@@ -237,7 +303,7 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
       setQueued(`${res.queued} clip${res.queued === 1 ? '' : 's'} queued — scouting runs in the background.`);
       // Emptied so the same clips can't be queued a second time by someone who
       // isn't sure the first press landed. Re-selecting is one tap.
-      setSelectedIds([]);
+      setPickedIds([]);
       setQueueVersion((v) => v + 1);
     } catch (err) {
       setClipError(err instanceof Error ? err.message : 'Could not queue scouting.');
@@ -342,7 +408,9 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
                 <p className="text-xs text-[var(--brand-muted)] mt-0.5">
                   {selectableIds.length === 0
                     ? 'Add their film — upload it, paste a link, or pull it from Hudl.'
-                    : `${scoutedVideoIds.length} of ${selectableIds.length} clips scouted so far.`}
+                    : `${scoutedVideoIds.filter((id) => selectableIds.includes(id)).length} of ${selectableIds.length} clips scouted so far.${
+                        excludedVideos.length ? ` ${excludedVideos.length} left out of scouting.` : ''
+                      }`}
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -375,7 +443,7 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
                   {selectableIds.length > 1 && (
                     <button
                       onClick={() =>
-                        setSelectedIds(
+                        setPickedIds(
                           selectedIds.length === selectableIds.length ? [] : selectableIds
                         )
                       }
@@ -409,6 +477,45 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
               </div>
             )}
 
+            {opponentVideos.length > 1 && (
+              <div className="rounded-xl border border-[var(--brand-border)] p-3 mb-3 text-xs space-y-2">
+                <p className="text-[var(--brand-muted)]">
+                  Leave out clips that are not their real game, such as a backups&apos; scrimmage before the
+                  opening kickoff. Left-out clips are never scouted and never counted in the report.
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <label htmlFor="exclude-before" className="font-semibold text-[var(--brand-ink)]">
+                    Game starts at clip #
+                  </label>
+                  <input
+                    id="exclude-before"
+                    inputMode="numeric"
+                    value={excludeBefore}
+                    onChange={(e) => setExcludeBefore(e.target.value.replace(/[^0-9]/g, ''))}
+                    className="w-16 rounded-md border border-[var(--brand-border)] px-2 py-1 text-sm"
+                    placeholder="32"
+                  />
+                  <button
+                    onClick={excludeBeforeClip}
+                    disabled={excluding || !excludeBefore}
+                    className="font-semibold border border-[var(--brand-border)] rounded-md px-2.5 py-1 hover:bg-[var(--brand-bg)] disabled:opacity-40"
+                  >
+                    {excluding ? 'Saving…' : `Leave out clips before #${excludeBefore || '…'}`}
+                  </button>
+                  {excludedVideos.length > 0 && (
+                    <button
+                      onClick={() => setExcluded(excludedVideos.map((v) => v.id), false)}
+                      disabled={excluding}
+                      className="font-semibold text-[var(--brand-navy)] hover:underline disabled:opacity-40"
+                    >
+                      Put all {excludedVideos.length} back
+                    </button>
+                  )}
+                </div>
+                {excludeError && <p className="text-red-600">{excludeError}</p>}
+              </div>
+            )}
+
             {opponentVideos.length === 0 ? (
               <p className="text-sm text-[var(--brand-muted)]">No film uploaded for {selectedOpponent.name} yet.</p>
             ) : (
@@ -421,11 +528,14 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
                     : ''
                 }`}
               >
-                {opponentVideos.map((v) => (
-                  <div key={v.id} className="border border-[var(--brand-border)] rounded-lg p-3">
+                {sortedVideos.map((v) => (
+                  <div
+                    key={v.id}
+                    className={`border border-[var(--brand-border)] rounded-lg p-3 ${v.scout_excluded ? 'opacity-50' : ''}`}
+                  >
                     <div className="flex items-center justify-between gap-3 flex-wrap">
                       <div className="flex items-start gap-2.5 min-w-0">
-                        {!isUnanalyzable(v) && (
+                        {!isUnanalyzable(v) && !v.scout_excluded && (
                           <input
                             type="checkbox"
                             checked={selectedIds.includes(v.id)}
@@ -443,6 +553,16 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
                               · Scouted
                             </span>
                           )}
+                          {v.scout_excluded && (
+                            <span className="ml-1.5 normal-case font-semibold">· Left out of scouting</span>
+                          )}
+                          <button
+                            onClick={() => setExcluded([v.id], !v.scout_excluded)}
+                            disabled={excluding}
+                            className="ml-2 normal-case font-semibold text-[var(--brand-navy)] hover:underline disabled:opacity-40"
+                          >
+                            {v.scout_excluded ? 'Put back' : 'Leave out'}
+                          </button>
                         </p>
                         </div>
                       </div>
@@ -451,7 +571,7 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
                           191-clip cut-up pressed it 191 times. The batch bar
                           above is the way through the film; this is for
                           re-checking one clip. */}
-                      {readyVideos.includes(v) && (
+                      {readyVideos.includes(v) && !v.scout_excluded && (
                         <button
                           onClick={() => runScoutOnClip(v)}
                           disabled={clipLoading === v.id}
@@ -540,92 +660,8 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
                   <p className="text-sm text-[var(--brand-ink)]">{latestReport.summary}</p>
                 )}
 
-                {/* The evidence the plan was built from, ranked. A coach asking
-                    for "the top things to attack" wants the count behind each
-                    one — a weakness seen in 30 of 52 clips is a different
-                    claim from one seen once, and the prose above cannot show
-                    that. */}
-                {(() => {
-                  const points = (latestReport.attack_points ?? []) as {
-                    point: string;
-                    category?: string;
-                    clips: number;
-                  }[];
-                  if (!points.length) return null;
-                  // The denominator is the clips where they were DEFENDING —
-                  // the only ones that can show a way to attack them. On a
-                  // whole-game cut-up that is about half the batch, and
-                  // dividing by every clip made a real tendency read as a
-                  // one-off. Falls back to the clip count for reports written
-                  // before possession was recorded.
-                  const sufficiency = latestReport.evidence_sufficiency as
-                    | { defensive_clips?: number; unconfirmed_subject_clips?: number }
-                    | null;
-                  const clipCount =
-                    sufficiency?.defensive_clips || latestReport.based_on_video_ids.length;
-                  return (
-                    <div className="print:order-1">
-                      <h3 className="text-xs font-bold text-[var(--brand-navy)] uppercase tracking-wide mb-1">
-                        What The Film Showed ({points.length} ranked by how often)
-                      </h3>
-                      <p className="text-[11px] text-[var(--brand-muted)] mb-2">
-                        Counted against the {clipCount} clip{clipCount === 1 ? '' : 's'} where they
-                        were on defense.
-                        {sufficiency?.unconfirmed_subject_clips
-                          ? ` On ${sufficiency.unconfirmed_subject_clips} clip${sufficiency.unconfirmed_subject_clips === 1 ? '' : 's'} PlayScout could not confirm it was watching the right team — treat those findings more loosely.`
-                          : ''}
-                      </p>
-                      <ol className="space-y-1.5">
-                        {points.map((a, i) => (
-                          <li key={i} className="flex items-start gap-2 text-sm text-[var(--brand-ink)]">
-                            <span
-                              className="shrink-0 font-mono text-[11px] tabular-nums text-[var(--brand-muted)] mt-0.5"
-                              title={`Seen in ${a.clips} of ${clipCount} clips`}
-                            >
-                              {a.clips}/{clipCount}
-                            </span>
-                            {a.category && (
-                              <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border border-[var(--brand-border)] text-[var(--brand-navy)] mt-0.5">
-                                {a.category.replace(/_/g, ' ')}
-                              </span>
-                            )}
-                            <span>{a.point}</span>
-                          </li>
-                        ))}
-                      </ol>
-                    </div>
-                  );
-                })()}
-
-                {/* The role briefs lead: a quarterback reading this page wants
-                    his own checklist, not a staff-wide plan he has to filter.
-                    Renders nothing on a plan generated before the defensive
-                    structure was charted. */}
-                <RoleBriefs plan={latestReport.game_plan as ScoutIQGamePlan | null} />
-
-                {(['offensive_game_plan', 'defensive_game_plan', 'target_players_plan', 'practice_week_focus'] as const).map((key) => {
-                  const items = (latestReport.game_plan as Record<string, string[]> | null)?.[key];
-                  if (!items?.length) return null;
-                  const labels: Record<string, string> = {
-                    offensive_game_plan: 'How To Attack Them',
-                    defensive_game_plan: 'How To Stop Them',
-                    target_players_plan: 'Target Players',
-                    practice_week_focus: 'This Week At Practice',
-                  };
-                  return (
-                    <div key={key}>
-                      <h3 className="text-xs font-bold text-[var(--brand-navy)] uppercase tracking-wide mb-2">{labels[key]}</h3>
-                      <ul className="space-y-1.5">
-                        {items.map((item, i) => (
-                          <li key={i} className="flex items-start gap-2 text-sm text-[var(--brand-ink)]">
-                            <span className="w-1.5 h-1.5 rounded-full bg-[var(--brand-gold)] flex-shrink-0 mt-1.5" />
-                            {item}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  );
-                })}
+                {/* Their offense and their defense as two separate reports. */}
+                <ScoutSides report={latestReport} opponentName={selectedOpponent.name} />
               </div>
             ) : (
               <p className="text-sm text-[var(--brand-muted)]">

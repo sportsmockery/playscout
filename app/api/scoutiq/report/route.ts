@@ -22,6 +22,15 @@ function buildRosterSummary(players: Awaited<ReturnType<typeof getPlayersByTeam>
   return `Roster (${players.length} players): ${byPosition.slice(0, 25).join(', ')}${players.length > 25 ? '...' : ''}`
 }
 
+/**
+ * How a clip is named in the report. A Hudl cut-up titles each play
+ * "<Game> — Clip 37"; "Clip 37" is what a coach types into Hudl to find it.
+ */
+function clipLabel(title: string): string {
+  const m = title?.match(/clip\s*#?\s*0*(\d+)/i)
+  return m ? `Clip ${parseInt(m[1], 10)}` : title
+}
+
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient()
@@ -53,11 +62,15 @@ export async function POST(req: NextRequest) {
 
     const { data: opponentVideos } = await supabase
       .from('videos')
-      .select('id')
+      .select('id, title')
       .eq('team_id', teamId)
       .eq('opponent_id', opponentId)
       .eq('film_type', 'opponent')
+      // Clips the coach left out (a backups' pre-game scrimmage) never reach
+      // the report, even if they were scouted before being left out.
+      .eq('scout_excluded', false)
     const videoIds = (opponentVideos ?? []).map((v) => v.id)
+    const clipLabelById = new Map((opponentVideos ?? []).map((v) => [v.id as string, clipLabel(v.title as string)]))
 
     if (!videoIds.length) {
       return NextResponse.json(
@@ -66,13 +79,23 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const { data: scoutResults } = await supabase
+    const { data: allScoutResults } = await supabase
       .from('position_analysis_results')
-      .select('video_id, evidence, play_sequence_id')
+      .select('video_id, evidence, play_sequence_id, created_at')
       .eq('module_key', 'SCOUTIQ')
       .in('video_id', videoIds)
+      .order('created_at', { ascending: false })
+    // The latest read of each clip only. A clip scouted twice would otherwise
+    // count twice, and "seen in 2 clips" would be one play read twice.
+    const seenClip = new Set<string>()
+    const scoutResults = (allScoutResults ?? []).filter((r) => {
+      const key = `${r.video_id}:${r.play_sequence_id ?? ''}`
+      if (seenClip.has(key)) return false
+      seenClip.add(key)
+      return true
+    })
 
-    if (!scoutResults?.length) {
+    if (!scoutResults.length) {
       return NextResponse.json(
         { error: `No SCOUTIQ analysis has been run on ${opponent.name}'s film yet. Run SCOUTIQ on each clip first.` },
         { status: 400 }
@@ -98,6 +121,7 @@ export async function POST(req: NextRequest) {
 
     const clips: ScoutClipEvidence[] = scoutResults.map((r) => ({
       ...((r.evidence as ScoutClipEvidence) ?? {}),
+      clip_label: clipLabelById.get(r.video_id as string) ?? null,
       breakdown_hash: r.play_sequence_id ? hashBySequence.get(r.play_sequence_id) ?? null : null,
     }))
     const aggregated = aggregateScoutReport(clips)
@@ -134,7 +158,7 @@ export async function POST(req: NextRequest) {
     const route = getRoute('game_strategy')
     const result = await callClaude(route.model, systemPrompt, [
       { role: 'user', content: 'Generate the game plan now, following the JSON schema exactly.' },
-    ], 3000)
+    ], 8000)
 
     await recordUsage(supabase, {
       teamId, userId: user.id, jobType: 'game_strategy',
@@ -173,6 +197,13 @@ export async function POST(req: NextRequest) {
         attack_points: aggregated.attack_points,
         game_plan: gamePlan,
         evidence_sufficiency: aggregated.evidence_sufficiency,
+        // The two halves of the scout, each with its own charted evidence.
+        offense_scout: aggregated.offense,
+        defense_scout: {
+          clips: aggregated.evidence_sufficiency.defensive_clips,
+          fronts: aggregated.defensive_fronts,
+          profile: aggregated.defensive_profile,
+        },
         summary: gamePlan.summary,
         model_provider: route.provider,
         model_name: route.model,

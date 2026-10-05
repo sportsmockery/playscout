@@ -81,6 +81,13 @@ export async function saveAnalysisResult(
         subject_confirmed: result.subject_confirmed ?? null,
         opponent_possession: result.opponent_possession ?? null,
         target_players: result.target_players ?? null,
+        // The charted snaps. defensive_snaps was computed on every SCOUTIQ run
+        // since it shipped and never written here, so every game plan's
+        // defensive structure was built from nothing.
+        defensive_snaps: result.defensive_snaps ?? null,
+        offensive_snaps: result.offensive_snaps ?? null,
+        stop_points: result.stop_points ?? null,
+        key_players: result.key_players ?? null,
         // RANKERIQ's ranked list, so a reopened saved report renders without
         // a second query against player_grades.
         player_grades: result.player_grades ?? null,

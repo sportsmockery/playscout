@@ -17,6 +17,7 @@ import { buildSTATSIQSystemPrompt, STATSIQ_RESPONSE_SCHEMA } from './modules/sta
 import { buildSTATSIQFactsPrompt, STATSIQ_FACTS_RESPONSE_SCHEMA } from './modules/statsiq-facts'
 import { factsOutputToAnalysisOutput } from './stat-facts'
 import { normalizeDefensiveSnap } from './defense-structure'
+import { normalizeOffensiveSnap } from './offense-structure'
 import {
   PositionAnalysisOutputSchema,
   type PositionAnalysisInput,
@@ -821,6 +822,14 @@ export async function analyzePosition(
       parsed.opponent_possession === 'defense' || parsed.opponent_possession === 'both'
         ? parsed.defensive_snaps?.map((s) => normalizeDefensiveSnap(s as Record<string, unknown>))
         : undefined,
+    // The opponent's OFFENSE, kept only on a snap where they had the ball, for
+    // the same reason defensive_snaps is kept only where they defended.
+    offensive_snaps:
+      parsed.opponent_possession === 'offense' || parsed.opponent_possession === 'both'
+        ? parsed.offensive_snaps?.map((s) => normalizeOffensiveSnap(s as Record<string, unknown>))
+        : undefined,
+    stop_points: parsed.stop_points,
+    key_players: parsed.key_players,
     model: route.model,
     // In video mode there are no discrete frames to count, so report what the
     // sample rate actually produced — that is the number comparable to the 16

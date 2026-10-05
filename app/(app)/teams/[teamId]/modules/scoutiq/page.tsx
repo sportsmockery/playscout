@@ -62,7 +62,12 @@ export default async function ScoutIQPage({
         </div>
       </div>
 
+      {/* Keyed by opponent: switching opponents only changes the query string,
+          so without a key React keeps this component mounted and carries the
+          previous opponent's clip selection, jersey colour and game plan over
+          to the new one. */}
       <ScoutIQClient
+        key={selectedOpponentId ?? 'none'}
         teamId={teamId}
         teamName={team.name}
         ageGroup={team.age_group ?? undefined}

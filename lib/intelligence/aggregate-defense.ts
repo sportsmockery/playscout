@@ -87,7 +87,7 @@ export interface DefensiveProfile {
   hashChecked: number
 }
 
-function tally<T extends string>(
+export function tally<T extends string>(
   values: (T | null | undefined)[],
   unreadable: readonly string[]
 ): { readable: number; distribution: Frequency<T>[] } {
@@ -104,7 +104,7 @@ function tally<T extends string>(
   return { readable, distribution }
 }
 
-function mean(values: (number | null | undefined)[]): { mean: number; measured: number } | null {
+export function mean(values: (number | null | undefined)[]): { mean: number; measured: number } | null {
   const nums = values.filter((v): v is number => typeof v === 'number' && Number.isFinite(v))
   if (!nums.length) return null
   const total = nums.reduce((a, b) => a + b, 0)
@@ -120,13 +120,13 @@ function mean(values: (number | null | undefined)[]): { mean: number; measured: 
  */
 export const MIN_SPLIT_SNAPS = 4
 
-function splitBy<T extends string>(
-  snaps: DefensiveSnap[],
-  keyOf: (s: DefensiveSnap) => string | null,
-  valueOf: (s: DefensiveSnap) => T | null | undefined,
+export function splitBy<T extends string, S = DefensiveSnap>(
+  snaps: S[],
+  keyOf: (s: S) => string | null,
+  valueOf: (s: S) => T | null | undefined,
   unreadable: readonly string[]
 ): Split<T>[] {
-  const groups = new Map<string, DefensiveSnap[]>()
+  const groups = new Map<string, S[]>()
   for (const s of snaps) {
     const key = keyOf(s)
     if (!key) continue

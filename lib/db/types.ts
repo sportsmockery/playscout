@@ -45,6 +45,8 @@ export interface Video {
   // then referenced by every play cut out of it.
   gemini_file_uri?: string | null; gemini_file_expires_at?: string | null
   film_type?: FilmType; opponent_id?: string | null; folder_id?: string | null
+  /** Taken out of scouting by the coach, e.g. a pre-game backups' scrimmage. */
+  scout_excluded?: boolean | null
   status?: VideoStatus | null; processing_status?: string | null; error_message?: string | null; created_at: string
 }
 
@@ -225,6 +227,10 @@ export interface ScoutReport {
   attack_points?: Json | null
   game_plan?: Json | null
   evidence_sufficiency?: Json | null
+  /** The opponent ON OFFENSE — charted profile, stop points, playmakers. */
+  offense_scout?: Json | null
+  /** The opponent ON DEFENSE — clips, fronts and charted structure. */
+  defense_scout?: Json | null
   summary?: string | null
   model_provider?: string | null
   model_name?: string | null

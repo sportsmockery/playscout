@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { DefensiveSnap } from './defense-structure'
+import type { OffensiveSnap } from './offense-structure'
 import { Type } from '@google/genai'
 import type { EvidenceMode } from './football-brain'
 import { RepBreakdownSchema, type RepBreakdown } from './breakdown'
@@ -300,9 +301,24 @@ export const PositionAnalysisOutputSchema = z.object({
     tell: z.string(),
     confidence: z.number().optional(),
   })).optional(),
+  // `weakness` is what counts the same problem across clips (see
+  // WEAKNESS_TYPES). It was missing here, and z.object strips unknown keys, so
+  // every saved attack point lost it and the report fell back to word overlap.
   attack_points: z
-    .array(z.object({ point: z.string(), category: z.string().optional() }))
+    .array(z.object({ point: z.string(), category: z.string().optional(), weakness: z.string().optional() }))
     .optional(),
+  // SCOUTIQ only — the opponent's OFFENSE, the twin of attack_points and
+  // defensive_snaps. Normalized in analyze-position.ts.
+  stop_points: z
+    .array(z.object({ point: z.string(), category: z.string().optional(), threat: z.string().optional() }))
+    .optional(),
+  key_players: z.array(z.object({
+    identifier: z.string(),
+    role: z.string().optional(),
+    reason: z.string(),
+    confidence: z.number(),
+  })).optional(),
+  offensive_snaps: z.array(z.record(z.string(), z.unknown())).optional(),
   // SCOUTIQ only. The prompt has always asked which side the model graded; it
   // had nowhere to answer, so the one check that a scouting report is about
   // the right team lived in prose and nothing read it. Optional so results
@@ -403,7 +419,11 @@ export interface PositionAnalysisResult {
   formations?: { name: string; side?: string; note?: string }[]
   explosive_plays?: { cause: string; description: string; evidence_frames?: number[] }[]
   situational_tells?: { situation: string; tell: string; confidence?: number }[]
-  attack_points?: { point: string; category?: string }[]
+  attack_points?: { point: string; category?: string; weakness?: string }[]
+  /** SCOUTIQ — ways to stop the opponent's offense, from plays where they had the ball. */
+  stop_points?: { point: string; category?: string; threat?: string }[]
+  /** SCOUTIQ — the opponent's offensive playmakers. */
+  key_players?: { identifier: string; role?: string; reason: string; confidence: number }[]
   subject_graded?: string
   subject_confirmed?: boolean
   opponent_possession?: 'offense' | 'defense' | 'both' | 'unclear'
@@ -436,6 +456,8 @@ export interface PositionAnalysisResult {
   target_players?: { identifier: string; reason: string; confidence: number; evidence_frames?: number[] }[]
   /** SCOUTIQ — the opponent's defensive structure on this snap. */
   defensive_snaps?: DefensiveSnap[]
+  /** SCOUTIQ — the opponent's offense on this snap. */
+  offensive_snaps?: OffensiveSnap[]
   model: string
   framesAnalyzed: number
 }

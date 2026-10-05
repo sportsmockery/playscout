@@ -1,5 +1,5 @@
 import { buildFootballBrain, buildGameTypeContext } from '../football-brain'
-import { buildTaxonomyPrompt, EXPLOSIVE_PLAY_YARDS, TENDENCY_TYPES, OFFENSIVE_FORMATIONS, DEFENSIVE_FRONTS, SITUATION_BUCKETS, EXPLOSIVE_CAUSES, ATTACK_CATEGORIES, WEAKNESS_TYPES, WEAKNESS_TYPE_LABELS } from '../taxonomy'
+import { buildTaxonomyPrompt, EXPLOSIVE_PLAY_YARDS, TENDENCY_TYPES, OFFENSIVE_FORMATIONS, DEFENSIVE_FRONTS, SITUATION_BUCKETS, EXPLOSIVE_CAUSES, ATTACK_CATEGORIES, WEAKNESS_TYPES, WEAKNESS_TYPE_LABELS, OFFENSIVE_THREAT_TYPES, OFFENSIVE_THREAT_LABELS, STOP_CATEGORIES } from '../taxonomy'
 import { resolveLevelTier } from '../levels'
 import { Type } from '@google/genai'
 import type { ModulePromptInput } from '../schemas'
@@ -19,6 +19,7 @@ import {
   buildDefensiveStructurePrompt,
 } from '../defense-structure'
 import { DEFENSIVE_POSITIONS, OFFENSIVE_POSITIONS } from '../positions'
+import { buildOffensiveStructurePrompt, OFFENSIVE_SNAP_SCHEMA } from '../offense-structure'
 
 /**
  * ScoutIQ Stage 1 (System B, per-clip) — scouts an OPPONENT's film. Unlike
@@ -102,8 +103,9 @@ formations: which formations ${opponentLabel} lines up in — use a FORMATIONS i
 explosive_plays: every gain of ${EXPLOSIVE_PLAY_YARDS}+ yards ${opponentLabel} gave up or
 created, and which failure caused it (force_failure, gap_failure, pursuit_failure).
 situational_tells: use a SITUATIONS id above, and what ${opponentLabel} tends to do in it.
-attack_points: concrete, evidence-based ways to attack ${opponentLabel}, each with the part of a
-game plan it belongs to (category: ${ATTACK_CATEGORIES.join(', ')}). Describe the WEAKNESS you saw,
+attack_points: concrete, evidence-based ways to attack ${opponentLabel}'s DEFENSE — ONLY from plays
+where they are defending; leave it empty on a play where they have the ball (those go in
+stop_points below). Each carries the part of OUR offensive game plan it belongs to (category: ${ATTACK_CATEGORIES.join(', ')}). Describe the WEAKNESS you saw,
 not a play call.
 
 Each attack point also carries a "weakness" id saying WHAT is wrong. Every clip of this opponent is
@@ -116,7 +118,8 @@ Do NOT file "I could not tell" as an attack point. A clip where nothing was read
 attack points at all — that is a real and useful answer, and inventing a weakness to fill the list
 is worse than a short list.
 
-target_players — weak or exploitable players on ${opponentLabel}:
+target_players — weak or exploitable DEFENDERS on ${opponentLabel}, ONLY from plays where they are
+defending (their offensive playmakers go in key_players below):
 - identifier: how to point this player out to the coach. Use the jersey number ONLY if it
   is legibly readable in the frames (e.g. "White #24"). If it is not clearly readable,
   identify by position and alignment instead (e.g. "Right cornerback", "Weak-side
@@ -146,6 +149,16 @@ HARD RULE: never recommend anything that would help ${opponentLabel} play better
 their coach. Every recommendation in this report is an action for the team scouting them.
 
 ${buildDefensiveStructurePrompt(opponentLabel)}
+
+${buildOffensiveStructurePrompt(opponentLabel)}
+
+stop_points category (part of OUR defensive plan): ${STOP_CATEGORIES.join(', ')}
+stop_points threat ids:
+${OFFENSIVE_THREAT_TYPES.map((t) => `- ${t}: ${OFFENSIVE_THREAT_LABELS[t]}`).join('\n')}
+
+SIDE OF THE BALL decides which half of this report a clip fills. opponent_possession 'offense'
+fills offensive_snaps, stop_points and key_players and leaves defensive_snaps, attack_points and
+target_players empty; 'defense' is the reverse. Do not fill both halves from one play.
 
 SAMPLE SIZE — plays_observed = distinct snaps/plays visible in these frames. If
 plays_observed is 1, cap every tendency's confidence at roughly 0.4 and say so.
@@ -326,11 +339,38 @@ export const SCOUTIQ_RESPONSE_SCHEMA = {
     evidence_frames: { type: Type.ARRAY, items: { type: Type.INTEGER } },
     evidence_timestamps: { type: Type.ARRAY, items: { type: Type.NUMBER } },
     defensive_snaps: { type: Type.ARRAY, items: DEFENSIVE_SNAP_SCHEMA },
+    // The opponent's OFFENSE, snap by snap — empty on a play where they defend.
+    offensive_snaps: { type: Type.ARRAY, items: OFFENSIVE_SNAP_SCHEMA },
+    stop_points: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          point: { type: Type.STRING },
+          category: { type: Type.STRING, enum: [...STOP_CATEGORIES] },
+          threat: { type: Type.STRING, enum: [...OFFENSIVE_THREAT_TYPES] },
+        },
+        required: ['point', 'category', 'threat'],
+      },
+    },
+    key_players: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          identifier: { type: Type.STRING },
+          role: { type: Type.STRING },
+          reason: { type: Type.STRING },
+          confidence: { type: Type.NUMBER },
+        },
+        required: ['identifier', 'reason', 'confidence'],
+      },
+    },
   },
   required: [
     'overall_score', 'position_scores', 'reasoning',
     'offensive_tendencies', 'defensive_tendencies', 'formations', 'explosive_plays', 'situational_tells',
-    'attack_points', 'target_players',
+    'attack_points', 'target_players', 'stop_points', 'key_players',
     'strengths', 'weaknesses', 'drills', 'summary', 'confidence', 'plays_observed', 'evidence_frames',
     'subject_graded', 'subject_confirmed', 'opponent_possession',
   ],
