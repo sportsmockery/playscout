@@ -18,6 +18,7 @@ import { buildSTATSIQFactsPrompt, STATSIQ_FACTS_RESPONSE_SCHEMA } from './module
 import { factsOutputToAnalysisOutput } from './stat-facts'
 import { normalizeDefensiveSnap } from './defense-structure'
 import { normalizeOffensiveSnap } from './offense-structure'
+import { extractPresnapStills, type Still } from './presnap-stills'
 import {
   POSSESSION_CHECK_SCHEMA,
   buildPossessionCheckPrompt,
@@ -27,6 +28,28 @@ import {
   type PossessionCheck,
 } from './possession-check'
 import { STOP_CATEGORIES, OFFENSIVE_THREAT_TYPES } from './taxonomy'
+
+/** Pre-snap stills for the possession check, from the clip bytes or the stored file. Never throws. */
+async function presnapStillsFor(
+  supabase: SupabaseClient,
+  videoId: string | undefined,
+  clip: ResolvedClip,
+  startSeconds: number
+): Promise<Still[]> {
+  try {
+    let bytes: Buffer | null = clip.source.kind === 'inline' ? clip.source.bytes : null
+    if (!bytes && videoId) {
+      const { data: video } = await supabase.from('videos').select('storage_path').eq('id', videoId).maybeSingle()
+      if (video?.storage_path) {
+        const { data: blob } = await supabase.storage.from('videos').download(video.storage_path as string)
+        if (blob) bytes = Buffer.from(await blob.arrayBuffer())
+      }
+    }
+    return bytes ? await extractPresnapStills(bytes, startSeconds) : []
+  } catch {
+    return []
+  }
+}
 
 function isSchemaTooComplex(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err)
@@ -413,15 +436,20 @@ export async function analyzePosition(
     const checkPrompt = buildPossessionCheckPrompt(scoutedName, scoutedColor)
     const checkKey = [
       clip.source.kind === 'file' ? clip.source.fileUri : clip.source.bytes.toString('base64'),
-      `possession@${readWindow.startOffsetSeconds ?? 0}-${readWindow.endOffsetSeconds ?? ''}@4/medium`,
+      `possession-v2@${readWindow.startOffsetSeconds ?? 0}-${readWindow.endOffsetSeconds ?? ''}@4/high+stills`,
     ]
     const checkHash = hashCacheKey('frame_observation', checkPrompt, checkKey)
     let checkJson = await getCachedResponse<string>(supabase, checkHash)
     if (checkJson == null) {
+      // Zoom: full-resolution and 2x-cropped pre-snap stills, cut from the
+      // source file. The video alone is read at a fixed reduced resolution
+      // where a youth player is a few dozen pixels tall.
+      const stills = await presnapStillsFor(supabase, input.videoId, clip, readWindow.startOffsetSeconds ?? 0)
       const checkResult = await analyzeClipWithGemini(checkPrompt, clip.source, POSSESSION_CHECK_SCHEMA, {
         model: route.model,
         fps: 4,
-        mediaResolution: 'medium',
+        mediaResolution: 'high',
+        images: stills,
         startOffsetSeconds: readWindow.startOffsetSeconds,
         endOffsetSeconds: readWindow.endOffsetSeconds,
       }).catch((err) => {

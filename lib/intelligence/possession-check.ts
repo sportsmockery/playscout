@@ -71,6 +71,11 @@ export function buildPossessionCheckPrompt(opponentName: string, jerseyColor: st
 
 The team being scouted is ${opponentName}, wearing ${jerseyColor}. Call them "scouted". The other team is "other".
 
+You are given, before the clip itself: STILL frames from the start of the play at the film's full
+resolution, and ZOOMED 2x crops of the middle of the field from the same moments. Use the zoomed
+stills to read jersey colours — a person can tell the teams apart at a glance there, and so should you.
+Use the clip to see who ends up with the ball.
+
 Work from the PRE-SNAP picture, in this order:
 1. Find the moment just before the ball is snapped (or kicked).
 2. Find the BALL on the ground and the CENTER over it. The team with the center, a quarterback
