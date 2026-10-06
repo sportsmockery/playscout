@@ -186,9 +186,17 @@ answer and using it is correct — a guessed formation becomes a defensive call 
 Answer each field with EXACTLY one of the ids listed for it — anything else is discarded.
 
   formation    — ${opponentLabel}'s formation at the snap: ${OFFENSIVE_FORMATION_READS.join(', ')}.
-  motion       — none if nobody moved; jet (full speed across), orbit (across then loops back
-                 behind the backfield), short_across (a few steps toward the ball), motion_out
-                 (away from the ball toward the sideline), shift (several players reset), other.
+                 Read the BACKFIELD: QB 4+ yards behind the center is shotgun (3-4 yards with a
+                 back behind him is pistol); three backs in a Y behind a QB under center is
+                 wishbone; QB under center with two backs stacked behind him is i_formation (power_i
+                 when a third back/wing offsets beside them); tight ends and two wings tight off the
+                 ends is double_wing. Do not force a formation onto the nearest id — use other.
+  motion       — none ONLY if you watched the last 2 seconds before the snap and nobody moved.
+                 If any back, wing or receiver moved before the snap, it is motion: jet (full
+                 speed across), orbit (across then loops back behind the backfield), short_across
+                 (a few steps toward the ball), motion_out (away from the ball toward the
+                 sideline), shift (several players reset), other. If the clip starts at or after
+                 the snap, not_visible — never none.
   play_type    — one of ${OFFENSIVE_PLAY_TYPES.join(', ')}. What the play WAS, not what it looked like before the snap. A fake handoff
                  followed by a throw is play_action_pass. A run that starts one way and comes
                  back the other is counter_misdirection. qb_run is a designed quarterback run

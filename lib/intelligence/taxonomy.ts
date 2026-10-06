@@ -50,9 +50,19 @@ export type TendencyType = (typeof TENDENCY_TYPES)[number]
  * A closed list because the rollup groups by what the model calls a formation:
  * free naming fragments one real tendency across several season rows.
  */
+// A formation missing from this list cannot be charted at all: the read is
+// forced onto the nearest id. Scouting the Warriors, every Wishbone and Shotgun
+// snap was filed as Double Wing or Power I and the plan said "two formations,
+// nothing else" about a team that lines up in at least four.
 export const OFFENSIVE_FORMATIONS = [
   'double_wing',
   'power_i',
+  'i_formation',
+  'wishbone',
+  'wing_t',
+  't_formation',
+  'shotgun',
+  'pistol',
   'single_wing_wildcat',
   'trips_spread',
   'twins_pro',
