@@ -154,3 +154,30 @@ describe('passes the main read filed as runs', () => {
     expect(buildPossessionFactBlock(check, 'Warriors')).toContain('THROWN')
   })
 })
+
+describe('coach-confirmed passes in the game plan', () => {
+  it('lists pass clips, and a pass is nobody\'s carry', () => {
+    const report = aggregateScoutReport([
+      {
+        clip_label: 'Clip 52', opponent_possession: 'offense', coach_side: 'offense',
+        offensive_snaps: [{ play_type: 'play_action_pass', result: 'not_visible', gain_yards: null }] as never,
+        possession_check: {
+          play_kind: 'scrimmage', offense: 'scouted', touchdown: 'no',
+          pass: { thrown: 'yes', result: 'unclear', source: 'coach' },
+          ball_carrier: { team: 'scouted', position: 'tailback', jersey_number: '' },
+        },
+      },
+      {
+        clip_label: 'Clip 53', opponent_possession: 'offense', coach_side: 'offense',
+        offensive_snaps: [{ play_type: 'outside_run', result: 'gain', gain_yards: 4 }] as never,
+        possession_check: {
+          play_kind: 'scrimmage', offense: 'scouted', touchdown: 'no',
+          ball_carrier: { team: 'scouted', position: 'tailback', jersey_number: '21' },
+        },
+      },
+    ])
+    expect(report.offense.pass_clips).toEqual(['Clip 52'])
+    expect(report.offense.profile.runPass).toEqual({ readable: 2, runs: 1, passes: 1 })
+    expect(report.offense.ball_carriers).toEqual([{ identifier: '#21 (tailback)', carries: 1, clip_labels: ['Clip 53'] }])
+  })
+})

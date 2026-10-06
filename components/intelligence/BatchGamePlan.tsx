@@ -1,9 +1,11 @@
 'use client';
 
 import { useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { AlertCircle, Target } from 'lucide-react';
 import type { ScoutReport } from '@/lib/db/types';
 import ScoutSides from './ScoutSides';
+import { useAnalysisRuns } from './AnalysisRunProvider';
 
 /**
  * The game plan on a ScoutIQ batch page: the opponent's offense and defense as
@@ -28,30 +30,39 @@ export default function BatchGamePlan({
   /** When the batch's last clip settled; a plan built before that predates these reads. */
   batchFinishedAt: string | null;
 }) {
-  const [report, setReport] = useState<ScoutReport | null>(initialReport);
-  const [loading, setLoading] = useState(false);
+  const [ownReport, setOwnReport] = useState<ScoutReport | null>(null);
   const [error, setError] = useState('');
+  const pathname = usePathname();
+  // The build is owned by the app shell, not this page, so a coach can leave
+  // while the plan is written (it takes a minute or two) and come back to it.
+  // What shows is DERIVED: the newest of this page's own result, a finished
+  // build from the shell, and the plan the page loaded with.
+  const { startRun, runs } = useAnalysisRuns();
+  const runLabel = `the ${opponentName} game plan`;
+  const shellRun = runs.find(
+    (r) => r.moduleKey === 'SCOUTIQ_PLAN' && r.teamId === teamId && r.label === runLabel
+  );
+  const loading = shellRun?.status === 'running';
+  const shellReport = shellRun?.status === 'complete' ? (shellRun.result as ScoutReport | undefined) ?? null : null;
+  const newest = (a: ScoutReport | null, b: ScoutReport | null) =>
+    !a ? b : !b ? a : new Date(a.created_at as string) >= new Date(b.created_at as string) ? a : b;
+  const report = newest(newest(ownReport, shellReport), initialReport);
 
   const stale =
     !!report && !!batchFinishedAt && new Date(report.created_at as string) < new Date(batchFinishedAt);
 
   async function generate() {
-    setLoading(true);
     setError('');
-    try {
-      const res = await fetch('/api/scoutiq/report', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ teamId, opponentId }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Could not generate game plan');
-      setReport(data.scoutReport);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not generate game plan');
-    } finally {
-      setLoading(false);
-    }
+    const run = await startRun({
+      moduleKey: 'SCOUTIQ_PLAN',
+      teamId,
+      label: runLabel,
+      payload: { teamId, opponentId },
+      endpoint: '/api/scoutiq/report',
+      href: pathname,
+    });
+    if (run.status === 'failed') setError(run.error || 'Could not generate game plan');
+    else if (run.result) setOwnReport(run.result as ScoutReport);
   }
 
   return (
@@ -89,6 +100,12 @@ export default function BatchGamePlan({
         </p>
       )}
 
+      {loading && report && (
+        <p className="print:hidden text-xs text-[var(--brand-navy)] bg-[var(--brand-bg)] border border-[var(--brand-border)] rounded-lg p-2 mb-3">
+          Rebuilding — about 1–2 minutes. You can leave this page; the dock tells you when the new plan is ready.
+        </p>
+      )}
+
       {report ? (
         <div className="space-y-4">
           {report.summary && <p className="text-sm text-[var(--brand-ink)]">{report.summary}</p>}
@@ -97,7 +114,7 @@ export default function BatchGamePlan({
       ) : (
         <p className="print:hidden text-sm text-[var(--brand-muted)]">
           {loading
-            ? 'Reading every scouted clip and writing the plan — this takes about a minute.'
+            ? 'Writing the plan from every scouted clip — about 1–2 minutes. You can leave this page; it keeps going and the dock tells you when it is ready.'
             : `No game plan yet. Build it to see ${opponentName}'s offense and defense as separate reports.`}
         </p>
       )}

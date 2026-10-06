@@ -43,6 +43,8 @@ export interface AnalysisRun {
   /** Set when it lands. The page re-attaches to this on return. */
   result?: unknown;
   analysisId?: string | null;
+  /** Where "Open report" goes when the result is not an /analysis/[id] page. */
+  href?: string;
   error?: string;
 }
 
@@ -51,8 +53,12 @@ interface StartInput {
   teamId: string;
   teamName?: string;
   label: string;
-  /** The body posted to /api/intelligence/analyze. */
+  /** The body posted to the endpoint. */
   payload: Record<string, unknown>;
+  /** Defaults to /api/intelligence/analyze. A game-plan build posts to /api/scoutiq/report. */
+  endpoint?: string;
+  /** Where the finished result opens, when it is not an analysis id. */
+  href?: string;
 }
 
 interface AnalysisRunContextValue {
@@ -99,13 +105,14 @@ export default function AnalysisRunProvider({ children }: { children: React.Reac
         label: input.label,
         status: 'running',
         startedAt: Date.now(),
+        href: input.href,
       };
       setRuns((list) => [run, ...list]);
 
       try {
         // No AbortSignal, and that is the point: the request must not be tied
         // to the lifetime of whatever component called this.
-        const res = await fetch('/api/intelligence/analyze', {
+        const res = await fetch(input.endpoint ?? '/api/intelligence/analyze', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(input.payload),
@@ -116,7 +123,7 @@ export default function AnalysisRunProvider({ children }: { children: React.Reac
         const done: AnalysisRun = {
           ...run,
           status: 'complete',
-          result: data.result,
+          result: data.result ?? data.scoutReport,
           analysisId: data.analysisId ?? null,
         };
         update(id, done);

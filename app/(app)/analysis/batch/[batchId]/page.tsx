@@ -92,6 +92,16 @@ export default async function BatchReportPage({
   const opponentName = batchContext.opponent?.name ?? null;
   const opponentId = scouting ? batchContext.opponentId ?? null : null;
   const latestScoutReport = opponentId ? (await getScoutReportsByOpponent(opponentId))[0] ?? null : null;
+  // When a scouting batch has a game plan, the plan IS the report. The generic
+  // write-up below was written once, from the raw per-clip reads, before any
+  // coach correction (side of the ball, pass plays) — on the Warriors game it
+  // still called a team that threw 19 times "run-only" above a plan that had
+  // been fixed. So the plan's own summary leads, and the generic narrative is
+  // not shown beside it.
+  const planHeadline = latestScoutReport?.summary
+    ? (latestScoutReport.summary.match(/^.*?[.!?](\s|$)/)?.[0] ?? latestScoutReport.summary).trim()
+    : null;
+  const showGenericWriteup = !latestScoutReport;
   const reportVideoIds = clips.map((c) => c.videoId);
   const opponentStats = scouting
     ? tallyOpponentStats(await getOpponentStatsIQRuns(teamId, reportVideoIds), reportVideoIds)
@@ -114,7 +124,7 @@ export default async function BatchReportPage({
         moduleKey={batch.module_key as string}
         kind={`${moduleReportKind(batch.module_key as string)} · Combined`}
         subject={teamName}
-        title={(summary?.headline ?? batch.title ?? `${clips.length} clips analyzed`) as string}
+        title={(planHeadline ?? summary?.headline ?? batch.title ?? `${clips.length} clips analyzed`) as string}
         facts={[
           {
             label: 'Clips analyzed',
@@ -269,7 +279,7 @@ export default async function BatchReportPage({
           to scroll past the narrative, the player table, the recurring items
           and the mistake rollup to reach the only two sections they act on.
           The evidence still follows — it just no longer comes first. */}
-      {!!summary?.priorities?.length && (
+      {showGenericWriteup && !!summary?.priorities?.length && (
         <div className="glass-card p-6 mb-5">
           <h2 className="font-bold text-[var(--brand-navy)] mb-4 text-sm uppercase tracking-wide">
             Fix First
@@ -290,7 +300,7 @@ export default async function BatchReportPage({
           </ol>
         </div>
       )}
-      {summary?.practice_focus && summary.practice_focus.length > 0 && (
+      {showGenericWriteup && summary?.practice_focus && summary.practice_focus.length > 0 && (
         <div className="glass-card p-6 mb-5">
           <h2 className="font-bold text-[var(--brand-navy)] mb-3 text-sm uppercase tracking-wide">
             This Week&apos;s Practice Focus
@@ -310,7 +320,7 @@ export default async function BatchReportPage({
 
 
       {/* Cumulative narrative */}
-      {summary && (
+      {showGenericWriteup && summary && (
         <>
           <div className="glass-card p-6 mb-5">
             <h2 className="font-bold text-[var(--brand-navy)] mb-3 text-sm uppercase tracking-wide">
@@ -460,7 +470,7 @@ export default async function BatchReportPage({
       />
 
       {/* Recurring items + mistakes */}
-      {(recurringStrengths.length > 0 || recurringWeaknesses.length > 0) && (
+      {showGenericWriteup && (recurringStrengths.length > 0 || recurringWeaknesses.length > 0) && (
         <div className="grid md:grid-cols-2 gap-5 mb-5">
           <div className="glass-card p-5">
             <h3 className={`font-bold mb-3 text-sm uppercase tracking-wide ${scouting ? 'text-[var(--brand-navy)]' : 'text-emerald-600'}`}>
@@ -501,7 +511,7 @@ export default async function BatchReportPage({
         </div>
       )}
 
-      {aggregate?.mistakeRollup && aggregate.mistakeRollup.length > 0 && (
+      {showGenericWriteup && aggregate?.mistakeRollup && aggregate.mistakeRollup.length > 0 && (
         <div className="glass-card p-5 mb-5">
           <h3 className="font-bold text-[var(--brand-navy)] mb-3 text-sm uppercase tracking-wide">
             Mistakes By Type
