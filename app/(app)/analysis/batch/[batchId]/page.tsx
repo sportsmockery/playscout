@@ -1,4 +1,5 @@
-import { getAnalysisBatchById, getOpponentStatsIQRuns } from '@/lib/db/queries';
+import { getAnalysisBatchById, getOpponentStatsIQRuns, getScoutReportsByOpponent } from '@/lib/db/queries';
+import BatchGamePlan from '@/components/intelligence/BatchGamePlan';
 import { tallyOpponentStats } from '@/lib/intelligence/opponent-stats';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -79,8 +80,10 @@ export default async function BatchReportPage({
   const joinedTeam = (batch as { teams?: { name?: string } | { name?: string }[] }).teams;
   const teamName = (Array.isArray(joinedTeam) ? joinedTeam[0] : joinedTeam)?.name ?? null;
 
-  const opponentName =
-    ((batch.context ?? {}) as { opponent?: { name?: string } }).opponent?.name ?? null;
+  const batchContext = (batch.context ?? {}) as { opponent?: { name?: string }; opponentId?: string };
+  const opponentName = batchContext.opponent?.name ?? null;
+  const opponentId = scouting ? batchContext.opponentId ?? null : null;
+  const latestScoutReport = opponentId ? (await getScoutReportsByOpponent(opponentId))[0] ?? null : null;
   const reportVideoIds = clips.map((c) => c.videoId);
   const opponentStats = scouting
     ? tallyOpponentStats(await getOpponentStatsIQRuns(teamId, reportVideoIds), reportVideoIds)
@@ -127,6 +130,19 @@ export default async function BatchReportPage({
         ]}
         printNote={`playscout.ai · ${moduleReportKind(batch.module_key as string)} built from ${completed} clip${completed === 1 ? '' : 's'} of film.`}
       />
+
+      {/* A scouting batch exists to produce a game plan, split into their
+          offense and their defense. It leads the page; the generic combined
+          write-up below mixes both sides of the ball. */}
+      {opponentId && (
+        <BatchGamePlan
+          teamId={teamId}
+          opponentId={opponentId}
+          opponentName={opponentName ?? 'Opponent'}
+          initialReport={latestScoutReport}
+          batchFinishedAt={(batch.completed_at as string | null) ?? null}
+        />
+      )}
 
       {/* For a StatsIQ batch the box score IS the report, so it leads — and it
           is computed rather than written, so it is here even when the
