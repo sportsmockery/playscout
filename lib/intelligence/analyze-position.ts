@@ -95,7 +95,7 @@ import {
   schemeHasQbMesh,
 } from './stat-verify'
 import { resolveLevelTier } from './levels'
-import { isMisdirectedRun, resolveFilmSubject, subjectNameFor } from './film-subject'
+import { distinctOpponentColor, isMisdirectedRun, resolveFilmSubject, subjectNameFor } from './film-subject'
 
 type ModuleConfig = {
   buildPrompt: (input: ModulePromptInput) => string
@@ -331,10 +331,16 @@ export async function analyzePosition(
           // the opponent (subjectName above), and a box score with no colour
           // has no way to tell which of the two teams on the field to chart.
           // The opponent record's colour says which; with none on file it
-          // stays on the no-colour branch rather than guessing.
+          // stays on the no-colour branch rather than guessing. Nor when it
+          // matches one of OUR colours: then it would chart our players as
+          // theirs (see distinctOpponentColor).
           jersey_color: misdirected
             ? input.moduleKey === 'STATSIQ'
-              ? filmSubject.opponentJerseyColor ?? undefined
+              ? distinctOpponentColor(filmSubject.opponentJerseyColor, [
+                  input.team.jersey_color,
+                  teamRow?.home_jersey_color as string | null | undefined,
+                  teamRow?.away_jersey_color as string | null | undefined,
+                ])
               : undefined
             : input.team.jersey_color ?? unambiguousTeamColor,
           game_type: gameType ?? undefined,
