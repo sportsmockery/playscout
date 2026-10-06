@@ -16,6 +16,7 @@ import {
   useBeforeUnloadWhileRunning,
 } from '@/components/intelligence/AnalysisRunProvider';
 import ScoutSides from '@/components/intelligence/ScoutSides';
+import { useGamePlanBuild } from '@/components/intelligence/useGamePlanBuild';
 import { parseClipRanges } from '@/lib/scout/clip-ranges';
 
 interface Props {
@@ -245,9 +246,6 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
   useBeforeUnloadWhileRunning();
   const [clipLoading, setClipLoading] = useState<string | null>(null);
   const [clipError, setClipError] = useState('');
-  const [reportLoading, setReportLoading] = useState(false);
-  const [reportError, setReportError] = useState('');
-  const [latestReport, setLatestReport] = useState<ScoutReport | null>(scoutReports[0] ?? null);
   const [queued, setQueued] = useState('');
   const [queueing, setQueueing] = useState(false);
   const [queueVersion, setQueueVersion] = useState(0);
@@ -352,25 +350,13 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
     }
   }
 
-  async function generateGamePlan() {
-    if (!selectedOpponentId) return;
-    setReportLoading(true);
-    setReportError('');
-    try {
-      const res = await fetch('/api/scoutiq/report', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ teamId, opponentId: selectedOpponentId }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Could not generate game plan');
-      setLatestReport(data.scoutReport);
-    } catch (err) {
-      setReportError(err instanceof Error ? err.message : 'Could not generate game plan');
-    } finally {
-      setReportLoading(false);
-    }
-  }
+  // Written on the server; this waits for it, and resumes waiting if the
+  // coach leaves and comes back mid-build.
+  const plan = useGamePlanBuild(teamId, selectedOpponentId, scoutReports[0] ?? null);
+  const latestReport = plan.report;
+  const reportLoading = plan.building;
+  const reportError = plan.error;
+  const generateGamePlan = plan.build;
 
   return (
     <div className="space-y-6">

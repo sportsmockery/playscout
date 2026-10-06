@@ -181,3 +181,17 @@ describe('coach-confirmed passes in the game plan', () => {
     expect(report.offense.ball_carriers).toEqual([{ identifier: '#21 (tailback)', carries: 1, clip_labels: ['Clip 53'] }])
   })
 })
+
+describe('a coach-confirmed pass on a clip the check called a kick', () => {
+  it('still counts as a pass', () => {
+    const report = aggregateScoutReport([
+      {
+        clip_label: 'Clip 65', opponent_possession: 'offense', coach_side: 'offense',
+        offensive_snaps: [{ play_type: 'play_action_pass', result: 'not_visible', gain_yards: null }] as never,
+        possession_check: { play_kind: 'kickoff', offense: 'scouted', touchdown: 'no', pass: { thrown: 'yes', result: 'unclear', source: 'coach' } },
+      },
+    ])
+    expect(report.offense.profile.runPass.passes).toBe(1)
+    expect(report.offense.pass_clips).toEqual(['Clip 65'])
+  })
+})

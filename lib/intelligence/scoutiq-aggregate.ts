@@ -560,7 +560,11 @@ export function reconcileScoutClip(clip: ScoutClipEvidence): ScoutClipEvidence {
     }
   }
   const check = c.possession_check
-  if (check?.play_kind && NOT_A_SCRIMMAGE_SNAP.has(check.play_kind)) {
+  // A coach who says a pass was thrown on this clip has settled that it is a
+  // scrimmage play, whatever the check took it for (it called several of the
+  // Warriors' passes kickoffs, which threw the play away entirely).
+  const coachPass = check?.pass?.thrown === 'yes' && check.pass.source === 'coach'
+  if (!coachPass && check?.play_kind && NOT_A_SCRIMMAGE_SNAP.has(check.play_kind)) {
     c = { ...c, offensive_snaps: null, defensive_snaps: null }
   }
   // A throw the high-resolution check saw outranks a "run" from the 2fps main
