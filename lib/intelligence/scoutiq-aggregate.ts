@@ -2,7 +2,7 @@ import { rollupTendency, type TendencyObservation } from './tendency-rollup'
 import { countRepeats } from './aggregate-batch'
 import { OFFENSIVE_FORMATIONS, DEFENSIVE_FRONTS, EXPLOSIVE_PLAY_YARDS, type AttackCategory, type StopCategory } from './taxonomy'
 import { aggregateOffensiveSnaps, type OffensiveProfile } from './aggregate-offense'
-import type { OffensiveSnap } from './offense-structure'
+import { RUN_PLAY_TYPES, type OffensiveSnap } from './offense-structure'
 import { aggregateDefensiveSnaps, type DefensiveProfile } from './aggregate-defense'
 import type { DefensiveSnap } from './defense-structure'
 
@@ -41,6 +41,7 @@ export interface ScoutClipEvidence {
     play_kind?: string
     offense?: string
     touchdown?: string
+    pass?: { thrown?: string; result?: string }
     ball_carrier?: { team?: string; position?: string; jersey_number?: string } | null
   } | null
   /**
@@ -559,6 +560,33 @@ export function reconcileScoutClip(clip: ScoutClipEvidence): ScoutClipEvidence {
   const check = c.possession_check
   if (check?.play_kind && NOT_A_SCRIMMAGE_SNAP.has(check.play_kind)) {
     c = { ...c, offensive_snaps: null, defensive_snaps: null }
+  }
+  // A throw the high-resolution check saw outranks a "run" from the 2fps main
+  // read, which filed obvious passes as runs (the coach: "they pass a lot";
+  // the plan: "zero passes"). The main read saw run ACTION and then the ball
+  // was thrown — that is play action by definition. The receiver is not
+  // known, so the run's ball carrier is not kept as one.
+  if (check?.pass?.thrown === 'yes' && c.offensive_snaps?.some((s) => s.play_type && RUN_PLAY_TYPES.includes(s.play_type))) {
+    const result = check.pass.result
+    c = {
+      ...c,
+      offensive_snaps: c.offensive_snaps.map((s) =>
+        s.play_type && RUN_PLAY_TYPES.includes(s.play_type)
+          ? {
+              ...s,
+              play_type: 'play_action_pass' as const,
+              ball_carrier: null,
+              ...(result === 'incomplete'
+                ? { result: 'incomplete' as const, gain_yards: 0 }
+                : result === 'intercepted'
+                  ? { result: 'interception' as const, gain_yards: null }
+                  : result === 'complete'
+                    ? {}
+                    : { gain_yards: null, result: 'not_visible' as const }),
+            }
+          : s
+      ),
+    }
   }
   if (check && check.touchdown !== 'yes' && c.offensive_snaps?.some((s) => s.result === 'touchdown')) {
     c = {

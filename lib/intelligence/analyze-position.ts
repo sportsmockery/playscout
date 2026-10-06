@@ -124,7 +124,11 @@ export const MODULE_MAP: Record<string, ModuleConfig> = {
   RBIQ:      { buildPrompt: buildRBIQSystemPrompt,      schema: RBIQ_RESPONSE_SCHEMA,      fps: 8, resolution: 'medium' },
   TEAMIQ:    { buildPrompt: buildTEAMIQSystemPrompt,    schema: TEAMIQ_RESPONSE_SCHEMA,    fps: 2, resolution: 'low' },
   MISTAKEIQ: { buildPrompt: buildMISTAKEIQSystemPrompt, schema: MISTAKEIQ_RESPONSE_SCHEMA, fps: 4, resolution: 'medium' },
-  SCOUTIQ:   { buildPrompt: buildSCOUTIQSystemPrompt,   schema: SCOUTIQ_RESPONSE_SCHEMA,   fps: 2, resolution: 'low' },
+  // 8fps/high: at 2fps/low a throw (a sub-second event) fell between frames
+  // and a whole game's passes were charted as runs — "zero passes" for a team
+  // the coach says throws a lot. A coach scouts one opponent a week; the cost
+  // of reading it properly is worth paying.
+  SCOUTIQ:   { buildPrompt: buildSCOUTIQSystemPrompt,   schema: SCOUTIQ_RESPONSE_SCHEMA,   fps: 8, resolution: 'high' },
   RANKERIQ:  { buildPrompt: buildRANKERIQSystemPrompt,  schema: RANKERIQ_RESPONSE_SCHEMA,  fps: 6, resolution: 'medium' },
   // 6fps/medium, MEASURED — see scripts/eval-statsiq.ts.
   //
@@ -436,7 +440,7 @@ export async function analyzePosition(
     const checkPrompt = buildPossessionCheckPrompt()
     const checkKey = [
       clip.source.kind === 'file' ? clip.source.fileUri : clip.source.bytes.toString('base64'),
-      `possession-v5-td@${readWindow.startOffsetSeconds ?? 0}-${readWindow.endOffsetSeconds ?? ''}@4/high+stills`,
+      `possession-v6-pass@${readWindow.startOffsetSeconds ?? 0}-${readWindow.endOffsetSeconds ?? ''}@8/high+stills`,
     ]
     const checkHash = hashCacheKey('frame_observation', checkPrompt, checkKey)
     let checkJson = await getCachedResponse<string>(supabase, checkHash)
@@ -447,7 +451,7 @@ export async function analyzePosition(
       const stills = await presnapStillsFor(supabase, input.videoId, clip, readWindow.startOffsetSeconds ?? 0)
       const checkResult = await analyzeClipWithGemini(checkPrompt, clip.source, POSSESSION_CHECK_SCHEMA, {
         model: route.model,
-        fps: 4,
+        fps: 8,
         mediaResolution: 'high',
         images: stills,
         startOffsetSeconds: readWindow.startOffsetSeconds,

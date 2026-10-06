@@ -44,6 +44,17 @@ export interface PossessionCheck {
    * this read says yes too.
    */
   touchdown?: 'yes' | 'no' | 'unclear'
+  /**
+   * Was the ball THROWN forward on this snap? Asked here because the main read
+   * samples at 2fps in low resolution and filed obvious passes as runs — a
+   * coach watching the same film said "they pass a lot" while the plan read
+   * "zero passes on 28 snaps". A throw is a sub-second event; this read sees
+   * it at 4fps, high resolution, with full-resolution stills.
+   */
+  pass?: {
+    thrown: 'yes' | 'no' | 'unclear'
+    result: 'complete' | 'incomplete' | 'intercepted' | 'unclear'
+  }
 }
 
 const PLAY_KINDS: readonly PlayKind[] = ['scrimmage', 'kickoff', 'punt', 'extra_point', 'no_play', 'unclear']
@@ -73,10 +84,13 @@ export const POSSESSION_CHECK_SCHEMA = {
     ball_carrier_position: { type: Type.STRING },
     ball_carrier_number: { type: Type.STRING },
     touchdown: { type: Type.STRING },
+    ball_thrown: { type: Type.STRING },
+    pass_result: { type: Type.STRING },
   },
   required: [
     'play_kind', 'offense_jersey', 'defense_jersey', 'how_determined', 'confidence',
     'ball_carrier_side', 'ball_carrier_position', 'ball_carrier_number', 'touchdown',
+    'ball_thrown', 'pass_result',
   ],
 }
 
@@ -116,9 +130,17 @@ Work from the PRE-SNAP picture, in this order:
    (or a referee signal a touchdown with both arms up). A long run that ends at a tackle, goes out
    of bounds, or leaves the frame before the goal line is "no" or "unclear". Never infer a score
    from a long gain, a celebration, or the next clip being a kickoff.
-7. how_determined: one sentence naming what you saw ("white jerseys over the ball with a QB under
+7. ball_thrown: "yes" if the ball LEAVES THE QUARTERBACK'S (or any player's) HAND IN THE AIR, forward,
+   to another player — even after a fake handoff, even a short throw or a pitch-and-throw trick play.
+   Watch the quarterback after the snap: a handoff or pitch keeps the ball low and close; a throw
+   goes up and travels through the air. Youth teams that line up in run formations throw from them
+   all the time — the formation tells you nothing. "no" if nobody threw it. "unclear" if the
+   moment after the snap is not visible.
+   pass_result: if thrown, "complete" (caught by the passer's team), "incomplete" (hit the ground),
+   "intercepted" (caught by the defense) or "unclear". If not thrown, "unclear".
+8. how_determined: one sentence naming what you saw ("white jerseys over the ball with a QB under
    center and two wingbacks; black jerseys spread across from them").
-8. confidence: 0.0-1.0 that offense_jersey is right. Use the whole range — a clear pre-snap
+9. confidence: 0.0-1.0 that offense_jersey is right. Use the whole range — a clear pre-snap
    picture is high, a frame that starts after the snap or a crowded pile is low.
 
 Return ONLY the JSON.`
@@ -162,6 +184,8 @@ export function parsePossessionCheck(raw: unknown, scoutedColor: string): Posses
     carrierSide === 'offense' ? offense : carrierSide === 'defense' ? flip[offense] : 'unclear'
   const carrierPosition = str(r.ball_carrier_position)
   const td = str(r.touchdown).toLowerCase()
+  const thrown = str(r.ball_thrown).toLowerCase()
+  const passResult = str(r.pass_result).toLowerCase()
   return {
     play_kind: (PLAY_KINDS as readonly string[]).includes(kind) ? (kind as PlayKind) : 'unclear',
     offense,
@@ -174,6 +198,10 @@ export function parsePossessionCheck(raw: unknown, scoutedColor: string): Posses
         ? { team: carrierTeam, position: carrierPosition, jersey_number: number }
         : null,
     touchdown: td === 'yes' || td === 'no' ? td : 'unclear',
+    pass: {
+      thrown: thrown === 'yes' || thrown === 'no' ? thrown : 'unclear',
+      result: (['complete', 'incomplete', 'intercepted'] as const).find((x) => x === passResult) ?? 'unclear',
+    },
   }
 }
 
@@ -202,6 +230,12 @@ export function buildPossessionFactBlock(check: PossessionCheck, opponentName: s
     carrier && carrier.team === 'scouted'
       ? `The ${opponentName} player who ended up with the ball lined up at ${carrier.position || 'an unidentified spot'}${carrier.jersey_number ? ` and wears #${carrier.jersey_number}` : ''}.`
       : ''
+  const throwLine =
+    check.pass?.thrown === 'yes'
+      ? `The ball was THROWN on this play (a separate high-resolution check saw it leave the passer's hand${
+          check.pass.result !== 'unclear' ? `; ${check.pass.result}` : ''
+        }). Chart it as a pass — any backfield action before the throw makes it play_action_pass.`
+      : ''
   return `
 === POSSESSION — ALREADY DETERMINED, DO NOT RE-DECIDE IT ===
 A separate pre-snap check established who had the ball: the offense wore ${check.offense_jersey || 'one colour'}, the defense
@@ -209,5 +243,6 @@ wore ${check.defense_jersey || 'the other'} (${check.how_determined}).
 ${settled === 'offense'
     ? `${opponentName} are on OFFENSE in this clip. Set opponent_possession to "offense". Chart offensive_snaps, stop_points and key_players for ${opponentName}'s offense; leave defensive_snaps, attack_points and target_players empty.`
     : `${opponentName} are on DEFENSE in this clip. Set opponent_possession to "defense". Chart defensive_snaps, attack_points and target_players for ${opponentName}'s defense; leave offensive_snaps, stop_points and key_players empty. The team with the ball is the OTHER team — never file its plays as ${opponentName}'s.`}
-${carrierLine}`.trim()
+${carrierLine}
+${throwLine}`.trim()
 }
