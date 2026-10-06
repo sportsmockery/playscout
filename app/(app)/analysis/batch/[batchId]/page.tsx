@@ -4,7 +4,7 @@ import { tallyOpponentStats } from '@/lib/intelligence/opponent-stats';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { AlertCircle, ArrowLeft, BarChart3, CheckCircle2, Clock, Film, TrendingDown, TrendingUp } from 'lucide-react';
-import type { BatchAggregate } from '@/lib/intelligence/aggregate-batch';
+import { repeatThreshold, repeatedOnly, type BatchAggregate } from '@/lib/intelligence/aggregate-batch';
 import type { BatchSummary } from '@/lib/intelligence/batch-summary';
 import ClipBreakdown from './ClipBreakdown';
 import RetrySummaryButton from './RetrySummaryButton';
@@ -66,6 +66,14 @@ export default async function BatchReportPage({
       comment: commentByVideo.get(job.video_id as string) ?? null,
     };
   }).sort((a, b) => clipNo(a.videoTitle) - clipNo(b.videoTitle));
+
+  // A "pattern" needs repetition. Applied here as well as in the prompt so
+  // reports written before the threshold existed stop calling a one-clip
+  // finding something that keeps happening.
+  const repeatMin = repeatThreshold(aggregate?.clipsAnalyzed ?? clips.length);
+  const whatRepeats = (summary?.what_repeats ?? []).filter((r) => r.clips_seen >= repeatMin);
+  const recurringStrengths = aggregate ? repeatedOnly(aggregate.recurringStrengths, aggregate.clipsAnalyzed) : [];
+  const recurringWeaknesses = aggregate ? repeatedOnly(aggregate.recurringWeaknesses, aggregate.clipsAnalyzed) : [];
 
   const stillRunning = ['queued', 'running'].includes(batch.status as string);
   const completed = clips.filter((c) => c.result).length;
@@ -319,16 +327,16 @@ export default async function BatchReportPage({
             )}
           </div>
 
-          {summary.what_repeats?.length > 0 && (
+          {whatRepeats.length > 0 && (
             <div className="glass-card p-6 mb-5">
               <h2 className="font-bold text-[var(--brand-navy)] mb-1 text-sm uppercase tracking-wide">
                 What Keeps Happening
               </h2>
               <p className="text-[11px] text-[var(--brand-muted)] mb-4">
-                Patterns that show up across multiple clips — not one-off reps.
+                Seen in {repeatMin} or more clips — one-off reps are left out.
               </p>
               <ul className="space-y-3">
-                {summary.what_repeats.map((r, i) => (
+                {whatRepeats.map((r, i) => (
                   <li key={i} className="flex items-start gap-3">
                     <span className="shrink-0 text-[11px] font-bold bg-[var(--brand-navy)] text-white rounded-full px-2 py-0.5 mt-0.5">
                       {r.clips_seen} clip{r.clips_seen === 1 ? '' : 's'}
@@ -452,14 +460,17 @@ export default async function BatchReportPage({
       />
 
       {/* Recurring items + mistakes */}
-      {aggregate && (aggregate.recurringStrengths.length > 0 || aggregate.recurringWeaknesses.length > 0) && (
+      {(recurringStrengths.length > 0 || recurringWeaknesses.length > 0) && (
         <div className="grid md:grid-cols-2 gap-5 mb-5">
           <div className="glass-card p-5">
             <h3 className={`font-bold mb-3 text-sm uppercase tracking-wide ${scouting ? 'text-[var(--brand-navy)]' : 'text-emerald-600'}`}>
               {scouting ? 'What They Do Well — Plan Around It' : 'Consistent Strengths'}
             </h3>
             <ul className="space-y-2">
-              {aggregate.recurringStrengths.map((s, i) => (
+              {recurringStrengths.length === 0 && (
+                <li className="text-sm text-[var(--brand-muted)]">Nothing showed up in {repeatMin}+ clips.</li>
+              )}
+              {recurringStrengths.map((s, i) => (
                 <li key={i} className="flex items-start gap-2 text-sm text-[var(--brand-ink)]">
                   <span className="shrink-0 text-[10px] font-bold text-emerald-700 bg-emerald-50 rounded-full px-1.5 py-0.5 mt-0.5">
                     {s.clips}×
@@ -474,7 +485,10 @@ export default async function BatchReportPage({
               {scouting ? 'Recurring Flaw To Attack' : 'Recurring Problems'}
             </h3>
             <ul className="space-y-2">
-              {aggregate.recurringWeaknesses.map((w, i) => (
+              {recurringWeaknesses.length === 0 && (
+                <li className="text-sm text-[var(--brand-muted)]">Nothing showed up in {repeatMin}+ clips.</li>
+              )}
+              {recurringWeaknesses.map((w, i) => (
                 <li key={i} className="flex items-start gap-2 text-sm text-[var(--brand-ink)]">
                   <span className="shrink-0 text-[10px] font-bold text-red-700 bg-red-50 rounded-full px-1.5 py-0.5 mt-0.5">
                     {w.clips}×
