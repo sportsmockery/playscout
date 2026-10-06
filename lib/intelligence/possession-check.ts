@@ -82,9 +82,14 @@ stills to read jersey colours. Use the clip to see who ends up with the ball.
 
 Work from the PRE-SNAP picture, in this order:
 1. Find the moment just before the ball is snapped (or kicked).
-2. Find the BALL on the ground and the player over it (the center). The team with the center, a
-   quarterback right behind him and backs in the backfield is the OFFENSE. The team across the
-   ball from them is the DEFENSE. On a kickoff or punt, the OFFENSE is the KICKING team.
+2. Find the BALL on the ground. Look at how far each team's players stand from it:
+   - The OFFENSE is packed tight around the ball: a center over it, a quarterback right behind him,
+     backs and wings within a few yards. Nobody on offense is far behind the ball except a lone
+     deep back or a split-out receiver.
+   - The DEFENSE stands much FARTHER BACK from the ball: linemen across from the center, then
+     linebackers several yards off the ball, and deep players well behind them.
+   The tight cluster with nobody deep is the offense; the team spread out and back from the ball
+   is the defense. On a kickoff or punt, the OFFENSE is the KICKING team.
    Do NOT decide it from which way the play goes, who scores, which sideline is closer, or which
    team fills more of the frame. Both teams may run the same formation.
 3. offense_jersey: the main colour of the JERSEY BODY worn by the offense ("white", "black").
