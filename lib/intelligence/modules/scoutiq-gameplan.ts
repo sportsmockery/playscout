@@ -153,7 +153,14 @@ ${(() => {
   return `They THREW on ${rp.passes} of ${rp.readable} snaps where run/pass was readable (${Math.round((rp.passes / Math.max(rp.readable, 1)) * 100)}%)${clips.length ? `, in ${clips.join(', ')}` : ''}.
 These are real passes, not fakes. Never describe ${ctx.opponentName} as run-only, as a team that does not throw, or say
 nothing forces us to defend a pass. Their pass game is part of who they are and the defensive plan must answer it:
-how we cover it, who rushes, and what the run action before the throw looks like.`
+how we cover it, who rushes, and what the run action before the throw looks like.${
+    rp.passes / Math.max(rp.readable, 1) >= 0.3
+      ? `
+At this share they are a RUN-AND-PASS offense. Do NOT call them a "run team", "power run team" or "running team"
+anywhere — not in the summary, not in the offense summary, not in the identity points. Lead with the fact that
+they throw on ${Math.round((rp.passes / Math.max(rp.readable, 1)) * 100)}% of readable snaps, then describe the run game.`
+      : ''
+  }`
 })()}
 
 Situational tells on offense:

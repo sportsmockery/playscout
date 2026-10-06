@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { requireTeamMember, WRITE_ROLES } from '@/lib/auth/require-team-member'
 import { guardAIRequest } from '@/lib/ai/guard'
@@ -132,105 +132,140 @@ export async function POST(req: NextRequest) {
     const aggregated = aggregateScoutReport(clips)
     const basedOnVideoIds = [...new Set(scoutResults.map((r) => r.video_id))]
 
-    const [{ data: team }, players, playbooks] = await Promise.all([
-      supabase.from('teams').select('name, age_group, level, offensive_style, defensive_style, game_type').eq('id', teamId).single(),
-      getPlayersByTeam(teamId),
-      getPlaybooksByTeam(teamId),
-    ])
+    // The plan is written AFTER the response, on the server. Writing it inside
+    // the request tied it to the browser: a coach who switched apps on a phone
+    // killed the request and the build failed. The client polls GET for a
+    // report newer than requestedAt.
+    const requestedAt = new Date().toISOString()
+    after(async () => {
+      try {
+        const [{ data: team }, players, playbooks] = await Promise.all([
+          supabase.from('teams').select('name, age_group, level, offensive_style, defensive_style, game_type').eq('id', teamId).single(),
+          getPlayersByTeam(teamId),
+          getPlaybooksByTeam(teamId),
+        ])
 
-    let ownPlaybookSummary = '(no playbook on file)'
-    if (playbooks.length) {
-      const latest = playbooks[0]
-      const plays = await getPlaybookPlays(latest.id)
-      const playNames = plays.map((p) => p.play_name).filter(Boolean).slice(0, 20)
-      ownPlaybookSummary = `Playbook "${latest.title}": ${playNames.join(', ') || `${plays.length} plays on file`}`
-    }
+        let ownPlaybookSummary = '(no playbook on file)'
+        if (playbooks.length) {
+          const latest = playbooks[0]
+          const plays = await getPlaybookPlays(latest.id)
+          const playNames = plays.map((p) => p.play_name).filter(Boolean).slice(0, 20)
+          ownPlaybookSummary = `Playbook "${latest.title}": ${playNames.join(', ') || `${plays.length} plays on file`}`
+        }
 
-    const systemPrompt = buildScoutIQGamePlanPrompt({
-      opponentName: opponent.name,
-      opponentAgeGroup: opponent.age_group,
-      teamName: team?.name,
-      teamAgeGroup: team?.age_group,
-      teamLevel: team?.level,
-      teamOffensiveStyle: team?.offensive_style,
-      teamDefensiveStyle: team?.defensive_style,
-      gameType: team?.game_type,
-      aggregated,
-      ownRosterSummary: buildRosterSummary(players),
-      ownPlaybookSummary,
+        const systemPrompt = buildScoutIQGamePlanPrompt({
+          opponentName: opponent.name,
+          opponentAgeGroup: opponent.age_group,
+          teamName: team?.name,
+          teamAgeGroup: team?.age_group,
+          teamLevel: team?.level,
+          teamOffensiveStyle: team?.offensive_style,
+          teamDefensiveStyle: team?.defensive_style,
+          gameType: team?.game_type,
+          aggregated,
+          ownRosterSummary: buildRosterSummary(players),
+          ownPlaybookSummary,
+        })
+
+        const route = getRoute('game_strategy')
+        const result = await callClaude(route.model, systemPrompt, [
+          { role: 'user', content: 'Generate the game plan now, following the JSON schema exactly.' },
+        ], {
+          // A whole game now carries two reports — their offense AND their
+          // defense, each with a play log and clip citations — and 8000 tokens cut
+          // a 73-clip Warriors plan off mid-sentence. Streamed, because a
+          // non-streaming call this long fails on the HTTP timeout first.
+          maxTokens: 24000,
+          stream: true,
+        })
+
+        await recordUsage(supabase, {
+          teamId, userId: user.id, jobType: 'game_strategy',
+          provider: route.provider, model: route.model,
+          inputTokens: result.usage.inputTokens, outputTokens: result.usage.outputTokens,
+        })
+
+        let gamePlan: ScoutIQGamePlan
+        try {
+          const cleaned = result.text.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim()
+          gamePlan = JSON.parse(cleaned)
+        } catch {
+          throw new Error(`Invalid JSON from model: ${result.text.slice(0, 300)}`)
+        }
+
+        // Belt-and-suspenders drill safety filter on the practice recommendations.
+        gamePlan.practice_week_focus = applyDrillSafetyFilter(
+          gamePlan.practice_week_focus ?? [],
+          team?.game_type,
+          resolveLevelTier(team),
+        ).drills
+
+        const { error: saveErr } = await supabase
+          .from('scout_reports')
+          .insert({
+            team_id: teamId,
+            opponent_id: opponentId,
+            based_on_video_ids: basedOnVideoIds,
+            offensive_tendencies: aggregated.offensive_tendencies,
+            defensive_tendencies: aggregated.defensive_tendencies,
+            formations: aggregated.formations,
+            target_players: aggregated.target_players,
+            situational_tells: aggregated.situational_tells,
+            // Ranked by how many clips each appeared in. Previously computed,
+            // fed to the game-plan prompt, and then thrown away.
+            attack_points: aggregated.attack_points,
+            game_plan: gamePlan,
+            evidence_sufficiency: aggregated.evidence_sufficiency,
+            // The two halves of the scout, each with its own charted evidence.
+            offense_scout: aggregated.offense,
+            defense_scout: {
+              clips: aggregated.evidence_sufficiency.defensive_clips,
+              fronts: aggregated.defensive_fronts,
+              profile: aggregated.defensive_profile,
+            },
+            summary: gamePlan.summary,
+            model_provider: route.provider,
+            model_name: route.model,
+          })
+          .select()
+          .single()
+
+        if (saveErr) {
+          throw new Error(`Game plan generated but could not be saved: ${saveErr.message}`)
+        }
+      } catch (err) {
+        console.error('[scoutiq/report] background game plan failed:', err instanceof Error ? err.message : err)
+      }
     })
 
-    const route = getRoute('game_strategy')
-    const result = await callClaude(route.model, systemPrompt, [
-      { role: 'user', content: 'Generate the game plan now, following the JSON schema exactly.' },
-    ], {
-      // A whole game now carries two reports — their offense AND their
-      // defense, each with a play log and clip citations — and 8000 tokens cut
-      // a 73-clip Warriors plan off mid-sentence. Streamed, because a
-      // non-streaming call this long fails on the HTTP timeout first.
-      maxTokens: 24000,
-      stream: true,
-    })
-
-    await recordUsage(supabase, {
-      teamId, userId: user.id, jobType: 'game_strategy',
-      provider: route.provider, model: route.model,
-      inputTokens: result.usage.inputTokens, outputTokens: result.usage.outputTokens,
-    })
-
-    let gamePlan: ScoutIQGamePlan
-    try {
-      const cleaned = result.text.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim()
-      gamePlan = JSON.parse(cleaned)
-    } catch {
-      return NextResponse.json({ error: `Invalid JSON from model: ${result.text.slice(0, 300)}` }, { status: 500 })
-    }
-
-    // Belt-and-suspenders drill safety filter on the practice recommendations.
-    gamePlan.practice_week_focus = applyDrillSafetyFilter(
-      gamePlan.practice_week_focus ?? [],
-      team?.game_type,
-      resolveLevelTier(team),
-    ).drills
-
-    const { data: saved, error: saveErr } = await supabase
-      .from('scout_reports')
-      .insert({
-        team_id: teamId,
-        opponent_id: opponentId,
-        based_on_video_ids: basedOnVideoIds,
-        offensive_tendencies: aggregated.offensive_tendencies,
-        defensive_tendencies: aggregated.defensive_tendencies,
-        formations: aggregated.formations,
-        target_players: aggregated.target_players,
-        situational_tells: aggregated.situational_tells,
-        // Ranked by how many clips each appeared in. Previously computed,
-        // fed to the game-plan prompt, and then thrown away.
-        attack_points: aggregated.attack_points,
-        game_plan: gamePlan,
-        evidence_sufficiency: aggregated.evidence_sufficiency,
-        // The two halves of the scout, each with its own charted evidence.
-        offense_scout: aggregated.offense,
-        defense_scout: {
-          clips: aggregated.evidence_sufficiency.defensive_clips,
-          fronts: aggregated.defensive_fronts,
-          profile: aggregated.defensive_profile,
-        },
-        summary: gamePlan.summary,
-        model_provider: route.provider,
-        model_name: route.model,
-      })
-      .select()
-      .single()
-
-    if (saveErr) {
-      console.error('scout_reports save error:', saveErr)
-      return NextResponse.json({ error: `Game plan generated but could not be saved: ${saveErr.message}` }, { status: 500 })
-    }
-
-    return NextResponse.json({ scoutReport: saved })
+    return NextResponse.json({ status: 'building', requestedAt }, { status: 202 })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'ScoutIQ report generation failed'
     return NextResponse.json({ error: message }, { status: 500 })
   }
+}
+
+/**
+ * GET /api/scoutiq/report?teamId=&opponentId= — the newest saved game plan.
+ * What a client polls after POST returns 202, and what a page re-reads when a
+ * coach comes back to it mid-build.
+ */
+export async function GET(req: NextRequest) {
+  const teamId = req.nextUrl.searchParams.get('teamId')
+  const opponentId = req.nextUrl.searchParams.get('opponentId')
+  if (!teamId || !opponentId) {
+    return NextResponse.json({ error: 'teamId and opponentId are required.' }, { status: 400 })
+  }
+  const access = await requireTeamMember(teamId)
+  if (access.error) return access.error
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('scout_reports')
+    .select('*')
+    .eq('team_id', teamId)
+    .eq('opponent_id', opponentId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  return NextResponse.json({ scoutReport: data ?? null })
 }
