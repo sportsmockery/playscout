@@ -163,7 +163,14 @@ export async function POST(req: NextRequest) {
     const route = getRoute('game_strategy')
     const result = await callClaude(route.model, systemPrompt, [
       { role: 'user', content: 'Generate the game plan now, following the JSON schema exactly.' },
-    ], 8000)
+    ], {
+      // A whole game now carries two reports — their offense AND their
+      // defense, each with a play log and clip citations — and 8000 tokens cut
+      // a 73-clip Warriors plan off mid-sentence. Streamed, because a
+      // non-streaming call this long fails on the HTTP timeout first.
+      maxTokens: 24000,
+      stream: true,
+    })
 
     await recordUsage(supabase, {
       teamId, userId: user.id, jobType: 'game_strategy',
