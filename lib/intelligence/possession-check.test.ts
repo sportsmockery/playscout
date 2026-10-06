@@ -122,3 +122,35 @@ describe('touchdowns and coach tags in the report', () => {
     expect(report.offense.ball_carriers).toEqual([])
   })
 })
+
+describe('passes the main read filed as runs', () => {
+  const runClip = (pass: Record<string, string> | undefined) => ({
+    clip_label: 'Clip 36',
+    opponent_possession: 'offense' as const,
+    offensive_snaps: [{ play_type: 'outside_run', result: 'gain', gain_yards: 12, ball_carrier: 'rb' }] as never,
+    possession_check: { play_kind: 'scrimmage', offense: 'scouted', touchdown: 'no', pass },
+  })
+
+  it('turns a run into a pass when the check saw the ball thrown', () => {
+    const report = aggregateScoutReport([runClip({ thrown: 'yes', result: 'complete' })])
+    expect(report.offense.profile.runPass).toEqual({ readable: 1, runs: 0, passes: 1 })
+    expect(report.offense.explosive_plays[0]).toMatchObject({ play_type: 'play_action_pass', gain: 12 })
+  })
+
+  it('records an incompletion with no gain', () => {
+    const report = aggregateScoutReport([runClip({ thrown: 'yes', result: 'incomplete' })])
+    expect(report.offense.profile.runPass.passes).toBe(1)
+    expect(report.offense.explosive_plays).toHaveLength(0)
+  })
+
+  it('leaves the run alone when no throw was seen', () => {
+    const report = aggregateScoutReport([runClip({ thrown: 'no', result: 'unclear' })])
+    expect(report.offense.profile.runPass).toEqual({ readable: 1, runs: 1, passes: 0 })
+  })
+
+  it('reads the throw out of the model answer and tells the main read', () => {
+    const check = parseWith({ ...raw({ offense_jersey: 'black', defense_jersey: 'white' }), ball_thrown: 'Yes', pass_result: 'complete' }, WARRIORS)!
+    expect(check.pass).toEqual({ thrown: 'yes', result: 'complete' })
+    expect(buildPossessionFactBlock(check, 'Warriors')).toContain('THROWN')
+  })
+})
