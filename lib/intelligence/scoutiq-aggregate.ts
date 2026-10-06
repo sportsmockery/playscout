@@ -37,7 +37,17 @@ export interface ScoutClipEvidence {
   /** Their offensive playmakers. */
   key_players?: { identifier: string; role?: string; reason: string; confidence: number }[] | null
   /** The pre-snap possession check, including who carried the ball. */
-  possession_check?: { ball_carrier?: { team?: string; position?: string; jersey_number?: string } | null } | null
+  possession_check?: {
+    play_kind?: string
+    offense?: string
+    touchdown?: string
+    ball_carrier?: { team?: string; position?: string; jersey_number?: string } | null
+  } | null
+  /**
+   * The coach's own tag for this clip ("their offense" / "their defense"),
+   * from the ScoutIQ clip list. Overrides every model read of possession.
+   */
+  coach_side?: 'offense' | 'defense' | null
   /** The coach's breakdown hash for this clip, used to cross-check the film read. */
   breakdown_hash?: string | null
 }
@@ -501,7 +511,66 @@ function rankSituationalTells(
  * table has no opponent concept, so this snapshot lives in scout_reports
  * instead, recomputed fresh each time a game plan is generated.
  */
-export function aggregateScoutReport(clips: ScoutClipEvidence[]): AggregatedScoutReport {
+/** Scrimmage-snap charts never come from a kick, a try or a dead clip. */
+const NOT_A_SCRIMMAGE_SNAP = new Set(['kickoff', 'punt', 'extra_point', 'no_play'])
+
+/**
+ * Applies what is known better than the main read before anything is counted:
+ *
+ * - The COACH'S side tag wins over every model read of possession. Fields
+ *   charted for the other side are dropped rather than refiled — they describe
+ *   the other team's play.
+ * - A kick, try or dead clip contributes no scrimmage snaps.
+ * - A touchdown counts only when the separate possession check ALSO saw the
+ *   ball cross the goal line. The main read charted seven touchdowns for a
+ *   team that was shut out 13-0; an uncorroborated "touchdown" becomes a gain,
+ *   keeping its yardage. Clips scouted before the check existed keep theirs.
+ */
+export function reconcileScoutClip(clip: ScoutClipEvidence): ScoutClipEvidence {
+  let c = clip
+  if (c.coach_side) {
+    const offense = c.coach_side === 'offense'
+    c = {
+      ...c,
+      opponent_possession: c.coach_side,
+      offensive_snaps: offense ? c.offensive_snaps : null,
+      stop_points: offense ? c.stop_points : null,
+      key_players: offense ? c.key_players : null,
+      defensive_snaps: offense ? null : c.defensive_snaps,
+      attack_points: offense ? null : c.attack_points,
+      target_players: offense ? null : c.target_players,
+    }
+  }
+  // The check mapped its ball carrier through ITS possession read; when the
+  // coach says that read was backwards, so is the carrier's team.
+  const read = c.possession_check
+  const readSide = read?.offense === 'scouted' ? 'offense' : read?.offense === 'other' ? 'defense' : null
+  if (c.coach_side && readSide && readSide !== c.coach_side && read?.ball_carrier) {
+    const team = read.ball_carrier.team
+    c = {
+      ...c,
+      possession_check: {
+        ...read,
+        offense: c.coach_side === 'offense' ? 'scouted' : 'other',
+        ball_carrier: { ...read.ball_carrier, team: team === 'scouted' ? 'other' : team === 'other' ? 'scouted' : team },
+      },
+    }
+  }
+  const check = c.possession_check
+  if (check?.play_kind && NOT_A_SCRIMMAGE_SNAP.has(check.play_kind)) {
+    c = { ...c, offensive_snaps: null, defensive_snaps: null }
+  }
+  if (check && check.touchdown !== 'yes' && c.offensive_snaps?.some((s) => s.result === 'touchdown')) {
+    c = {
+      ...c,
+      offensive_snaps: c.offensive_snaps.map((s) => (s.result === 'touchdown' ? { ...s, result: 'gain' } : s)),
+    }
+  }
+  return c
+}
+
+export function aggregateScoutReport(rawClips: ScoutClipEvidence[]): AggregatedScoutReport {
+  const clips = rawClips.map(reconcileScoutClip)
   let offensive: TendencyObservation[] = []
   let defensive: TendencyObservation[] = []
   const formations = new Map<string, { name: string; side?: string; note?: string }>()

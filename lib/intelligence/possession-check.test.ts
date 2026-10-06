@@ -70,3 +70,55 @@ describe('ball carriers in the report', () => {
     ])
   })
 })
+
+describe('touchdowns and coach tags in the report', () => {
+  const snap = (result: string, gain = 40) => ({ result, gain_yards: gain, play_type: 'power', formation: 'double_wing' })
+  const offenseClip = (label: string, touchdown: string | undefined, extra: Record<string, unknown> = {}) => ({
+    clip_label: label,
+    opponent_possession: 'offense' as const,
+    offensive_snaps: [snap('touchdown')] as never,
+    possession_check: touchdown === undefined ? undefined : { play_kind: 'scrimmage', offense: 'scouted', touchdown },
+    ...extra,
+  })
+
+  it('counts a touchdown only when the possession check also saw it', () => {
+    const report = aggregateScoutReport([
+      offenseClip('Clip 35', 'unclear'),
+      offenseClip('Clip 36', 'no'),
+      offenseClip('Clip 53', 'yes'),
+    ])
+    const tds = report.offense.explosive_plays.filter((p) => p.result === 'touchdown').map((p) => p.clip)
+    expect(tds).toEqual(['Clip 53'])
+    // The long gain itself still counts as an explosive play.
+    expect(report.offense.explosive_plays).toHaveLength(3)
+  })
+
+  it('keeps touchdowns on clips scouted before the check existed', () => {
+    const report = aggregateScoutReport([offenseClip('Clip 35', undefined)])
+    expect(report.offense.explosive_plays[0].result).toBe('touchdown')
+  })
+
+  it('charts no scrimmage snap from a kickoff', () => {
+    const report = aggregateScoutReport([
+      offenseClip('Clip 65', 'yes', { possession_check: { play_kind: 'kickoff', offense: 'scouted', touchdown: 'yes' } }),
+    ])
+    expect(report.offense.explosive_plays).toHaveLength(0)
+  })
+
+  it("lets the coach's tag override the model's possession read", () => {
+    const report = aggregateScoutReport([
+      offenseClip('Clip 41', 'no', {
+        coach_side: 'defense',
+        possession_check: {
+          play_kind: 'scrimmage', offense: 'scouted', touchdown: 'no',
+          ball_carrier: { team: 'scouted', position: 'tailback', jersey_number: '20' },
+        },
+      }),
+    ])
+    expect(report.evidence_sufficiency.offensive_clips).toBe(0)
+    expect(report.evidence_sufficiency.defensive_clips).toBe(1)
+    expect(report.offense.explosive_plays).toHaveLength(0)
+    // The carrier was the other team's tailback, so he is not on their list.
+    expect(report.offense.ball_carriers).toEqual([])
+  })
+})

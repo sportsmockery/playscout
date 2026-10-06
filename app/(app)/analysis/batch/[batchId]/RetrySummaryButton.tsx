@@ -68,7 +68,7 @@ export default function RetrySummaryButton({ batchId }: { batchId: string }) {
   }
 
   return (
-    <div className="mt-3">
+    <div className="mt-3 print:hidden">
       <button
         onClick={retry}
         disabled={busy}

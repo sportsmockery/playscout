@@ -47,6 +47,8 @@ export interface Video {
   film_type?: FilmType; opponent_id?: string | null; folder_id?: string | null
   /** Taken out of scouting by the coach, e.g. a pre-game backups' scrimmage. */
   scout_excluded?: boolean | null
+  /** The coach's call on which side of the ball the opponent is on in this clip. */
+  scout_side?: 'offense' | 'defense' | null
   status?: VideoStatus | null; processing_status?: string | null; error_message?: string | null; created_at: string
 }
 

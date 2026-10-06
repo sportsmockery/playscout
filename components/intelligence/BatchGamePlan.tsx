@@ -55,13 +55,13 @@ export default function BatchGamePlan({
   }
 
   return (
-    <div className="glass-card p-5 mb-5">
+    <div className={`glass-card p-5 mb-5 ${report ? '' : 'print:hidden'}`}>
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <div className="min-w-0">
           <h2 className="font-bold text-[var(--brand-navy)] text-sm uppercase tracking-wide">
             Game plan — {opponentName} offense and defense
           </h2>
-          <p className="text-xs text-[var(--brand-muted)] mt-0.5">
+          <p className="print:hidden text-xs text-[var(--brand-muted)] mt-0.5">
             Built from the latest read of every {opponentName} clip you have scouted.
           </p>
         </div>
@@ -76,7 +76,7 @@ export default function BatchGamePlan({
       </div>
 
       {error && (
-        <p className="text-xs text-red-600 mb-3 flex items-center gap-1">
+        <p className="print:hidden text-xs text-red-600 mb-3 flex items-center gap-1">
           <AlertCircle size={13} />
           {error}
         </p>
@@ -95,7 +95,7 @@ export default function BatchGamePlan({
           <ScoutSides report={report} opponentName={opponentName} />
         </div>
       ) : (
-        <p className="text-sm text-[var(--brand-muted)]">
+        <p className="print:hidden text-sm text-[var(--brand-muted)]">
           {loading
             ? 'Reading every scouted clip and writing the plan — this takes about a minute.'
             : `No game plan yet. Build it to see ${opponentName}'s offense and defense as separate reports.`}

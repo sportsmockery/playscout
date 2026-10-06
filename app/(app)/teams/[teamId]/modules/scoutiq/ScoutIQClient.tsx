@@ -16,6 +16,7 @@ import {
   useBeforeUnloadWhileRunning,
 } from '@/components/intelligence/AnalysisRunProvider';
 import ScoutSides from '@/components/intelligence/ScoutSides';
+import { parseClipRanges } from '@/lib/scout/clip-ranges';
 
 interface Props {
   teamId: string;
@@ -186,6 +187,45 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
     } finally {
       setExcluding(false);
     }
+  }
+
+  // The coach's offense/defense tags, applied locally at once so tapping
+  // through a 73-clip game does not wait on a refresh per tap.
+  const [sideById, setSideById] = useState<Record<string, 'offense' | 'defense' | null>>({});
+  const [sideRanges, setSideRanges] = useState('');
+  const [sideError, setSideError] = useState('');
+  const sideOf = (v: Video) => (v.id in sideById ? sideById[v.id] : v.scout_side ?? null);
+
+  async function setSide(videoIds: string[], side: 'offense' | 'defense' | null) {
+    if (!videoIds.length) return;
+    setSideError('');
+    const previous = Object.fromEntries(videoIds.map((id) => [id, sideById[id]]));
+    setSideById((prev) => ({ ...prev, ...Object.fromEntries(videoIds.map((id) => [id, side])) }));
+    try {
+      const res = await fetch('/api/videos/scout-exclude', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teamId, videoIds, side }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not save those tags.');
+    } catch (err) {
+      setSideById((prev) => ({ ...prev, ...previous }));
+      setSideError(err instanceof Error ? err.message : 'Could not save those tags.');
+    }
+  }
+
+  /** "34-39, 41" → tag those clips as their offense, and every other game clip as their defense. */
+  function applySideRanges() {
+    const nums = parseClipRanges(sideRanges);
+    if (!nums) {
+      setSideError('Use clip numbers and ranges, like 34-39, 41, 43-47.');
+      return;
+    }
+    const offense = new Set(nums);
+    const inGame = sortedVideos.filter((v) => !v.scout_excluded && clipNumber(v.title) != null);
+    setSide(inGame.filter((v) => offense.has(clipNumber(v.title)!)).map((v) => v.id), 'offense');
+    setSide(inGame.filter((v) => !offense.has(clipNumber(v.title)!)).map((v) => v.id), 'defense');
   }
 
   /** "The game starts at clip 32" — exclude every numbered clip before it. */
@@ -513,6 +553,29 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
                   )}
                 </div>
                 {excludeError && <p className="text-red-600">{excludeError}</p>}
+                <div className="pt-2 border-t border-[var(--brand-border)] space-y-1.5">
+                  <p className="text-[var(--brand-muted)]">
+                    Which clips are {selectedOpponent.name} on <strong>offense</strong>? Your tags override
+                    PlayScout&apos;s read of who has the ball — every other game clip is tagged as their defense.
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      value={sideRanges}
+                      onChange={(e) => setSideRanges(e.target.value)}
+                      className="flex-1 min-w-[12rem] rounded-md border border-[var(--brand-border)] px-2 py-1 text-sm"
+                      placeholder="e.g. 34-39, 41, 43-47"
+                      aria-label={`Clips where ${selectedOpponent.name} have the ball`}
+                    />
+                    <button
+                      onClick={applySideRanges}
+                      disabled={!sideRanges.trim()}
+                      className="font-semibold border border-[var(--brand-border)] rounded-md px-2.5 py-1 hover:bg-[var(--brand-bg)] disabled:opacity-40"
+                    >
+                      Tag their offense
+                    </button>
+                  </div>
+                  {sideError && <p className="text-red-600">{sideError}</p>}
+                </div>
               </div>
             )}
 
@@ -564,6 +627,24 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
                             {v.scout_excluded ? 'Put back' : 'Leave out'}
                           </button>
                         </p>
+                        {!v.scout_excluded && (
+                          <div className="mt-1 inline-flex rounded-md border border-[var(--brand-border)] overflow-hidden text-[11px] font-semibold">
+                            {(['offense', 'defense'] as const).map((side) => (
+                              <button
+                                key={side}
+                                onClick={() => setSide([v.id], sideOf(v) === side ? null : side)}
+                                aria-pressed={sideOf(v) === side}
+                                className={`px-2 py-0.5 ${
+                                  sideOf(v) === side
+                                    ? 'bg-[var(--brand-navy)] text-white'
+                                    : 'text-[var(--brand-muted)] hover:bg-[var(--brand-bg)]'
+                                }`}
+                              >
+                                Their {side === 'offense' ? 'O' : 'D'}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                         </div>
                       </div>
                       {/* Deliberately quiet. As the only filled red button on
@@ -608,7 +689,9 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
 
           {/* Game plan */}
           <div className="glass-card p-5">
-            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            {/* Controls, not content: the printed sheet carries its own header
+                (print-only below) and must never show a site button. */}
+            <div className="print:hidden flex items-center justify-between mb-3 flex-wrap gap-2">
               <div className="min-w-0">
                 <h2 className="font-bold text-[var(--brand-navy)] text-sm uppercase tracking-wide">
                   <span className="text-[var(--brand-muted)]">Step 3 — </span>How do we attack them?
@@ -630,7 +713,7 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
               </button>
             </div>
             {reportError && (
-              <p className="text-xs text-red-600 mb-3 flex items-center gap-1"><AlertCircle size={13} />{reportError}</p>
+              <p className="print:hidden text-xs text-red-600 mb-3 flex items-center gap-1"><AlertCircle size={13} />{reportError}</p>
             )}
 
             {latestReport ? (
