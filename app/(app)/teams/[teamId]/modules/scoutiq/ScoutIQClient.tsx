@@ -674,7 +674,7 @@ export default function ScoutIQClient({ teamId, teamName, ageGroup, opponents, s
           </div>
 
           {/* Game plan */}
-          <div className="glass-card p-5">
+          <div className="glass-card print-breakable p-5">
             {/* Controls, not content: the printed sheet carries its own header
                 (print-only below) and must never show a site button. */}
             <div className="print:hidden flex items-center justify-between mb-3 flex-wrap gap-2">

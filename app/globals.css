@@ -498,6 +498,19 @@ body {
     page-break-inside: avoid;
   }
 
+  /* A long report body (a whole game plan) is taller than a page, so asking
+     it — or a long list inside it — not to split pushes it to the next page
+     and leaves half a page blank. Inside it, only a single finding or row
+     stays whole. */
+  .print-breakable,
+  .print-breakable div,
+  .print-breakable section,
+  .print-breakable ul,
+  .print-breakable ol {
+    break-inside: auto !important;
+    page-break-inside: auto !important;
+  }
+
   /* A heading must never be the last thing on a page. */
   h1,
   h2,
