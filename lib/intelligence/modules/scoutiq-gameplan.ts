@@ -144,6 +144,18 @@ Formations, by how many offensive clips showed each: ${offense.formations.map((f
 Charted snap by snap — every figure counted by the app, each rate over the snaps where it was readable:
 ${renderOffensiveProfile(offense.profile)}
 
+PASS GAME — counted from the film and confirmed by the coach where the video read missed it. THIS COUNT IS
+AUTHORITATIVE and overrides any tendency text above or below that suggests otherwise:
+${(() => {
+  const rp = offense.profile.runPass
+  const clips = offense.pass_clips ?? []
+  if (!rp.passes) return 'No pass plays charted.'
+  return `They THREW on ${rp.passes} of ${rp.readable} snaps where run/pass was readable (${Math.round((rp.passes / Math.max(rp.readable, 1)) * 100)}%)${clips.length ? `, in ${clips.join(', ')}` : ''}.
+These are real passes, not fakes. Never describe ${ctx.opponentName} as run-only, as a team that does not throw, or say
+nothing forces us to defend a pass. Their pass game is part of who they are and the defensive plan must answer it:
+how we cover it, who rushes, and what the run action before the throw looks like.`
+})()}
+
 Situational tells on offense:
 ${offense.situational_tells.map((t) => `- ${t.situation}: ${t.tell} (${t.clips} clip${t.clips === 1 ? '' : 's'})${clipsOf(t.clip_labels)}`).join('\n') || '(none observed yet)'}
 

@@ -164,7 +164,7 @@ export default function AnalysisDock() {
             <li key={r.id} className="px-4 py-2.5 border-t border-[var(--brand-border)] first:border-t-0">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-xs font-semibold text-[var(--brand-ink)] truncate">
-                  {r.moduleKey}
+                  {r.moduleKey === 'SCOUTIQ_PLAN' ? 'Game plan' : r.moduleKey}
                   {r.teamName ? <span className="text-[var(--brand-muted)]"> · {r.teamName}</span> : null}
                 </p>
                 {r.status === 'running' ? (
@@ -186,10 +186,20 @@ export default function AnalysisDock() {
               )}
 
               <p className="text-[10px] text-[var(--brand-muted)] mt-1">
-                {r.status === 'running' && `Reading ${r.label} — keep working, this finishes on its own`}
+                {r.status === 'running' && `${r.moduleKey === 'SCOUTIQ_PLAN' ? 'Writing' : 'Reading'} ${r.label} — keep working, this finishes on its own`}
                 {r.status === 'complete' && 'Complete'}
                 {r.status === 'failed' && (r.error || 'Failed')}
               </p>
+
+              {r.status === 'complete' && r.href && !r.analysisId && (
+                <Link
+                  href={r.href}
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--brand-navy)] hover:underline mt-1"
+                >
+                  <FileText size={11} />
+                  Open game plan
+                </Link>
+              )}
 
               {r.status === 'complete' && r.analysisId && (
                 <Link

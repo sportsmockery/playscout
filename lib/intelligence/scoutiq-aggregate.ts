@@ -2,7 +2,7 @@ import { rollupTendency, type TendencyObservation } from './tendency-rollup'
 import { countRepeats } from './aggregate-batch'
 import { OFFENSIVE_FORMATIONS, DEFENSIVE_FRONTS, EXPLOSIVE_PLAY_YARDS, type AttackCategory, type StopCategory } from './taxonomy'
 import { aggregateOffensiveSnaps, type OffensiveProfile } from './aggregate-offense'
-import { RUN_PLAY_TYPES, type OffensiveSnap } from './offense-structure'
+import { RUN_PLAY_TYPES, PASS_PLAY_TYPES, type OffensiveSnap } from './offense-structure'
 import { aggregateDefensiveSnaps, type DefensiveProfile } from './aggregate-defense'
 import type { DefensiveSnap } from './defense-structure'
 
@@ -41,7 +41,7 @@ export interface ScoutClipEvidence {
     play_kind?: string
     offense?: string
     touchdown?: string
-    pass?: { thrown?: string; result?: string }
+    pass?: { thrown?: string; result?: string; source?: string }
     ball_carrier?: { team?: string; position?: string; jersey_number?: string } | null
   } | null
   /**
@@ -88,6 +88,8 @@ export interface OffenseScout {
   ball_carriers: { identifier: string; carries: number; clip_labels: string[] }[]
   /** Explosive plays they made, with the clip each one is on. */
   explosive_plays: { clip: string; play_type: string; gain: number | null; result: string | null }[]
+  /** Every offensive clip charted as a pass, in game order — the evidence behind the pass count. */
+  pass_clips?: string[]
 }
 
 export interface AggregatedScoutReport {
@@ -566,6 +568,11 @@ export function reconcileScoutClip(clip: ScoutClipEvidence): ScoutClipEvidence {
   // the plan: "zero passes"). The main read saw run ACTION and then the ball
   // was thrown — that is play action by definition. The receiver is not
   // known, so the run's ball carrier is not kept as one.
+  // On a pass the check's "ball carrier" is whoever it took for a runner;
+  // the receiver is not known, so it is not counted as anyone's carry.
+  if (check?.pass?.thrown === 'yes' && check.ball_carrier) {
+    c = { ...c, possession_check: { ...check, ball_carrier: null } }
+  }
   if (check?.pass?.thrown === 'yes' && c.offensive_snaps?.some((s) => s.play_type && RUN_PLAY_TYPES.includes(s.play_type))) {
     const result = check.pass.result
     c = {
@@ -662,6 +669,10 @@ export function aggregateScoutReport(rawClips: ScoutClipEvidence[]): AggregatedS
       key_players: rankKeyPlayers(offensiveClips),
       formations: countByClip(offensiveClips, OFFENSIVE_FORMATIONS),
       ball_carriers: rankBallCarriers(offensiveClips),
+      pass_clips: offensiveClips
+        .filter((c) => (c.offensive_snaps ?? []).some((s) => s.play_type && PASS_PLAY_TYPES.includes(s.play_type)))
+        .map((c) => c.clip_label ?? 'unlabelled clip')
+        .sort(byGameOrder),
       explosive_plays: offensiveClips
         .flatMap((c) =>
           (c.offensive_snaps ?? [])
