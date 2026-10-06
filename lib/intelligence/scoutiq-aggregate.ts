@@ -564,6 +564,17 @@ export function reconcileScoutClip(clip: ScoutClipEvidence): ScoutClipEvidence {
   // scrimmage play, whatever the check took it for (it called several of the
   // Warriors' passes kickoffs, which threw the play away entirely).
   const coachPass = check?.pass?.thrown === 'yes' && check.pass.source === 'coach'
+  // The model's prose about a clip the coach corrected describes the play it
+  // MISREAD — a "kick returner" on a pass, a "35-yard touchdown run" on a pass
+  // by a team that never scored. The counts are corrected above; the prose
+  // cannot be, so it is left out rather than printed beside the fix.
+  if (coachPass) {
+    c = { ...c, key_players: null, stop_points: null }
+  }
+  // Without a seen touchdown, no player note may claim one either.
+  if (check && check.touchdown !== 'yes' && c.key_players?.some((p) => /touchdown|\bTD\b/i.test(p.reason))) {
+    c = { ...c, key_players: c.key_players.filter((p) => !/touchdown|\bTD\b/i.test(p.reason)) }
+  }
   if (!coachPass && check?.play_kind && NOT_A_SCRIMMAGE_SNAP.has(check.play_kind)) {
     c = { ...c, offensive_snaps: null, defensive_snaps: null }
   }

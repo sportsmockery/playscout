@@ -195,3 +195,26 @@ describe('a coach-confirmed pass on a clip the check called a kick', () => {
     expect(report.offense.pass_clips).toEqual(['Clip 65'])
   })
 })
+
+describe('prose from clips the coach corrected', () => {
+  it('drops player notes from a coach-confirmed pass, and any touchdown claim nobody saw', () => {
+    const report = aggregateScoutReport([
+      {
+        clip_label: 'Clip 85', opponent_possession: 'offense', coach_side: 'offense',
+        offensive_snaps: [{ play_type: 'play_action_pass', result: 'not_visible' }] as never,
+        key_players: [{ identifier: 'Tailback #22', reason: 'Took the handoff for a 35-yard touchdown', confidence: 0.6 }],
+        possession_check: { play_kind: 'scrimmage', offense: 'scouted', touchdown: 'no', pass: { thrown: 'yes', result: 'unclear', source: 'coach' } },
+      },
+      {
+        clip_label: 'Clip 53', opponent_possession: 'offense', coach_side: 'offense',
+        offensive_snaps: [{ play_type: 'outside_run', result: 'gain', gain_yards: 39 }] as never,
+        key_players: [
+          { identifier: 'Tailback', reason: 'Broke a long touchdown run', confidence: 0.6 },
+          { identifier: 'Right Wingback', reason: 'Sealed the edge', confidence: 0.5 },
+        ],
+        possession_check: { play_kind: 'scrimmage', offense: 'scouted', touchdown: 'no' },
+      },
+    ])
+    expect(report.offense.key_players.map((p) => p.identifier)).toEqual(['Right Wingback'])
+  })
+})

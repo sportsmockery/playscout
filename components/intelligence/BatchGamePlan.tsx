@@ -36,7 +36,7 @@ export default function BatchGamePlan({
     !!report && !!batchFinishedAt && new Date(report.created_at as string) < new Date(batchFinishedAt);
 
   return (
-    <div className={`glass-card p-5 mb-5 ${report ? '' : 'print:hidden'}`}>
+    <div className={`glass-card print-breakable p-5 mb-5 ${report ? '' : 'print:hidden'}`}>
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <div className="min-w-0">
           <h2 className="font-bold text-[var(--brand-navy)] text-sm uppercase tracking-wide">
