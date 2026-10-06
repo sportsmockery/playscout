@@ -40,83 +40,120 @@ export interface PossessionCheck {
 }
 
 const PLAY_KINDS: readonly PlayKind[] = ['scrimmage', 'kickoff', 'punt', 'extra_point', 'no_play', 'unclear']
-const SIDES: readonly PossessionSide[] = ['scouted', 'other', 'unclear']
 
 /**
  * Plain strings and no enums, on purpose: this runs beside the SCOUTIQ schema,
  * which sits close to Gemini's grammar-size limit, and a small closed answer is
  * normalised in code anyway.
+ *
+ * Note what is NOT asked: which team is which. The model reports colours only,
+ * and possession is decided in code by matching them to the scouted team's
+ * colour. Told "the scouted team wears black — is the offense the scouted
+ * team?", the first version answered yes on 57 of 64 plays of a game the
+ * scouted team lost 13-0, had them kicking off 8 times out of 9, and reported
+ * confidence 1.0 on every one. A blind read cannot lean toward a team it was
+ * never told about.
  */
 export const POSSESSION_CHECK_SCHEMA = {
   type: Type.OBJECT,
   properties: {
     play_kind: { type: Type.STRING },
-    offense: { type: Type.STRING },
     offense_jersey: { type: Type.STRING },
     defense_jersey: { type: Type.STRING },
     how_determined: { type: Type.STRING },
     confidence: { type: Type.NUMBER },
-    ball_carrier_team: { type: Type.STRING },
+    ball_carrier_side: { type: Type.STRING },
     ball_carrier_position: { type: Type.STRING },
     ball_carrier_number: { type: Type.STRING },
   },
   required: [
-    'play_kind', 'offense', 'offense_jersey', 'defense_jersey', 'how_determined', 'confidence',
-    'ball_carrier_team', 'ball_carrier_position', 'ball_carrier_number',
+    'play_kind', 'offense_jersey', 'defense_jersey', 'how_determined', 'confidence',
+    'ball_carrier_side', 'ball_carrier_position', 'ball_carrier_number',
   ],
 }
 
-export function buildPossessionCheckPrompt(opponentName: string, jerseyColor: string): string {
-  return `You are checking ONE thing on this football clip before anyone scouts it: which team has the ball.
-
-The team being scouted is ${opponentName}, wearing ${jerseyColor}. Call them "scouted". The other team is "other".
+export function buildPossessionCheckPrompt(): string {
+  return `You are reading ONE football clip to answer one thing: what colour jerseys the team with the ball is wearing.
+You are not told which team is which, and it does not matter. Report only what you see.
 
 You are given, before the clip itself: STILL frames from the start of the play at the film's full
 resolution, and ZOOMED 2x crops of the middle of the field from the same moments. Use the zoomed
-stills to read jersey colours — a person can tell the teams apart at a glance there, and so should you.
-Use the clip to see who ends up with the ball.
+stills to read jersey colours. Use the clip to see who ends up with the ball.
 
 Work from the PRE-SNAP picture, in this order:
 1. Find the moment just before the ball is snapped (or kicked).
-2. Find the BALL on the ground and the CENTER over it. The team with the center, a quarterback
-   behind him and backs in the backfield is the OFFENSE. The team facing them across the ball,
-   spread out with linebackers and deep players, is the DEFENSE. This is the only thing that decides it.
-3. Look at the OFFENSE's jerseys and write what colour you see (offense_jersey). Do the same for the
-   DEFENSE (defense_jersey). Describe what you actually see, not what you were told.
-4. offense = "scouted" if the offense is wearing ${jerseyColor}; "other" if the offense is the other
-   team; "unclear" if you cannot see the pre-snap picture or cannot tell the colours apart.
-   Do NOT decide it from which way the play goes, which team scores, which sideline is closer, or
-   which team the clip seems to be about. Both teams may run the same formation; only the jerseys
-   on the side with the ball tell you who it is.
-5. play_kind: scrimmage, kickoff, punt, extra_point, no_play (warm-ups, handshake line, huddle only)
-   or unclear. On a kickoff or punt, offense is the KICKING team.
-6. After the snap, who ends up with the ball (handoff, pitch, keep or catch)?
-   ball_carrier_team: scouted, other or unclear.
+2. Find the BALL on the ground. Look at how far each team's players stand from it:
+   - The OFFENSE is packed tight around the ball: a center over it, a quarterback right behind him,
+     backs and wings within a few yards. Nobody on offense is far behind the ball except a lone
+     deep back or a split-out receiver.
+   - The DEFENSE stands much FARTHER BACK from the ball: linemen across from the center, then
+     linebackers several yards off the ball, and deep players well behind them.
+   The tight cluster with nobody deep is the offense; the team spread out and back from the ball
+   is the defense. On a kickoff or punt, the OFFENSE is the KICKING team.
+   Do NOT decide it from which way the play goes, who scores, which sideline is closer, or which
+   team fills more of the frame. Both teams may run the same formation.
+3. offense_jersey: the main colour of the JERSEY BODY worn by the offense ("white", "black").
+   Not the numbers, pants, helmets or socks. Then defense_jersey the same way.
+   If you cannot see the pre-snap picture, or cannot tell the two colours apart, write "unclear".
+4. play_kind: scrimmage, kickoff, punt, extra_point, no_play (warm-ups, handshake line, huddle only)
+   or unclear.
+5. After the snap, who ends up with the ball (handoff, pitch, keep, catch, return)?
+   ball_carrier_side: offense, defense (an interception, a fumble recovery, or the RETURNER on a
+   kick) or unclear.
    ball_carrier_position: where that player lined up BEFORE the snap, in plain words
-   ("tailback", "fullback", "quarterback", "right wingback", "left end"). ${LEFT_RIGHT_RULE}
+   ("tailback", "fullback", "quarterback", "right wingback", "kick returner"). ${LEFT_RIGHT_RULE}
    ball_carrier_number: the jersey number ONLY if you can clearly read the digits; otherwise "".
    Never guess a number.
-7. how_determined: one sentence naming what you saw ("black jerseys over the ball with a QB under
-   center and two wingbacks; white jerseys spread across from them").
-8. confidence: 0.0-1.0 that offense is right.
+6. how_determined: one sentence naming what you saw ("white jerseys over the ball with a QB under
+   center and two wingbacks; black jerseys spread across from them").
+7. confidence: 0.0-1.0 that offense_jersey is right. Use the whole range — a clear pre-snap
+   picture is high, a frame that starts after the snap or a crowded pile is low.
 
 Return ONLY the JSON.`
 }
 
-export function parsePossessionCheck(raw: unknown): PossessionCheck | null {
+const COLOURS: Record<string, string> = {
+  black: 'black', white: 'white', orange: 'orange', red: 'red', scarlet: 'red', crimson: 'red',
+  maroon: 'maroon', burgundy: 'maroon', blue: 'blue', navy: 'navy', royal: 'blue', green: 'green',
+  yellow: 'yellow', gold: 'gold', purple: 'purple', grey: 'grey', gray: 'grey', silver: 'grey', pink: 'pink',
+}
+
+/** The first colour word in a description — "black jerseys with orange numbers" → "black". */
+export function primaryColour(text: string | null | undefined): string | null {
+  const words = (text ?? '').toLowerCase().match(/[a-z]+/g) ?? []
+  for (const w of words) if (COLOURS[w]) return COLOURS[w]
+  return null
+}
+
+/** Which team wore the offense's colour, decided in code from the blind read. */
+export function sideFromColours(offenseJersey: string, defenseJersey: string, scoutedColor: string): PossessionSide {
+  const scouted = primaryColour(scoutedColor)
+  const offense = primaryColour(offenseJersey)
+  const defense = primaryColour(defenseJersey)
+  if (!scouted || !offense || !defense || offense === defense) return 'unclear'
+  if (offense === scouted) return 'scouted'
+  if (defense === scouted) return 'other'
+  return 'unclear'
+}
+
+export function parsePossessionCheck(raw: unknown, scoutedColor: string): PossessionCheck | null {
   const r = (raw ?? {}) as Record<string, unknown>
   const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '')
-  const side = (v: unknown): PossessionSide =>
-    (SIDES as readonly string[]).includes(str(v).toLowerCase()) ? (str(v).toLowerCase() as PossessionSide) : 'unclear'
   const kind = str(r.play_kind).toLowerCase()
   const number = str(r.ball_carrier_number).replace(/[^0-9]/g, '').slice(0, 2)
-  const carrierTeam = side(r.ball_carrier_team)
+  const offenseJersey = str(r.offense_jersey)
+  const defenseJersey = str(r.defense_jersey)
+  const offense = sideFromColours(offenseJersey, defenseJersey, scoutedColor)
+  const flip: Record<PossessionSide, PossessionSide> = { scouted: 'other', other: 'scouted', unclear: 'unclear' }
+  const carrierSide = str(r.ball_carrier_side).toLowerCase()
+  const carrierTeam: PossessionSide =
+    carrierSide === 'offense' ? offense : carrierSide === 'defense' ? flip[offense] : 'unclear'
   const carrierPosition = str(r.ball_carrier_position)
   return {
     play_kind: (PLAY_KINDS as readonly string[]).includes(kind) ? (kind as PlayKind) : 'unclear',
-    offense: side(r.offense),
-    offense_jersey: str(r.offense_jersey),
-    defense_jersey: str(r.defense_jersey),
+    offense,
+    offense_jersey: offenseJersey,
+    defense_jersey: defenseJersey,
     how_determined: str(r.how_determined),
     confidence: typeof r.confidence === 'number' && Number.isFinite(r.confidence) ? r.confidence : 0,
     ball_carrier:

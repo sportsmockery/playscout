@@ -433,10 +433,10 @@ export async function analyzePosition(
   const scoutedName = inputWithGameType.opponent?.name ?? 'the opponent'
   const scoutedColor = inputWithGameType.opponent?.jersey_color
   if (input.moduleKey === 'SCOUTIQ' && clip && scoutedColor) {
-    const checkPrompt = buildPossessionCheckPrompt(scoutedName, scoutedColor)
+    const checkPrompt = buildPossessionCheckPrompt()
     const checkKey = [
       clip.source.kind === 'file' ? clip.source.fileUri : clip.source.bytes.toString('base64'),
-      `possession-v2@${readWindow.startOffsetSeconds ?? 0}-${readWindow.endOffsetSeconds ?? ''}@4/high+stills`,
+      `possession-v4-blind-depth@${readWindow.startOffsetSeconds ?? 0}-${readWindow.endOffsetSeconds ?? ''}@4/high+stills`,
     ]
     const checkHash = hashCacheKey('frame_observation', checkPrompt, checkKey)
     let checkJson = await getCachedResponse<string>(supabase, checkHash)
@@ -470,7 +470,7 @@ export async function analyzePosition(
     }
     if (checkJson != null) {
       try {
-        possessionCheck = parsePossessionCheck(JSON.parse(checkJson))
+        possessionCheck = parsePossessionCheck(JSON.parse(checkJson), scoutedColor)
       } catch {
         possessionCheck = null
       }
