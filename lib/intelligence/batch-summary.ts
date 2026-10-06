@@ -1,3 +1,4 @@
+import { repeatThreshold, repeatedOnly } from './aggregate-batch'
 import { z } from 'zod'
 import { buildFootballBrain } from './football-brain'
 import { resolveLevelTier, type LevelTier } from './levels'
@@ -94,20 +95,25 @@ function renderAggregate(agg: BatchAggregate): string {
     agg.bestClip ? `best clip: "${agg.bestClip.videoTitle}" (${agg.bestClip.score})` : null,
     agg.worstClip ? `weakest clip: "${agg.worstClip.videoTitle}" (${agg.worstClip.score})` : null,
   ]
-  if (agg.recurringWeaknesses.length) {
-    lines.push(
-      `weaknesses by how many clips they appear in: ${agg.recurringWeaknesses
-        .map((w) => `${w.text} (${w.clips})`)
-        .join(' | ')}`
-    )
-  }
-  if (agg.recurringStrengths.length) {
-    lines.push(
-      `strengths by how many clips they appear in: ${agg.recurringStrengths
-        .map((w) => `${w.text} (${w.clips})`)
-        .join(' | ')}`
-    )
-  }
+  // Only what genuinely repeats is offered as a pattern. Everything else is
+  // in the per-clip findings, where a one-off belongs.
+  const min = repeatThreshold(agg.clipsAnalyzed)
+  const weaknesses = repeatedOnly(agg.recurringWeaknesses, agg.clipsAnalyzed)
+  const strengths = repeatedOnly(agg.recurringStrengths, agg.clipsAnalyzed)
+  lines.push(
+    weaknesses.length
+      ? `weaknesses by how many clips they appear in (${min}+ clips only): ${weaknesses
+          .map((w) => `${w.text} (${w.clips})`)
+          .join(' | ')}`
+      : `weaknesses by how many clips they appear in (${min}+ clips only): none`
+  )
+  lines.push(
+    strengths.length
+      ? `strengths by how many clips they appear in (${min}+ clips only): ${strengths
+          .map((w) => `${w.text} (${w.clips})`)
+          .join(' | ')}`
+      : `strengths by how many clips they appear in (${min}+ clips only): none`
+  )
   if (agg.playerRollup.length) {
     lines.push(
       `player averages across the batch: ${agg.playerRollup
@@ -270,10 +276,11 @@ HARD REQUIREMENTS:${
 - EVERY entry in what_repeats must correspond to a line in the "weaknesses by how many clips"
   or "strengths by how many clips" lists in COMPUTED TOTALS, and clips_seen must be that line's
   number exactly. You may reword the pattern for readability, but you may NOT invent a count,
-  estimate one, add up clips yourself, or include a pattern that isn't in those lists. If a list
-  shows nothing appearing in more than one clip, return an empty what_repeats array and say in
-  cumulative_summary that no pattern repeated across clips yet — that is a real, useful finding,
-  not a gap to paper over.
+  estimate one, add up clips yourself, or include a pattern that isn't in those lists. Those lists
+  already hold only what appeared in enough clips to be a pattern. If both say "none", return an
+  empty what_repeats array and say in cumulative_summary that nothing repeated often enough to
+  call a tendency yet — that is a real, useful finding, not a gap to paper over. Never describe
+  something seen in one clip as something that "keeps happening".
 - Every statistic — a carry, a yard, a tackle, a touchdown — must be quoted verbatim from the
   BOX SCORE in COMPUTED TOTALS when one is present. Do not add two figures together, do not
   derive an average, and never state a statistic that is not listed there. A number a coach

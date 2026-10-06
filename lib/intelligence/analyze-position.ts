@@ -436,7 +436,7 @@ export async function analyzePosition(
     const checkPrompt = buildPossessionCheckPrompt()
     const checkKey = [
       clip.source.kind === 'file' ? clip.source.fileUri : clip.source.bytes.toString('base64'),
-      `possession-v4-blind-depth@${readWindow.startOffsetSeconds ?? 0}-${readWindow.endOffsetSeconds ?? ''}@4/high+stills`,
+      `possession-v5-td@${readWindow.startOffsetSeconds ?? 0}-${readWindow.endOffsetSeconds ?? ''}@4/high+stills`,
     ]
     const checkHash = hashCacheKey('frame_observation', checkPrompt, checkKey)
     let checkJson = await getCachedResponse<string>(supabase, checkHash)

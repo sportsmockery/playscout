@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
 
     const { data: opponentVideos } = await supabase
       .from('videos')
-      .select('id, title')
+      .select('id, title, scout_side')
       .eq('team_id', teamId)
       .eq('opponent_id', opponentId)
       .eq('film_type', 'opponent')
@@ -71,6 +71,10 @@ export async function POST(req: NextRequest) {
       .eq('scout_excluded', false)
     const videoIds = (opponentVideos ?? []).map((v) => v.id)
     const clipLabelById = new Map((opponentVideos ?? []).map((v) => [v.id as string, clipLabel(v.title as string)]))
+    // The coach's own offense/defense tag, which overrides the model's read.
+    const coachSideById = new Map(
+      (opponentVideos ?? []).map((v) => [v.id as string, (v.scout_side as 'offense' | 'defense' | null) ?? null])
+    )
 
     if (!videoIds.length) {
       return NextResponse.json(
@@ -122,6 +126,7 @@ export async function POST(req: NextRequest) {
     const clips: ScoutClipEvidence[] = scoutResults.map((r) => ({
       ...((r.evidence as ScoutClipEvidence) ?? {}),
       clip_label: clipLabelById.get(r.video_id as string) ?? null,
+      coach_side: coachSideById.get(r.video_id as string) ?? null,
       breakdown_hash: r.play_sequence_id ? hashBySequence.get(r.play_sequence_id) ?? null : null,
     }))
     const aggregated = aggregateScoutReport(clips)

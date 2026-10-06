@@ -37,6 +37,13 @@ export interface PossessionCheck {
     /** Digits only, and only when legible. Empty otherwise. */
     jersey_number: string
   } | null
+  /**
+   * Did this play end in a touchdown? Asked here, independently of the main
+   * read, because the main read charted seven touchdowns for a team that was
+   * shut out: it calls a long run a score. A touchdown is counted only when
+   * this read says yes too.
+   */
+  touchdown?: 'yes' | 'no' | 'unclear'
 }
 
 const PLAY_KINDS: readonly PlayKind[] = ['scrimmage', 'kickoff', 'punt', 'extra_point', 'no_play', 'unclear']
@@ -65,10 +72,11 @@ export const POSSESSION_CHECK_SCHEMA = {
     ball_carrier_side: { type: Type.STRING },
     ball_carrier_position: { type: Type.STRING },
     ball_carrier_number: { type: Type.STRING },
+    touchdown: { type: Type.STRING },
   },
   required: [
     'play_kind', 'offense_jersey', 'defense_jersey', 'how_determined', 'confidence',
-    'ball_carrier_side', 'ball_carrier_position', 'ball_carrier_number',
+    'ball_carrier_side', 'ball_carrier_position', 'ball_carrier_number', 'touchdown',
   ],
 }
 
@@ -104,9 +112,13 @@ Work from the PRE-SNAP picture, in this order:
    ("tailback", "fullback", "quarterback", "right wingback", "kick returner"). ${LEFT_RIGHT_RULE}
    ball_carrier_number: the jersey number ONLY if you can clearly read the digits; otherwise "".
    Never guess a number.
-6. how_determined: one sentence naming what you saw ("white jerseys over the ball with a QB under
+6. touchdown: "yes" ONLY if you SEE the ball carrier cross the goal line into the painted end zone
+   (or a referee signal a touchdown with both arms up). A long run that ends at a tackle, goes out
+   of bounds, or leaves the frame before the goal line is "no" or "unclear". Never infer a score
+   from a long gain, a celebration, or the next clip being a kickoff.
+7. how_determined: one sentence naming what you saw ("white jerseys over the ball with a QB under
    center and two wingbacks; black jerseys spread across from them").
-7. confidence: 0.0-1.0 that offense_jersey is right. Use the whole range — a clear pre-snap
+8. confidence: 0.0-1.0 that offense_jersey is right. Use the whole range — a clear pre-snap
    picture is high, a frame that starts after the snap or a crowded pile is low.
 
 Return ONLY the JSON.`
@@ -149,6 +161,7 @@ export function parsePossessionCheck(raw: unknown, scoutedColor: string): Posses
   const carrierTeam: PossessionSide =
     carrierSide === 'offense' ? offense : carrierSide === 'defense' ? flip[offense] : 'unclear'
   const carrierPosition = str(r.ball_carrier_position)
+  const td = str(r.touchdown).toLowerCase()
   return {
     play_kind: (PLAY_KINDS as readonly string[]).includes(kind) ? (kind as PlayKind) : 'unclear',
     offense,
@@ -160,6 +173,7 @@ export function parsePossessionCheck(raw: unknown, scoutedColor: string): Posses
       carrierTeam !== 'unclear' || carrierPosition || number
         ? { team: carrierTeam, position: carrierPosition, jersey_number: number }
         : null,
+    touchdown: td === 'yes' || td === 'no' ? td : 'unclear',
   }
 }
 

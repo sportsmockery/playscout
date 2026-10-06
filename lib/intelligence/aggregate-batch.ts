@@ -79,6 +79,22 @@ export interface MistakeRollup {
   worstSeverity: string
 }
 
+/**
+ * How many clips something must appear in before the report calls it a
+ * pattern. "What keeps happening" was listing items seen in ONE clip, which is
+ * a contradiction a coach spots instantly. Two is the floor for a short batch;
+ * across a game's worth of clips, two can still be coincidence.
+ */
+export function repeatThreshold(clipCount: number): number {
+  return clipCount < 6 ? 2 : 3
+}
+
+/** The items that actually repeat, by that threshold. */
+export function repeatedOnly<T extends { clips: number }>(items: T[], clipCount: number): T[] {
+  const min = repeatThreshold(clipCount)
+  return items.filter((i) => i.clips >= min)
+}
+
 export interface BatchAggregate {
   clipsAnalyzed: number
   averageScore: number | null

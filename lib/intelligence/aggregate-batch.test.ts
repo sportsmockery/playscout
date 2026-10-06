@@ -154,3 +154,14 @@ describe('parseBatchSummary', () => {
     expect(() => parseBatchSummary(JSON.stringify({ headline: 'only this' }))).toThrow(/Malformed/)
   })
 })
+
+describe('what counts as a pattern', () => {
+  it('never calls a one-clip finding a repeat, and asks for 3 across a game', async () => {
+    const { repeatThreshold, repeatedOnly } = await import('./aggregate-batch')
+    expect(repeatThreshold(4)).toBe(2)
+    expect(repeatThreshold(73)).toBe(3)
+    const items = [{ text: 'a', clips: 1 }, { text: 'b', clips: 2 }, { text: 'c', clips: 5 }]
+    expect(repeatedOnly(items, 4).map((i) => i.text)).toEqual(['b', 'c'])
+    expect(repeatedOnly(items, 73).map((i) => i.text)).toEqual(['c'])
+  })
+})
