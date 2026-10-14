@@ -327,8 +327,21 @@ async function runImport(supabase: SupabaseClient, job: ImportJob) {
     session = await openHudlSession(supabase, job.team_id)
 
     await setStep(supabase, job.id, 'Finding Clips')
+    const libraryGame = parsed.target.kind === 'library' ? job.title?.trim() : undefined
+    if (parsed.target.kind === 'library' && !libraryGame) {
+      throw new HudlPlaylistError(
+        'A Hudl library link needs the game name as it appears in Hudl\'s list. Start the import again with it.',
+        []
+      )
+    }
     const requestUrls = new Set<string>()
-    const clips = await enumerateHudlPlaylist(session.page, parsed.canonicalUrl, requestUrls)
+    let statedTotal: number | null = null
+    const clips = await enumerateHudlPlaylist(session.page, parsed.canonicalUrl, requestUrls, {
+      libraryGame,
+      onStatedTotal: (total) => {
+        statedTotal = total
+      },
+    })
     const commentsFound = clips.reduce((sum, clip) => sum + clip.comments.length, 0)
     // The session survived a real page load, so cache it — the next import
     // skips the login entirely.
@@ -435,7 +448,12 @@ async function runImport(supabase: SupabaseClient, job: ImportJob) {
     // that landed are real, and the coach should be told there are more. Left
     // as `running` it would sit unclaimable until the reaper noticed.
     const finishedAll = imported + failed >= clips.length
-    const status = !finishedAll ? 'partial' : failed === 0 ? 'completed' : imported > 0 ? 'partial' : 'failed'
+    // Hudl's own count for the game, when the page states one. Fewer clips read
+    // than Hudl lists means a page of them was never loaded — say so rather
+    // than calling a 100-of-131 import complete.
+    const missing = statedTotal !== null && statedTotal > clips.length ? statedTotal - clips.length : 0
+    const status =
+      !finishedAll ? 'partial' : failed === 0 ? (missing ? 'partial' : 'completed') : imported > 0 ? 'partial' : 'failed'
     await supabase
       .from('hudl_import_jobs')
       .update({
@@ -445,7 +463,9 @@ async function runImport(supabase: SupabaseClient, job: ImportJob) {
         error_message: !finishedAll
           ? `The import stopped after ${imported} of ${clips.length} clips. Run it again — it picks up where it left off rather than re-downloading.`
           : failed === 0
-            ? null
+            ? missing
+              ? `Hudl lists ${statedTotal} clips for this game; PlayScout could only read ${clips.length}. The ${clips.length} are in your film library.`
+              : null
             : imported > 0
               ? `${failed} of ${clips.length} clips could not be downloaded from Hudl. The rest are in your film library.`
               : `None of the ${clips.length} clips could be downloaded from Hudl. Nothing was imported.`,

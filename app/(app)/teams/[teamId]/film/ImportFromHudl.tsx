@@ -93,6 +93,9 @@ export default function ImportFromHudl({ teamId, folders, defaultFolderId, oppon
 
   const check = url.trim() ? parseHudlUrl(url) : null;
   const linkProblem = check && !check.ok ? check.reason : '';
+  // A library page is one address for every game in it — the name picks one.
+  const isLibrary = Boolean(check?.ok && check.target.kind === 'library');
+  const needsGameName = isLibrary && !title.trim();
 
   function reset() {
     setOpen(false);
@@ -103,7 +106,7 @@ export default function ImportFromHudl({ teamId, folders, defaultFolderId, oppon
   }
 
   async function submit() {
-    if (!check?.ok || saving) return;
+    if (!check?.ok || needsGameName || saving) return;
     setSaving(true);
     setError('');
     try {
@@ -194,12 +197,12 @@ export default function ImportFromHudl({ teamId, folders, defaultFolderId, oppon
             {linkProblem && <p className="text-xs text-amber-700 mb-2">{linkProblem}</p>}
 
             <label className="block text-xs font-medium text-[var(--brand-ink)] mb-1.5 mt-3">
-              Name these clips (optional)
+              {isLibrary ? 'Game name, as it appears in Hudl\'s list' : 'Name these clips (optional)'}
             </label>
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Week 3 vs Wildcats — defense"
+              placeholder={isLibrary ? 'Bartlett' : 'Week 3 vs Wildcats — defense'}
               className="w-full px-3 py-2 rounded-lg border border-[var(--brand-border)] bg-white text-sm text-[var(--brand-ink)] focus:outline-none focus:ring-2 focus:ring-[var(--brand-navy)]"
             />
 
@@ -234,7 +237,7 @@ export default function ImportFromHudl({ teamId, folders, defaultFolderId, oppon
               </button>
               <button
                 onClick={submit}
-                disabled={!check?.ok || saving}
+                disabled={!check?.ok || needsGameName || saving}
                 className="text-sm font-semibold px-4 py-2 rounded-lg bg-[var(--brand-navy)] text-white disabled:opacity-40 transition-opacity"
               >
                 {saving ? 'Starting…' : 'Start import'}

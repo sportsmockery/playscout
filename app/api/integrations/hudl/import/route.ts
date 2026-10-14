@@ -67,6 +67,13 @@ export async function POST(req: NextRequest) {
 
   const link = parseHudlUrl(url)
   if (!link.ok) return NextResponse.json({ error: link.reason }, { status: 400 })
+  // A library link names no game; the name is how the worker finds it.
+  if (link.target.kind === 'library' && !title?.trim()) {
+    return NextResponse.json(
+      { error: 'A library link needs the game name as it appears in Hudl\'s list (e.g. "Bartlett").' },
+      { status: 400 }
+    )
+  }
 
   const access = await requireTeamMember(teamId, { writeRoles: BIND_ROLES })
   if (access.error) return access.error
@@ -112,7 +119,8 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const targetKey = hudlTargetKey(link.target)
+  const targetKey = hudlTargetKey(link.target, title)
+  const playlist = link.target.kind === 'playlist' ? link.target : null
 
   const { data: job, error } = await supabase
     .from('hudl_import_jobs')
@@ -120,9 +128,9 @@ export async function POST(req: NextRequest) {
       team_id: teamId,
       created_by: access.user.id,
       source_url: link.canonicalUrl,
-      hudl_team_id: link.target.teamId,
-      hudl_video_id: link.target.videoId,
-      hudl_playlist_id: link.target.playlistId ?? null,
+      hudl_team_id: playlist?.teamId ?? null,
+      hudl_video_id: playlist?.videoId ?? null,
+      hudl_playlist_id: playlist?.playlistId ?? null,
       target_key: targetKey,
       title: title?.trim() || null,
       folder_id: folderId ?? null,

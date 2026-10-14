@@ -10,12 +10,22 @@
  * their live markup and response shapes.
  */
 
-export type HudlTarget = {
-  kind: 'playlist'
-  teamId: string
-  videoId: string
-  playlistId?: string
-}
+export type HudlTarget =
+  | {
+      kind: 'playlist'
+      teamId: string
+      videoId: string
+      playlistId?: string
+    }
+  | {
+      /**
+       * A team's Hudl library page (`www.hudl.com/library/<id>`). The address
+       * does NOT say which game is open — the game is picked from the page's
+       * list by name, which is why an import from one needs a game name.
+       */
+      kind: 'library'
+      libraryId: string
+    }
 
 export type HudlUrlCheck =
   | { ok: true; target: HudlTarget; canonicalUrl: string }
@@ -90,10 +100,23 @@ export function parseHudlUrl(raw: string): HudlUrlCheck {
     }
   }
 
+  // /library/<id> — the library page coaches actually live in. Same address
+  // whichever game is selected, so the game comes from the name given with it.
+  if (segments[0] === 'library' && segments[1] && /^\d+$/.test(segments[1]) && segments.length === 2) {
+    const clean = new URL(url.toString())
+    clean.search = ''
+    clean.hash = ''
+    return {
+      ok: true,
+      target: { kind: 'library', libraryId: segments[1] },
+      canonicalUrl: clean.toString(),
+    }
+  }
+
   return {
     ok: false,
     reason:
-      'That Hudl link is not one PlayScout recognises. Open the playlist or game in Hudl and copy the address bar — it should contain "/watch/team/" and a "v=" value.',
+      'That Hudl link is not one PlayScout recognises. Open the playlist or game in Hudl and copy the address bar — it should contain "/watch/team/" and a "v=" value, or be your library page (hudl.com/library/…).',
   }
 }
 
@@ -113,7 +136,15 @@ function canonicalize(url: URL): string {
   return clean.toString()
 }
 
-/** A stable key for "this is the same playlist", for de-duplicating import jobs. */
-export function hudlTargetKey(target: HudlTarget): string {
+/**
+ * A stable key for "this is the same playlist", for de-duplicating import jobs.
+ * A library link is one address for every game in it, so its key includes the
+ * game name — otherwise importing a second game would "join" the first.
+ */
+export function hudlTargetKey(target: HudlTarget, gameName?: string | null): string {
+  if (target.kind === 'library') {
+    const game = (gameName ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+    return `library:${target.libraryId}:${game}`
+  }
   return `playlist:${target.teamId}:${target.videoId}:${target.playlistId ?? ''}`
 }

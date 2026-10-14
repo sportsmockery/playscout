@@ -356,6 +356,16 @@ function isHudlHost(rawUrl: string): boolean {
  * the redacted URLs survive, and only on failure. Response bodies and headers
  * are never stored anywhere — both carry session tokens.
  */
+export interface EnumerateOptions {
+  /**
+   * For a library link: the game to pick from the page's list. The library
+   * address is the same whichever game is open, so this is what decides it.
+   */
+  libraryGame?: string
+  /** Called with the clip total the library page states ("Clips 1-100 of 131"). */
+  onStatedTotal?: (total: number) => void
+}
+
 export async function enumerateHudlPlaylist(
   page: Page,
   canonicalUrl: string,
@@ -363,7 +373,8 @@ export async function enumerateHudlPlaylist(
    * Filled with the redacted request URLs the page made, for a caller that
    * wants them on success too (where Hudl keeps comments is undocumented).
    */
-  seenUrls: Set<string> = new Set()
+  seenUrls: Set<string> = new Set(),
+  options: EnumerateOptions = {}
 ): Promise<HudlClipCandidate[]> {
   const payloads: unknown[] = []
   const pending: Promise<void>[] = []
@@ -396,6 +407,16 @@ export async function enumerateHudlPlaylist(
     await page.goto(canonicalUrl, { waitUntil: 'domcontentloaded' })
     await page.waitForLoadState('networkidle').catch(() => {})
 
+    if (options.libraryGame) {
+      // Whatever loaded so far is the game Hudl opened to, which may be any
+      // game in the library. Drop it so only the picked game's clips count.
+      await Promise.allSettled(pending.splice(0))
+      payloads.length = 0
+      await selectLibraryGame(page, options.libraryGame)
+      await page.waitForLoadState('networkidle').catch(() => {})
+      await page.waitForTimeout(SETTLE_MS)
+    }
+
     // Hudl loads a long cut-up in pages as you scroll. Scroll until the clip
     // count stops growing rather than a fixed number of times, so a 40-clip
     // playlist does not wait for a 120-clip playlist's worth of passes.
@@ -413,6 +434,12 @@ export async function enumerateHudlPlaylist(
     await Promise.allSettled(pending.splice(0))
     const clips = attachCommentsFromPayloads(bestClipSet(payloads), payloads)
 
+    if (options.onStatedTotal) {
+      const text = await page.locator('body').innerText().catch(() => '')
+      const total = statedClipTotal(text)
+      if (total !== null) options.onStatedTotal(total)
+    }
+
     if (!clips.length) {
       throw new HudlPlaylistError(
         'PlayScout signed in to Hudl but could not read the clips on that page. ' +
@@ -425,4 +452,117 @@ export async function enumerateHudlPlaylist(
   } finally {
     page.off('response', onResponse)
   }
+}
+
+// ---------------------------------------------------------------------------
+// Library links
+// ---------------------------------------------------------------------------
+
+export type LibraryPick =
+  | { kind: 'game'; index: number }
+  | { kind: 'expand'; index: number }
+  | { kind: 'ambiguous'; texts: string[] }
+  | { kind: 'none' }
+
+const VS = /\bvs\b|\bvs\.|\bv\.?\s/i
+
+/**
+ * Chooses the library entry for `gameName` from the visible list texts.
+ *
+ * A game's film is listed as "<Opponent> vs… - <angle>"; the opponent's own
+ * heading is the bare name. One film entry naming the game is picked. Several
+ * is refused rather than guessed between — importing the wrong game files a
+ * whole night of film under the wrong opponent. No film entry but a heading
+ * means the heading is collapsed and needs opening first.
+ */
+export function pickLibraryGame(texts: string[], gameName: string): LibraryPick {
+  const want = gameName.trim().toLowerCase()
+  if (!want) return { kind: 'none' }
+  const matches = texts
+    .map((text, index) => ({ text, index }))
+    .filter(({ text }) => text.toLowerCase().includes(want))
+
+  const films = matches.filter(({ text }) => VS.test(text))
+  if (films.length === 1) return { kind: 'game', index: films[0].index }
+  if (films.length > 1) {
+    // The same entry is often matched twice (a row and the label inside it).
+    const distinct = [...new Set(films.map((f) => f.text))]
+    if (distinct.length === 1) return { kind: 'game', index: films[films.length - 1].index }
+    return { kind: 'ambiguous', texts: distinct }
+  }
+
+  const heading = matches.find(({ text }) => !VS.test(text))
+  return heading ? { kind: 'expand', index: heading.index } : { kind: 'none' }
+}
+
+/** "Clips 1-100 of 131" → 131. */
+export function statedClipTotal(text: string): number | null {
+  const match = /clips\s+\d+\s*[-–]\s*\d+\s+of\s+(\d+)/i.exec(text)
+  return match ? Number(match[1]) : null
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/** Clicks the game's film entry in the library page's list. */
+async function selectLibraryGame(page: Page, gameName: string): Promise<void> {
+  const pattern = new RegExp(escapeRegExp(gameName.trim()), 'i')
+
+  const readList = async () => {
+    const found = page.getByText(pattern)
+    const count = Math.min(await found.count(), 60)
+    const items: { text: string; index: number }[] = []
+    for (let i = 0; i < count; i++) {
+      const el = found.nth(i)
+      if (!(await el.isVisible().catch(() => false))) continue
+      const text = (await el.innerText().catch(() => '')).replace(/\s+/g, ' ').trim()
+      if (text) items.push({ text, index: i })
+    }
+    return { found, items }
+  }
+
+  let { found, items } = await readList()
+  let pick = pickLibraryGame(items.map((i) => i.text), gameName)
+
+  if (pick.kind === 'expand') {
+    const heading = found.nth(items[pick.index].index)
+    const headingBox = await heading.boundingBox().catch(() => null)
+    await heading.click()
+    await page.waitForTimeout(1_500)
+    ;({ found, items } = await readList())
+    pick = pickLibraryGame(items.map((i) => i.text), gameName)
+
+    // The game's "Game Footage" folder can be collapsed too: open the first
+    // one listed below the heading.
+    if (pick.kind !== 'game' && headingBox) {
+      const folders = page.getByText(/^\s*game footage/i)
+      const n = Math.min(await folders.count(), 40)
+      for (let i = 0; i < n; i++) {
+        const box = await folders.nth(i).boundingBox().catch(() => null)
+        if (box && box.y > headingBox.y) {
+          await folders.nth(i).click()
+          await page.waitForTimeout(1_500)
+          break
+        }
+      }
+      ;({ found, items } = await readList())
+      pick = pickLibraryGame(items.map((i) => i.text), gameName)
+    }
+  }
+
+  if (pick.kind === 'ambiguous') {
+    throw new HudlPlaylistError(
+      `More than one film in that Hudl library matches "${gameName}". Use a more specific game name, exactly as Hudl lists it.`,
+      pick.texts.map((t) => `library entry: ${t}`)
+    )
+  }
+  if (pick.kind !== 'game') {
+    throw new HudlPlaylistError(
+      `PlayScout opened the Hudl library but could not find a game named "${gameName}" in its list. Use the name exactly as Hudl shows it.`,
+      items.map((i) => `library entry: ${i.text}`).slice(0, 20)
+    )
+  }
+
+  await found.nth(items[pick.index].index).click()
 }
