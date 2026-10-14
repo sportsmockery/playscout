@@ -146,7 +146,7 @@ function readColumns(clip: Record<string, unknown>, columnNames: string[]): Reco
       if (objectPairs.length === value.length && objectPairs.length > 0) {
         for (const pair of objectPairs) {
           const nameKey = Object.keys(pair).find((p) =>
-            ['name', 'key', 'column', 'label', 'field', 'title'].includes(norm(p))
+            ['name', 'key', 'column', 'label', 'field', 'title', 'columnid', 'fieldid', 'columnkey'].includes(norm(p))
           )
           const valueKey = Object.keys(pair).find((p) => ['value', 'val', 'text'].includes(norm(p)))
           if (nameKey && valueKey) addPair(pair[nameKey], pair[valueKey])
@@ -162,7 +162,10 @@ function readColumns(clip: Record<string, unknown>, columnNames: string[]): Reco
       continue
     }
 
-    if (isRecord(value) && ['breakdowndata', 'breakdown', 'data', 'fields'].includes(k)) {
+    if (
+      isRecord(value) &&
+      ['breakdowndata', 'breakdown', 'data', 'fields', 'columns', 'columnvalues', 'customfields', 'values'].includes(k)
+    ) {
       for (const [label, cell] of Object.entries(value)) addPair(label, cell)
       continue
     }
@@ -171,6 +174,55 @@ function readColumns(clip: Record<string, unknown>, columnNames: string[]): Reco
   }
 
   return columns
+}
+
+/**
+ * Column id → column name, from Hudl's team column list
+ * (`/classicfacade/team/<id>/columns`). Clips there carry their breakdown
+ * keyed by column id, so without this a clip's DN reads as "4471: 2".
+ */
+export function columnNamesById(payload: unknown): Map<string, string> {
+  const found = new Map<string, string>()
+  const walk = (node: unknown, depth: number) => {
+    if (depth > 6) return
+    if (Array.isArray(node)) {
+      const records = node.filter(isRecord)
+      if (records.length && records.length === node.length && records.length <= 400) {
+        for (const record of records) {
+          const idKey = Object.keys(record).find((k) => ['id', 'columnid', 'key', 'fieldid'].includes(norm(k)))
+          const nameKey = Object.keys(record).find((k) =>
+            ['name', 'title', 'label', 'displayname', 'columnname', 'shortname', 'abbreviation'].includes(norm(k))
+          )
+          const id = idKey ? scalarToString(record[idKey]) : null
+          const name = nameKey ? scalarToString(record[nameKey])?.trim() : null
+          if (id && name) found.set(id, name)
+        }
+      }
+      for (const item of node) walk(item, depth + 1)
+      return
+    }
+    if (isRecord(node)) for (const value of Object.values(node)) walk(value, depth + 1)
+  }
+  walk(payload, 0)
+  return found
+}
+
+/** Renames breakdown keys that are column ids to the column's name. */
+export function nameColumnsById(
+  clips: HudlClipCandidate[],
+  names: Map<string, string>
+): HudlClipCandidate[] {
+  if (!names.size) return clips
+  return clips.map((clip) => {
+    const renamed: Record<string, string> = {}
+    let changed = false
+    for (const [key, value] of Object.entries(clip.columns)) {
+      const name = names.get(key)
+      if (name) changed = true
+      renamed[name ?? key] = value
+    }
+    return changed ? { ...clip, columns: renamed } : clip
+  })
 }
 
 /** A column list living beside the clips, e.g. `{ columns: ['Down', 'Dist'] }`. */
@@ -369,6 +421,12 @@ export interface HudlDiscovery {
 
 const MAX_SHAPES = 40
 
+function dataApiRank(url: string): number {
+  if (url.includes('/classicfacade/')) return 0
+  if (url.includes('/graphql')) return 1
+  return 2
+}
+
 /** "Clips 1-100 of 131" (library) or "126 Clips" (analyze view) → the total. */
 export function statedClipTotal(text: string): number | null {
   const paged = /clips\s+\d+\s*[-–]\s*\d+\s+of\s+(\d+)/i.exec(text)
@@ -480,6 +538,14 @@ export async function enumerateHudlPlaylist(
     const everything = [...payloads, ...embedded.map((e) => e.value)]
     let clips = attachCommentsFromPayloads(bestClipSet(everything), everything)
 
+    // Breakdown values keyed by column id, named from the team's column list.
+    const columnNames = new Map<string, string>()
+    payloads.forEach((payload, i) => {
+      if (!(payloadUrls[i] ?? '').includes('/columns')) return
+      for (const [id, name] of columnNamesById(payload)) columnNames.set(id, name)
+    })
+    clips = nameColumnsById(clips, columnNames)
+
     // The breakdown lives in the play table under the video, not in the
     // playlist JSON. Read it off the page and pair it with the clips by order.
     const snapshots = await readHudlPlayTable(page)
@@ -492,9 +558,14 @@ export async function enumerateHudlPlaylist(
     if (total !== null) options.onStatedTotal?.(total)
 
     options.onDiscovery?.({
+      // Translation files are most of what the page fetches and say nothing
+      // about clips; Hudl's data API (classicfacade, graphql) goes first.
       payloadShapes: payloads
+        .map((payload, i) => ({ payload, url: payloadUrls[i] ?? '' }))
+        .filter(({ url }) => !url.includes('/i18n/'))
+        .sort((a, b) => dataApiRank(a.url) - dataApiRank(b.url))
         .slice(0, MAX_SHAPES)
-        .map((payload, i) => ({ url: payloadUrls[i] ?? '', shape: describeShape(payload) })),
+        .map(({ payload, url }) => ({ url, shape: describeShape(payload, 6_000) })),
       embeddedShapes: embedded.slice(0, 10).map((e) => ({ name: e.name, shape: describeShape(e.value) })),
       table: {
         snapshots: snapshots.length,

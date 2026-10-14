@@ -48,7 +48,7 @@ function outline(value: unknown, depth: number): string {
 }
 
 /** A key skeleton of `value`, truncated to a size a job row can carry. */
-export function describeShape(value: unknown): string {
+export function describeShape(value: unknown, maxChars = MAX_SHAPE_CHARS): string {
   const shape = outline(value, 0)
-  return shape.length > MAX_SHAPE_CHARS ? `${shape.slice(0, MAX_SHAPE_CHARS)}…` : shape
+  return shape.length > maxChars ? `${shape.slice(0, maxChars)}…` : shape
 }

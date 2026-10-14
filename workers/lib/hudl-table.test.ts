@@ -123,3 +123,14 @@ describe('describeShape', () => {
     expect(shape).not.toContain('secret')
   })
 })
+
+describe('column ids from Hudl’s column list', () => {
+  it('names breakdown values that are keyed by column id', async () => {
+    const { columnNamesById, nameColumnsById, extractClipsFromPayload } = await import('./hudl-playlist')
+    const names = columnNamesById({ columns: [{ id: 11, name: 'DN' }, { id: 12, name: 'DIST' }] })
+    const [c] = extractClipsFromPayload({
+      clips: [{ id: 'a', angles: [{ url: 'https://vd.hudl.com/a.mp4' }], breakdownData: { '11': '2', '12': '8' } }],
+    })
+    expect(nameColumnsById([c], names)[0].columns).toEqual({ DN: '2', DIST: '8' })
+  })
+})
