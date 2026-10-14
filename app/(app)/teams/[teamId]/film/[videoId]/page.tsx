@@ -2,7 +2,7 @@ import { createClient as createServerClient } from '@/lib/supabase/server';
 import { getTeamById, getVideoById } from '@/lib/db/queries';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ArrowLeft, Clock, Sparkles, Zap, Gauge, Shield, TrendingUp, AlertTriangle, ListOrdered, BarChart3 } from 'lucide-react';
+import { ArrowLeft, Clock, Sparkles, Zap, Gauge, Shield, TrendingUp, AlertTriangle, ListOrdered, BarChart3, MessageSquare } from 'lucide-react';
 
 // Film-based IQ modules only (PlaybookIQ is document-based, not film).
 const FILM_MODULES = [
@@ -19,6 +19,21 @@ export async function generateMetadata({ params }: { params: Promise<{ teamId: s
   const { videoId } = await params;
   const video = await getVideoById(videoId);
   return { title: video?.title ?? 'Film' };
+}
+
+interface HudlComment {
+  kind: 'comment' | 'note';
+  text: string;
+  author?: string;
+  postedAt?: string;
+  clipSeconds?: number;
+}
+
+function asHudlComments(value: unknown): HudlComment[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (c): c is HudlComment => typeof c === 'object' && c !== null && typeof (c as HudlComment).text === 'string'
+  );
 }
 
 function formatDuration(seconds?: number | null) {
@@ -47,6 +62,22 @@ export default async function VideoDetailPage({
   const playbackUrl = video.storage_path
     ? (await supabase.storage.from('videos').createSignedUrl(video.storage_path, 3600)).data?.signedUrl
     : video.source_url ?? null;
+
+  // What the staff tagged and wrote on this clip in Hudl, when it came from a
+  // Hudl import. Read as the user — RLS scopes play_sequences to the team.
+  const { data: sequences } = await supabase
+    .from('play_sequences')
+    .select('id, breakdown, hudl_comments')
+    .eq('video_id', videoId)
+    .order('sequence_number', { ascending: true });
+  const hudlComments = (sequences ?? []).flatMap((s) => asHudlComments(s.hudl_comments));
+  const hudlColumns = (sequences ?? []).flatMap((s) =>
+    s.breakdown && typeof s.breakdown === 'object' && !Array.isArray(s.breakdown)
+      ? Object.entries(s.breakdown as Record<string, unknown>).filter(
+          (entry): entry is [string, string] => typeof entry[1] === 'string' && entry[1].trim() !== ''
+        )
+      : []
+  );
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
@@ -99,6 +130,40 @@ export default async function VideoDetailPage({
           </Link>
         </div>
       </div>
+
+      {(hudlComments.length > 0 || hudlColumns.length > 0) && (
+        <div className="glass-card p-6 mt-6">
+          <div className="flex items-center gap-2 mb-3">
+            <MessageSquare size={18} className="text-[var(--brand-navy)]" />
+            <h2 className="font-bold text-[var(--brand-navy)]">From Hudl</h2>
+          </div>
+          {hudlColumns.length > 0 && (
+            <dl className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2 text-sm mb-4">
+              {hudlColumns.map(([label, value]) => (
+                <div key={label} className="min-w-0">
+                  <dt className="text-xs uppercase tracking-wide text-[var(--brand-muted)] truncate">{label}</dt>
+                  <dd className="text-[var(--brand-ink)] break-words">{value}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+          {hudlComments.length > 0 && (
+            <ul className="space-y-3">
+              {hudlComments.map((c, i) => (
+                <li key={i} className="text-sm border-l-2 border-[var(--brand-gold)] pl-3">
+                  <p className="text-xs text-[var(--brand-muted)] mb-0.5">
+                    {c.kind === 'note' ? 'Note' : 'Comment'}
+                    {c.author && <> · {c.author}</>}
+                    {typeof c.clipSeconds === 'number' && <> · at {formatDuration(c.clipSeconds) === '—' ? '0:00' : formatDuration(c.clipSeconds)}</>}
+                    {c.postedAt && !Number.isNaN(Date.parse(c.postedAt)) && <> · {new Date(c.postedAt).toLocaleDateString()}</>}
+                  </p>
+                  <p className="text-[var(--brand-ink)] whitespace-pre-wrap">{c.text}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {/* Run IQ Analysis on this film */}
       <div className="glass-card p-6 mt-6">

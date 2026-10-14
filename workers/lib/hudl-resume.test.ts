@@ -7,6 +7,7 @@ const clip = (clipId: string, order: number): HudlClipCandidate => ({
   order,
   columns: {},
   mediaUrls: [`https://media.hudl.com/${clipId}.mp4`],
+  comments: [],
 })
 
 const PLAYLIST = [clip('a', 0), clip('b', 1), clip('c', 2), clip('d', 3)]

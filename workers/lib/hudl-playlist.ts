@@ -19,6 +19,13 @@
  *     names are what identify the endpoint, and the values are the secret.
  */
 import type { Page, Response } from 'playwright'
+import {
+  COMMENT_FIELD_KEYS,
+  collectCommentsByClip,
+  mergeComments,
+  readClipComments,
+  type HudlClipComment,
+} from './hudl-comments'
 
 export interface HudlClipCandidate {
   /** Hudl's own clip id — the stable key for de-duplicating across runs. */
@@ -29,6 +36,8 @@ export interface HudlClipCandidate {
   columns: Record<string, string>
   /** Playable URLs, most preferred first (mp4 before HLS). */
   mediaUrls: string[]
+  /** The staff's comments and notes on this clip, when Hudl served any. */
+  comments: HudlClipComment[]
 }
 
 // Keys at a clip's root that are structure, not breakdown data.
@@ -126,6 +135,9 @@ function readColumns(clip: Record<string, unknown>, columnNames: string[]): Reco
 
   for (const [key, value] of Object.entries(clip)) {
     const k = norm(key)
+    // Comments and notes are read by `readClipComments`. As columns, a list of
+    // `{ title, text }` comments would pass for breakdown pairs.
+    if (COMMENT_FIELD_KEYS.has(k)) continue
 
     if (Array.isArray(value)) {
       const objectPairs = value.filter(isRecord)
@@ -252,6 +264,7 @@ export function extractClipsFromPayload(payload: unknown): HudlClipCandidate[] {
       order: out.length,
       columns: readColumns(clip, columnNames),
       mediaUrls: preferProgressive(collectMediaUrls(clip)),
+      comments: readClipComments(clip),
     })
   }
 
@@ -285,6 +298,19 @@ export function bestClipSet(payloads: unknown[]): HudlClipCandidate[] {
     if (clips.length > best.length) best = clips
   }
   return best
+}
+
+/**
+ * Adds comments that arrived in OTHER payloads than the playlist — a separate
+ * comments call naming its clip. Only clips in `clips` can receive one.
+ */
+export function attachCommentsFromPayloads(
+  clips: HudlClipCandidate[],
+  payloads: unknown[]
+): HudlClipCandidate[] {
+  const beside = collectCommentsByClip(payloads, new Set(clips.map((c) => c.clipId)))
+  if (!beside.size) return clips
+  return clips.map((clip) => ({ ...clip, comments: mergeComments(clip.comments, beside.get(clip.clipId)) }))
 }
 
 // ---------------------------------------------------------------------------
@@ -332,10 +358,14 @@ function isHudlHost(rawUrl: string): boolean {
  */
 export async function enumerateHudlPlaylist(
   page: Page,
-  canonicalUrl: string
+  canonicalUrl: string,
+  /**
+   * Filled with the redacted request URLs the page made, for a caller that
+   * wants them on success too (where Hudl keeps comments is undocumented).
+   */
+  seenUrls: Set<string> = new Set()
 ): Promise<HudlClipCandidate[]> {
   const payloads: unknown[] = []
-  const seenUrls = new Set<string>()
   const pending: Promise<void>[] = []
 
   const onResponse = (response: Response) => {
@@ -381,7 +411,7 @@ export async function enumerateHudlPlaylist(
     }
 
     await Promise.allSettled(pending.splice(0))
-    const clips = bestClipSet(payloads)
+    const clips = attachCommentsFromPayloads(bestClipSet(payloads), payloads)
 
     if (!clips.length) {
       throw new HudlPlaylistError(

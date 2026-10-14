@@ -226,15 +226,17 @@ async function importClip(
   await supabase.from('videos').update({ storage_path: objectPath }).eq('id', video.id)
 
   // The breakdown Hudl already holds, through the same mapper the paste path
-  // uses. One alias table, three ways in.
+  // uses. One alias table, three ways in. The staff's comments and notes ride
+  // on the same row — they are about this play.
   const play = mapHudlRow(clip.columns, clip.order)
   const fields = toPlaySequenceFields(play)
-  if (Object.keys(fields).length > 0) {
+  if (Object.keys(fields).length > 0 || clip.comments.length > 0) {
     await supabase.from('play_sequences').insert({
       video_id: video.id,
       team_id: job.team_id,
       sequence_number: 1,
       ...fields,
+      hudl_comments: clip.comments.length ? clip.comments : null,
     })
   }
 
@@ -325,7 +327,9 @@ async function runImport(supabase: SupabaseClient, job: ImportJob) {
     session = await openHudlSession(supabase, job.team_id)
 
     await setStep(supabase, job.id, 'Finding Clips')
-    const clips = await enumerateHudlPlaylist(session.page, parsed.canonicalUrl)
+    const requestUrls = new Set<string>()
+    const clips = await enumerateHudlPlaylist(session.page, parsed.canonicalUrl, requestUrls)
+    const commentsFound = clips.reduce((sum, clip) => sum + clip.comments.length, 0)
     // The session survived a real page load, so cache it — the next import
     // skips the login entirely.
     await session.persist()
@@ -352,12 +356,13 @@ async function runImport(supabase: SupabaseClient, job: ImportJob) {
       .from('hudl_import_jobs')
       .update({
         clips_found: clips.length,
+        comments_found: commentsFound,
         clips_imported: imported,
         updated_at: new Date().toISOString(),
       })
       .eq('id', job.id)
     log(
-      `job ${job.id}: found ${clips.length} clips` +
+      `job ${job.id}: found ${clips.length} clips, ${commentsFound} comments/notes` +
         (alreadyImported ? `, ${alreadyImported} already imported — resuming` : '')
     )
 
@@ -446,7 +451,16 @@ async function runImport(supabase: SupabaseClient, job: ImportJob) {
               : `None of the ${clips.length} clips could be downloaded from Hudl. Nothing was imported.`,
         clips_imported: imported,
         clips_failed: failed,
-        diagnostics: clipFailures.length ? { clipFailures } : null,
+        diagnostics:
+          clipFailures.length || commentsFound === 0
+            ? {
+                ...(clipFailures.length ? { clipFailures } : {}),
+                // No comments came through. Either the film has none or Hudl
+                // serves them from a call the reader does not recognise — the
+                // redacted endpoint list is what tells the two apart next time.
+                ...(commentsFound === 0 ? { commentRequestUrls: [...requestUrls].sort() } : {}),
+              }
+            : null,
         completed_at: new Date().toISOString(),
         locked_by: null,
         locked_at: null,

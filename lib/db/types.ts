@@ -94,6 +94,8 @@ export interface PlaySequence {
   offensive_formation?: string | null; defensive_front?: string | null
   play_type?: string | null; play_direction?: string | null; play_name?: string | null
   gain_loss?: number | null; breakdown?: Json | null; source_row_index?: number | null
+  // Comments and notes the staff left on the clip in Hudl (Hudl import only).
+  hudl_comments?: Json | null
 }
 
 export interface PositionAnalysisResult {
