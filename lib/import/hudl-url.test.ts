@@ -33,6 +33,21 @@ describe('parseHudlUrl', () => {
     if (!result.ok) expect(result.reason).toContain('/watch/team/')
   })
 
+  it('reads a /library/<id> game link — how Hudl links games now', () => {
+    const result = parseHudlUrl('https://www.hudl.com/library/113685')
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.target).toEqual({ kind: 'playlist', videoId: '113685' })
+    expect(result.canonicalUrl).toBe('https://www.hudl.com/library/113685')
+    expect(hudlTargetKey(result.target)).toBe('playlist:library:113685:')
+  })
+
+  it('refuses a /library/ link with no number or extra path rather than guessing', () => {
+    expect(parseHudlUrl('https://www.hudl.com/library').ok).toBe(false)
+    expect(parseHudlUrl('https://www.hudl.com/library/abc').ok).toBe(false)
+    expect(parseHudlUrl('https://www.hudl.com/library/113685/clips/9').ok).toBe(false)
+  })
+
   it('drops tracking parameters so one playlist is one job', () => {
     // `cx` changes with where the coach clicked from. Without this, pasting the
     // same playlist twice pulls fifty clips twice.

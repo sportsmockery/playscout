@@ -120,7 +120,7 @@ export async function POST(req: NextRequest) {
       team_id: teamId,
       created_by: access.user.id,
       source_url: link.canonicalUrl,
-      hudl_team_id: link.target.teamId,
+      hudl_team_id: link.target.teamId ?? null,
       hudl_video_id: link.target.videoId,
       hudl_playlist_id: link.target.playlistId ?? null,
       target_key: targetKey,
