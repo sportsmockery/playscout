@@ -12,7 +12,8 @@
 
 export type HudlTarget = {
   kind: 'playlist'
-  teamId: string
+  /** Absent for a /library/<id> link, which carries no team in its path. */
+  teamId?: string
   videoId: string
   playlistId?: string
 }
@@ -29,16 +30,17 @@ function isHudlHost(hostname: string): boolean {
 }
 
 /**
- * Reads the ids out of a Hudl watch/analyze link.
+ * Reads the ids out of a Hudl game or playlist link.
  *
- * Only one shape is accepted:
+ * Two shapes are accepted, both observed from real coaches' Hudl sessions:
  *   /watch/team/<teamId>/analyze?v=<videoId>&l=<playlistId>
+ *   /library/<id>  — how Hudl now links a game
  *
- * That is deliberately narrow. It is the URL shape actually observed from a
- * real Hudl session; every other Hudl path is a guess, and a guessed parse
- * fails deep inside the worker twenty minutes later instead of here, where the
- * coach can read why. Widen this when a real example of another shape exists,
- * not before.
+ * Deliberately narrow otherwise: every other Hudl path is a guess, and a
+ * guessed parse fails deep inside the worker twenty minutes later instead of
+ * here, where the coach can read why. The worker only opens the canonical URL
+ * and reads the clip list Hudl's own page loads, so a new shape needs no
+ * worker change — only a real example of it.
  */
 export function parseHudlUrl(raw: string): HudlUrlCheck {
   let url: URL
@@ -90,10 +92,19 @@ export function parseHudlUrl(raw: string): HudlUrlCheck {
     }
   }
 
+  // /library/<id>
+  if (segments[0] === 'library' && segments[1] && /^\d+$/.test(segments[1]) && segments.length === 2) {
+    return {
+      ok: true,
+      target: { kind: 'playlist', videoId: segments[1] },
+      canonicalUrl: canonicalize(url),
+    }
+  }
+
   return {
     ok: false,
     reason:
-      'That Hudl link is not one PlayScout recognises. Open the playlist or game in Hudl and copy the address bar — it should contain "/watch/team/" and a "v=" value.',
+      'That Hudl link is not one PlayScout recognises. Open the game or playlist in Hudl and copy the address bar — it should look like hudl.com/library/<number> or contain "/watch/team/" and a "v=" value.',
   }
 }
 
@@ -115,5 +126,5 @@ function canonicalize(url: URL): string {
 
 /** A stable key for "this is the same playlist", for de-duplicating import jobs. */
 export function hudlTargetKey(target: HudlTarget): string {
-  return `playlist:${target.teamId}:${target.videoId}:${target.playlistId ?? ''}`
+  return `playlist:${target.teamId ?? 'library'}:${target.videoId}:${target.playlistId ?? ''}`
 }
