@@ -36,6 +36,14 @@ export interface HudlPlayRow {
   playDirection?: string
   result?: string
   gainLoss?: number
+  quarter?: number
+  offensiveStrength?: string
+  backfield?: string
+  defensiveStrength?: string
+  blitz?: string
+  coverage?: string
+  /** Hudl's EFF column — the staff's own "was this play effective" mark. */
+  efficiency?: string
   /** Columns we do not map, kept verbatim. */
   extra: Record<string, string>
 }
@@ -55,6 +63,13 @@ const ALIASES: Record<keyof Omit<HudlPlayRow, 'sourceRowIndex' | 'extra'>, strin
   playDirection: ['playdir', 'playdirection', 'direction', 'dir'],
   result: ['result', 'playresult', 'outcome'],
   gainLoss: ['gnls', 'gainloss', 'gain', 'yards', 'yds', 'yardsgained', 'gn'],
+  quarter: ['qtr', 'quarter', 'qt', 'period'],
+  offensiveStrength: ['offstr', 'offensivestrength', 'offstrength', 'strength', 'str'],
+  backfield: ['backfield', 'bkfld', 'backfieldset'],
+  defensiveStrength: ['defstr', 'defensivestrength', 'defstrength'],
+  blitz: ['blitz', 'pressure'],
+  coverage: ['coverage', 'cov', 'defcoverage'],
+  efficiency: ['eff', 'efficiency', 'effective'],
 }
 
 function normalizeKey(key: string): string {
@@ -110,7 +125,9 @@ export function mapHudlRow(row: Record<string, string>, sourceRowIndex: number):
   const play: HudlPlayRow = { sourceRowIndex, extra: {} }
 
   for (const [column, rawValue] of Object.entries(row)) {
-    const value = (rawValue ?? '').trim()
+    // Hudl prints an unfilled cell as "-"; that is a blank, not a value.
+    const trimmed = (rawValue ?? '').trim()
+    const value = /^[-–—]$/.test(trimmed) ? '' : trimmed
     const field = fieldForColumn(column)
 
     if (!field) {
@@ -126,6 +143,11 @@ export function mapHudlRow(row: Record<string, string>, sourceRowIndex: number):
       case 'down':
         play.down = parseDown(value)
         break
+      case 'quarter': {
+        const n = toInt(value)
+        if (n != null && n >= 1 && n <= 8) play.quarter = n
+        break
+      }
       case 'distance':
       case 'gainLoss': {
         const n = toInt(value)
@@ -234,6 +256,14 @@ export function toPlaySequenceFields(play: HudlPlayRow): Record<string, unknown>
     play_direction: play.playDirection ?? null,
     play_name: play.playName ?? null,
     gain_loss: play.gainLoss ?? null,
+    play_number: play.playNumber ?? null,
+    quarter: play.quarter ?? null,
+    offensive_strength: play.offensiveStrength ?? null,
+    backfield: play.backfield ?? null,
+    defensive_strength: play.defensiveStrength ?? null,
+    blitz: play.blitz ?? null,
+    coverage: play.coverage ?? null,
+    efficiency: play.efficiency ?? null,
     breakdown: Object.keys(play.extra).length ? play.extra : null,
     source_row_index: play.sourceRowIndex,
   }

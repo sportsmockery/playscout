@@ -3,6 +3,8 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 import FilmLibraryClient from './FilmLibraryClient';
+import { createClient } from '@/lib/supabase/server';
+import { PLAY_DETAIL_SELECT, playSummary, type PlayDetails } from '@/lib/film/play-details';
 
 export async function generateMetadata({ params }: { params: Promise<{ teamId: string }> }) {
   const { teamId } = await params;
@@ -24,6 +26,21 @@ export default async function FilmPage({
   ]);
 
   if (!team) notFound();
+
+  // Each clip's breakdown, as one line on its card. First sequence per video —
+  // a Hudl clip is one play.
+  const supabase = await createClient();
+  const { data: plays } = await supabase
+    .from('play_sequences')
+    .select(`video_id, sequence_number, ${PLAY_DETAIL_SELECT}`)
+    .eq('team_id', teamId)
+    .order('sequence_number', { ascending: true });
+  const playSummaries: Record<string, string> = {};
+  for (const play of (plays ?? []) as unknown as (PlayDetails & { video_id: string })[]) {
+    if (playSummaries[play.video_id]) continue;
+    const summary = playSummary(play);
+    if (summary) playSummaries[play.video_id] = summary;
+  }
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -49,6 +66,7 @@ export default async function FilmPage({
         teamId={teamId}
         teamName={team.name}
         videos={videos}
+        playSummaries={playSummaries}
         folders={folders}
         opponents={opponents.map((o) => ({ id: o.id, name: o.name }))}
       />

@@ -26,6 +26,8 @@ import {
   readClipComments,
   type HudlClipComment,
 } from './hudl-comments'
+import { describeShape } from './hudl-shapes'
+import { assembleTable, pairTableWithClips, readHudlPlayTable } from './hudl-table'
 
 export interface HudlClipCandidate {
   /** Hudl's own clip id — the stable key for de-duplicating across runs. */
@@ -349,6 +351,65 @@ function isHudlHost(rawUrl: string): boolean {
   }
 }
 
+export interface EnumerateOptions {
+  /** Called with the clip total the page states ("Clips 1-100 of 131"). */
+  onStatedTotal?: (total: number) => void
+  /**
+   * Called with value-free outlines of what the page loaded, so a run that
+   * finds no breakdown or comments says where to look next time.
+   */
+  onDiscovery?: (discovery: HudlDiscovery) => void
+}
+
+export interface HudlDiscovery {
+  payloadShapes: { url: string; shape: string }[]
+  embeddedShapes: { name: string; shape: string }[]
+  table: { snapshots: number; header: string[]; rowsRead: number; paired: number; reason?: string }
+}
+
+const MAX_SHAPES = 40
+
+/** "Clips 1-100 of 131" (library) or "126 Clips" (analyze view) → the total. */
+export function statedClipTotal(text: string): number | null {
+  const paged = /clips\s+\d+\s*[-–]\s*\d+\s+of\s+(\d+)/i.exec(text)
+  if (paged) return Number(paged[1])
+  const plain = /(?:^|\n)\s*(\d+)\s+clips\s*(?:\n|$)/i.exec(text)
+  return plain ? Number(plain[1]) : null
+}
+
+/**
+ * App state some pages build into the document instead of fetching, read so a
+ * breakdown delivered that way is not missed. Returned whole for the extractor;
+ * only ever stored as a value-free outline.
+ */
+async function readEmbeddedState(page: Page): Promise<{ name: string; value: unknown }[]> {
+  return page
+    .evaluate(() => {
+      const found: { name: string; value: unknown }[] = []
+      const nextData = document.getElementById('__NEXT_DATA__')
+      if (nextData?.textContent) {
+        try {
+          found.push({ name: '__NEXT_DATA__', value: JSON.parse(nextData.textContent) })
+        } catch {
+          // not JSON after all
+        }
+      }
+      for (const key of Object.keys(window)) {
+        if (!key.startsWith('__') || key === '__NEXT_DATA__') continue
+        const value = (window as unknown as Record<string, unknown>)[key]
+        if (!value || typeof value !== 'object') continue
+        try {
+          const json = JSON.stringify(value)
+          if (json && json.length < 8 * 1024 * 1024) found.push({ name: key, value: JSON.parse(json) })
+        } catch {
+          // cyclic or not serialisable — not app state
+        }
+      }
+      return found
+    })
+    .catch(() => [])
+}
+
 /**
  * Opens the analyze URL as the coach and reads out the clips.
  *
@@ -363,9 +424,11 @@ export async function enumerateHudlPlaylist(
    * Filled with the redacted request URLs the page made, for a caller that
    * wants them on success too (where Hudl keeps comments is undocumented).
    */
-  seenUrls: Set<string> = new Set()
+  seenUrls: Set<string> = new Set(),
+  options: EnumerateOptions = {}
 ): Promise<HudlClipCandidate[]> {
   const payloads: unknown[] = []
+  const payloadUrls: string[] = []
   const pending: Promise<void>[] = []
 
   const onResponse = (response: Response) => {
@@ -382,6 +445,7 @@ export async function enumerateHudlPlaylist(
           const body = await response.body()
           if (body.byteLength > MAX_JSON_BYTES) return
           payloads.push(JSON.parse(body.toString('utf8')))
+          payloadUrls.push(redactUrlForDiagnostics(url))
         } catch {
           // A body that has gone away or is not JSON after all. Not worth
           // failing over — the clips come from whichever payload does parse.
@@ -411,7 +475,35 @@ export async function enumerateHudlPlaylist(
     }
 
     await Promise.allSettled(pending.splice(0))
-    const clips = attachCommentsFromPayloads(bestClipSet(payloads), payloads)
+
+    const embedded = await readEmbeddedState(page)
+    const everything = [...payloads, ...embedded.map((e) => e.value)]
+    let clips = attachCommentsFromPayloads(bestClipSet(everything), everything)
+
+    // The breakdown lives in the play table under the video, not in the
+    // playlist JSON. Read it off the page and pair it with the clips by order.
+    const snapshots = await readHudlPlayTable(page)
+    const tableRows = assembleTable(snapshots)
+    const filled = pairTableWithClips(clips, tableRows)
+    clips = filled.clips
+
+    const pageText = await page.locator('body').innerText().catch(() => '')
+    const total = statedClipTotal(pageText)
+    if (total !== null) options.onStatedTotal?.(total)
+
+    options.onDiscovery?.({
+      payloadShapes: payloads
+        .slice(0, MAX_SHAPES)
+        .map((payload, i) => ({ url: payloadUrls[i] ?? '', shape: describeShape(payload) })),
+      embeddedShapes: embedded.slice(0, 10).map((e) => ({ name: e.name, shape: describeShape(e.value) })),
+      table: {
+        snapshots: snapshots.length,
+        header: (snapshots[0]?.header ?? []).map((h) => h.text).slice(0, 40),
+        rowsRead: tableRows.length,
+        paired: filled.paired,
+        reason: filled.reason,
+      },
+    })
 
     if (!clips.length) {
       throw new HudlPlaylistError(

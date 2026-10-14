@@ -31,6 +31,7 @@ import { createServiceClient } from './lib/service-client'
 import { Sentry } from './lib/sentry'
 import { openHudlSession, HudlSessionError, type HudlSession } from './lib/hudl-session'
 import {
+  type HudlDiscovery,
   enumerateHudlPlaylist,
   HudlPlaylistError,
   type HudlClipCandidate,
@@ -68,12 +69,14 @@ interface ImportJob {
   folder_id: string | null
   opponent_id: string | null
   film_type: string
+  /** Import only the first N clips of the playlist; null = all of them. */
+  clip_limit: number | null
   attempts: number
   max_attempts: number
 }
 
 const JOB_COLUMNS =
-  'id, team_id, created_by, source_url, job_kind, title, folder_id, opponent_id, film_type, attempts, max_attempts'
+  'id, team_id, created_by, source_url, job_kind, title, folder_id, opponent_id, film_type, clip_limit, attempts, max_attempts'
 
 let shuttingDown = false
 
@@ -172,6 +175,62 @@ async function reapStuckJobs(supabase: SupabaseClient) {
   }
 }
 
+/** Did Hudl give this clip any breakdown field PlayScout maps? */
+function hasBreakdown(clip: HudlClipCandidate): boolean {
+  const play = mapHudlRow(clip.columns, clip.order)
+  return Object.entries(play).some(
+    ([key, value]) => key !== 'sourceRowIndex' && key !== 'extra' && value !== undefined
+  )
+}
+
+/**
+ * The clip's breakdown and the staff's comments, on its play_sequences row.
+ *
+ * The breakdown goes through the same mapper the paste path uses — one alias
+ * table, three ways in. When this run read a breakdown it is authoritative and
+ * replaces the row's fields outright (an earlier import stored stray JSON keys
+ * like `seasonId` as "breakdown"). When it read none, nothing already on file
+ * is blanked: a re-scan that could not see the table must not erase one that
+ * could.
+ */
+async function writeClipDetails(
+  supabase: SupabaseClient,
+  job: ImportJob,
+  videoId: string,
+  clip: HudlClipCandidate
+) {
+  const fields = toPlaySequenceFields(mapHudlRow(clip.columns, clip.order))
+  const comments = clip.comments.length ? clip.comments : null
+  const withBreakdown = hasBreakdown(clip)
+
+  const { data: rows } = await supabase
+    .from('play_sequences')
+    .select('id')
+    .eq('video_id', videoId)
+    .order('sequence_number', { ascending: true })
+    .limit(1)
+  const existingId = rows?.[0]?.id as string | undefined
+
+  if (!existingId) {
+    if (!withBreakdown && !comments) return
+    const { error } = await supabase.from('play_sequences').insert({
+      video_id: videoId,
+      team_id: job.team_id,
+      sequence_number: 1,
+      ...(withBreakdown ? fields : {}),
+      hudl_comments: comments,
+    })
+    if (error) log(`job ${job.id}: could not save play details for ${videoId}`, error.message)
+    return
+  }
+
+  const patch: Record<string, unknown> = { ...(withBreakdown ? fields : {}) }
+  if (comments) patch.hudl_comments = comments
+  if (!Object.keys(patch).length) return
+  const { error } = await supabase.from('play_sequences').update(patch).eq('id', existingId)
+  if (error) log(`job ${job.id}: could not update play details for ${videoId}`, error.message)
+}
+
 function clipTitle(job: ImportJob, clip: HudlClipCandidate): string {
   const base = job.title?.trim() || 'Hudl import'
   const number = String(clip.order + 1).padStart(2, '0')
@@ -225,20 +284,7 @@ async function importClip(
 
   await supabase.from('videos').update({ storage_path: objectPath }).eq('id', video.id)
 
-  // The breakdown Hudl already holds, through the same mapper the paste path
-  // uses. One alias table, three ways in. The staff's comments and notes ride
-  // on the same row — they are about this play.
-  const play = mapHudlRow(clip.columns, clip.order)
-  const fields = toPlaySequenceFields(play)
-  if (Object.keys(fields).length > 0 || clip.comments.length > 0) {
-    await supabase.from('play_sequences').insert({
-      video_id: video.id,
-      team_id: job.team_id,
-      sequence_number: 1,
-      ...fields,
-      hudl_comments: clip.comments.length ? clip.comments : null,
-    })
-  }
+  await writeClipDetails(supabase, job, video.id, clip)
 
   const { error: jobError } = await supabase.from('video_processing_jobs').insert({
     video_id: video.id,
@@ -328,8 +374,17 @@ async function runImport(supabase: SupabaseClient, job: ImportJob) {
 
     await setStep(supabase, job.id, 'Finding Clips')
     const requestUrls = new Set<string>()
-    const clips = await enumerateHudlPlaylist(session.page, parsed.canonicalUrl, requestUrls)
+    let discovery: HudlDiscovery | null = null
+    const playlist = await enumerateHudlPlaylist(session.page, parsed.canonicalUrl, requestUrls, {
+      onDiscovery: (found) => {
+        discovery = found
+      },
+    })
+    // The table pairs against the WHOLE playlist (its row count must match),
+    // so the limit applies after: plays 1..N of the game, nothing past them.
+    const clips = job.clip_limit ? playlist.slice(0, job.clip_limit) : playlist
     const commentsFound = clips.reduce((sum, clip) => sum + clip.comments.length, 0)
+    const breakdownsFound = clips.filter((clip) => hasBreakdown(clip)).length
     // The session survived a real page load, so cache it — the next import
     // skips the login entirely.
     await session.persist()
@@ -345,24 +400,37 @@ async function runImport(supabase: SupabaseClient, job: ImportJob) {
     // of re-downloading everything and creating duplicate videos rows.
     const { data: existing } = await supabase
       .from('videos')
-      .select('source_url')
+      .select('id, source_url')
       .eq('team_id', job.team_id)
       .eq('source_type', 'hudl_link')
     const already = importedClipIds((existing ?? []).map((row) => row.source_url as string | null))
     const { remaining, alreadyImported } = planResume(clips, already)
     imported = alreadyImported
 
+    // Clips already on file still get this run's breakdown and comments — that
+    // is how a game imported before the play table was read gets its details,
+    // without downloading any film again.
+    if (alreadyImported) {
+      await setStep(supabase, job.id, 'Updating play details')
+      const videoBySource = new Map((existing ?? []).map((row) => [row.source_url as string, row.id as string]))
+      for (const clip of clips) {
+        const videoId = videoBySource.get(clipSourceUrl(clip.clipId))
+        if (videoId) await writeClipDetails(supabase, job, videoId, clip)
+      }
+    }
+
     await supabase
       .from('hudl_import_jobs')
       .update({
         clips_found: clips.length,
         comments_found: commentsFound,
+        breakdowns_found: breakdownsFound,
         clips_imported: imported,
         updated_at: new Date().toISOString(),
       })
       .eq('id', job.id)
     log(
-      `job ${job.id}: found ${clips.length} clips, ${commentsFound} comments/notes` +
+      `job ${job.id}: found ${clips.length} clips (of ${playlist.length}), ${breakdownsFound} with breakdown, ${commentsFound} comments/notes` +
         (alreadyImported ? `, ${alreadyImported} already imported — resuming` : '')
     )
 
@@ -452,13 +520,15 @@ async function runImport(supabase: SupabaseClient, job: ImportJob) {
         clips_imported: imported,
         clips_failed: failed,
         diagnostics:
-          clipFailures.length || commentsFound === 0
+          clipFailures.length || commentsFound === 0 || breakdownsFound < clips.length
             ? {
                 ...(clipFailures.length ? { clipFailures } : {}),
-                // No comments came through. Either the film has none or Hudl
-                // serves them from a call the reader does not recognise — the
-                // redacted endpoint list is what tells the two apart next time.
-                ...(commentsFound === 0 ? { commentRequestUrls: [...requestUrls].sort() } : {}),
+                // Something did not come through. Either the film has none or
+                // Hudl serves it somewhere the reader does not look — the
+                // redacted endpoints and value-free outlines say which.
+                ...(commentsFound === 0 || breakdownsFound < clips.length
+                  ? { requestUrls: [...requestUrls].sort(), discovery }
+                  : {}),
               }
             : null,
         completed_at: new Date().toISOString(),

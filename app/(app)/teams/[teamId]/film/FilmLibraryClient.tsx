@@ -27,6 +27,8 @@ interface Props {
   teamId: string;
   teamName: string;
   videos: Video[];
+  /** One-line breakdown per video id, for clips that carry one. */
+  playSummaries?: Record<string, string>;
   folders: FolderWithCount[];
   /** For tagging film as an opponent's, which is what SCOUTIQ filters on. */
   opponents?: { id: string; name: string }[];
@@ -34,7 +36,7 @@ interface Props {
 
 const UNFILED = '__unfiled__';
 
-export default function FilmLibraryClient({ teamId, teamName, videos, folders, opponents = [] }: Props) {
+export default function FilmLibraryClient({ teamId, teamName, videos, playSummaries = {}, folders, opponents = [] }: Props) {
   const router = useRouter();
   // null = "All film". A folder id, or UNFILED for clips in no folder.
   const [activeFolder, setActiveFolder] = useState<string | null>(null);
@@ -385,7 +387,7 @@ export default function FilmLibraryClient({ teamId, teamName, videos, folders, o
                   </button>
                 )}
                 <div className={selected.has(video.id) ? 'ring-2 ring-[var(--brand-navy)] rounded-2xl' : ''}>
-                  <VideoCard teamId={teamId} video={video} />
+                  <VideoCard teamId={teamId} video={video} playSummary={playSummaries[video.id]} />
                 </div>
               </div>
             ))}

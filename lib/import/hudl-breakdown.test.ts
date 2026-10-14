@@ -24,7 +24,7 @@ describe('fieldForColumn', () => {
 
   it('leaves an unknown column unmapped rather than guessing', () => {
     expect(fieldForColumn('Coach Notes')).toBeNull()
-    expect(fieldForColumn('QTR')).toBeNull()
+    expect(fieldForColumn('PERSONNEL GRP')).toBeNull()
   })
 })
 
@@ -66,8 +66,8 @@ describe('mapHudlRow', () => {
   })
 
   it('keeps columns it does not understand instead of dropping the coach\'s data', () => {
-    const play = mapHudlRow({ QTR: '3', 'Coach Notes': 'Bad snap', DN: '1' }, 0)
-    expect(play.extra).toEqual({ QTR: '3', 'Coach Notes': 'Bad snap' })
+    const play = mapHudlRow({ 'PERSONNEL GRP': '11', 'Coach Notes': 'Bad snap', DN: '1' }, 0)
+    expect(play.extra).toEqual({ 'PERSONNEL GRP': '11', 'Coach Notes': 'Bad snap' })
     expect(play.down).toBe(1)
   })
 
@@ -140,7 +140,7 @@ describe('parseHudlExport', () => {
 describe('toPlaySequenceFields', () => {
   it('maps a row onto the play_sequences columns', () => {
     const fields = toPlaySequenceFields(
-      mapHudlRow({ DN: '2', DIST: '7', 'OFF FORM': 'Trips Right', 'GN/LS': '14', QTR: '3' }, 4)
+      mapHudlRow({ DN: '2', DIST: '7', 'OFF FORM': 'Trips Right', 'GN/LS': '14', 'PERSONNEL GRP': '11' }, 4)
     )
 
     expect(fields).toMatchObject({
@@ -149,7 +149,7 @@ describe('toPlaySequenceFields', () => {
       offensive_formation: 'Trips Right',
       gain_loss: 14,
       source_row_index: 4,
-      breakdown: { QTR: '3' },
+      breakdown: { 'PERSONNEL GRP': '11' },
     })
   })
 

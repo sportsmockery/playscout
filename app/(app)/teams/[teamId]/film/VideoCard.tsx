@@ -15,7 +15,16 @@ function formatDuration(seconds?: number | null) {
 
 const STATUS_POLL_MS = 4000;
 
-export default function VideoCard({ teamId, video }: { teamId: string; video: Video }) {
+export default function VideoCard({
+  teamId,
+  video,
+  playSummary,
+}: {
+  teamId: string;
+  video: Video;
+  /** The clip's breakdown in one line, e.g. "#115 · Q4 · D · 2 & 8 · L hash · Run L". */
+  playSummary?: string;
+}) {
   const router = useRouter();
   const [retrying, setRetrying] = useState(false);
   const [error, setError] = useState('');
@@ -99,6 +108,11 @@ export default function VideoCard({ teamId, video }: { teamId: string; video: Vi
 
         <div className="p-4 pb-2">
           <h3 className="font-semibold text-[var(--brand-ink)] text-sm mb-1 truncate">{video.title}</h3>
+          {playSummary && (
+            <p className="text-xs text-[var(--brand-navy)] mb-1 truncate" title={playSummary}>
+              {playSummary}
+            </p>
+          )}
           <div className="flex items-center gap-3 text-xs text-[var(--brand-muted)]">
             {video.source_type === 'external_url' && (
               <span className="flex items-center gap-1" title={video.source_url ?? undefined}>

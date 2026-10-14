@@ -2,6 +2,7 @@ import { createClient as createServerClient } from '@/lib/supabase/server';
 import { getTeamById, getVideoById } from '@/lib/db/queries';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { playDetailEntries, type PlayDetails } from '@/lib/film/play-details';
 import { ArrowLeft, Clock, Sparkles, Zap, Gauge, Shield, TrendingUp, AlertTriangle, ListOrdered, BarChart3, MessageSquare } from 'lucide-react';
 
 // Film-based IQ modules only (PlaybookIQ is document-based, not film).
@@ -67,10 +68,11 @@ export default async function VideoDetailPage({
   // Hudl import. Read as the user — RLS scopes play_sequences to the team.
   const { data: sequences } = await supabase
     .from('play_sequences')
-    .select('id, breakdown, hudl_comments')
+    .select('*')
     .eq('video_id', videoId)
     .order('sequence_number', { ascending: true });
   const hudlComments = (sequences ?? []).flatMap((s) => asHudlComments(s.hudl_comments));
+  const playDetails = (sequences ?? []).flatMap((s) => playDetailEntries(s as unknown as PlayDetails));
   const hudlColumns = (sequences ?? []).flatMap((s) =>
     s.breakdown && typeof s.breakdown === 'object' && !Array.isArray(s.breakdown)
       ? Object.entries(s.breakdown as Record<string, unknown>).filter(
@@ -131,12 +133,22 @@ export default async function VideoDetailPage({
         </div>
       </div>
 
-      {(hudlComments.length > 0 || hudlColumns.length > 0) && (
+      {(hudlComments.length > 0 || hudlColumns.length > 0 || playDetails.length > 0) && (
         <div className="glass-card p-6 mt-6">
           <div className="flex items-center gap-2 mb-3">
             <MessageSquare size={18} className="text-[var(--brand-navy)]" />
-            <h2 className="font-bold text-[var(--brand-navy)]">From Hudl</h2>
+            <h2 className="font-bold text-[var(--brand-navy)]">Play details</h2>
           </div>
+          {playDetails.length > 0 && (
+            <dl className="grid grid-cols-3 sm:grid-cols-5 gap-x-4 gap-y-2 text-sm mb-4">
+              {playDetails.map(([label, value]) => (
+                <div key={label} className="min-w-0">
+                  <dt className="text-xs uppercase tracking-wide text-[var(--brand-muted)] truncate">{label}</dt>
+                  <dd className="text-[var(--brand-ink)] font-medium break-words">{value}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
           {hudlColumns.length > 0 && (
             <dl className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2 text-sm mb-4">
               {hudlColumns.map(([label, value]) => (
